@@ -29,6 +29,7 @@ export interface AuthTriggerStackProps extends cdk.StackProps {
 export class AuthTriggerStack extends cdk.Stack {
   public readonly customEmailSenderLambda: nodejs.NodejsFunction;
   public readonly preSignUpLambda: nodejs.NodejsFunction;
+  public readonly postConfirmationLambda: nodejs.NodejsFunction;
   public readonly kmsKey: kms.Key;
 
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
@@ -200,6 +201,65 @@ export class AuthTriggerStack extends cdk.Stack {
       sourceArn: `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
     });
 
+    // PostConfirmation Lambda (auto-assigns users to HOST group)
+    this.postConfirmationLambda = new nodejs.NodejsFunction(
+      this,
+      'PostConfirmationLambda',
+      {
+        functionName: 'localstays-dev-post-confirmation',
+        runtime: lambda.Runtime.NODEJS_18_X,
+        handler: 'handler',
+        entry: path.join(
+          __dirname,
+          '../../backend/services/auth/cognito-post-confirmation.ts'
+        ),
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        
+        // Environment variables
+        environment: {
+          USER_POOL_ID: userPoolId,
+          NODE_OPTIONS: '--enable-source-maps',
+        },
+
+        // Bundling configuration
+        bundling: {
+          minify: true,
+          sourceMap: true,
+          target: 'es2020',
+          externalModules: ['aws-sdk'],
+          forceDockerBundling: false,
+        },
+
+        // CloudWatch Logs
+        logGroup: new logs.LogGroup(this, 'PostConfirmationLogs', {
+          logGroupName: `/aws/lambda/localstays-dev-post-confirmation`,
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+
+        // Description
+        description: 'PostConfirmation trigger for Cognito - auto-assigns users to HOST group',
+      }
+    );
+
+    // IAM Policy: Allow adding users to groups
+    this.postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowAddUserToGroup',
+        effect: iam.Effect.ALLOW,
+        actions: ['cognito-idp:AdminAddUserToGroup'],
+        resources: [`arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`],
+      })
+    );
+
+    // Grant Cognito permission to invoke the PostConfirmation Lambda
+    this.postConfirmationLambda.addPermission('CognitoPostConfirmationInvokePermission', {
+      principal: new iam.ServicePrincipal('cognito-idp.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
+    });
+
     // Outputs
     new cdk.CfnOutput(this, 'CustomEmailSenderLambdaName', {
       value: this.customEmailSenderLambda.functionName,
@@ -235,6 +295,18 @@ export class AuthTriggerStack extends cdk.Stack {
       value: this.preSignUpLambda.functionArn,
       description: 'PreSignUp Lambda function ARN',
       exportName: 'LocalstaysDevPreSignUpLambdaArn',
+    });
+
+    new cdk.CfnOutput(this, 'PostConfirmationLambdaName', {
+      value: this.postConfirmationLambda.functionName,
+      description: 'PostConfirmation Lambda function name',
+      exportName: 'LocalstaysDevPostConfirmationLambdaName',
+    });
+
+    new cdk.CfnOutput(this, 'PostConfirmationLambdaArn', {
+      value: this.postConfirmationLambda.functionArn,
+      description: 'PostConfirmation Lambda function ARN',
+      exportName: 'LocalstaysDevPostConfirmationLambdaArn',
     });
 
     // Output AWS CLI command to attach triggers (manual step required)

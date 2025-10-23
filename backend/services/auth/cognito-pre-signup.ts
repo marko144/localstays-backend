@@ -6,7 +6,7 @@ import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
  * PreSignUp Lambda for Cognito User Pool
  * 
  * This trigger runs BEFORE the user is created in Cognito.
- * It captures consent data from clientMetadata and stores it in DynamoDB.
+ * It captures consent data from custom attributes and stores it in DynamoDB.
  * 
  * Trigger Source: PreSignUp_SignUp
  */
@@ -113,4 +113,3 @@ export const handler: PreSignUpTriggerHandler = async (event) => {
     return event;
   }
 };
-

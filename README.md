@@ -2,6 +2,12 @@
 
 AWS serverless backend for the Localstays platform, built with AWS CDK (TypeScript).
 
+## 📚 Documentation
+
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Complete deployment instructions with manual post-deployment steps
+- **[FORGOT_PASSWORD.md](./FORGOT_PASSWORD.md)** - Password reset flow documentation
+- **[PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md)** - Technical overview and architecture
+
 ## 🏗️ Architecture Overview
 
 **Phase 1: Signup + Custom Email Verification via Cognito Trigger**
