@@ -1,0 +1,34 @@
+{
+  "name": "localstays-backend",
+  "version": "1.0.0",
+  "description": "Localstays AWS serverless backend infrastructure",
+  "scripts": {
+    "build": "tsc && cd backend && npm run build",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "bootstrap": "cdk bootstrap"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "serverless",
+    "cognito",
+    "dynamodb"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "aws-cdk": "^2.110.0",
+    "esbuild": "^0.21.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.110.0",
+    "constructs": "^10.3.0"
+  }
+}
+

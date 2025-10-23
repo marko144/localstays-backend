@@ -1,0 +1,27 @@
+{
+  "name": "localstays-backend-services",
+  "version": "1.0.0",
+  "description": "Lambda functions for Localstays backend",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@aws-crypto/client-node": "^4.2.1",
+    "@aws-sdk/client-dynamodb": "^3.470.0",
+    "@aws-sdk/client-ssm": "^3.470.0",
+    "@aws-sdk/lib-dynamodb": "^3.470.0",
+    "@sendgrid/mail": "^7.7.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.131",
+    "@types/node": "^18.19.0",
+    "typescript": "^5.3.3"
+  }
+}
+
+
+
+
+
+
