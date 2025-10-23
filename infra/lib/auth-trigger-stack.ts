@@ -20,6 +20,10 @@ export interface AuthTriggerStackProps extends cdk.StackProps {
   tableArn: string;
   /** SSM parameter name for SendGrid API key */
   sendGridParamName: string;
+  /** S3 bucket name for host assets */
+  bucketName: string;
+  /** S3 bucket ARN for IAM permissions */
+  bucketArn: string;
 }
 
 /**
@@ -36,7 +40,7 @@ export class AuthTriggerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
     super(scope, id, props);
 
-    const { userPoolId, tableName, tableArn, sendGridParamName } = props;
+    const { userPoolId, tableName, tableArn, sendGridParamName, bucketName, bucketArn } = props;
 
     // Create KMS key for Cognito Custom Email Sender (required by AWS)
     this.kmsKey = new kms.Key(this, 'CognitoCustomSenderKey', {
@@ -221,6 +225,7 @@ export class AuthTriggerStack extends cdk.Stack {
         environment: {
           USER_POOL_ID: userPoolId,
           TABLE_NAME: tableName,
+          BUCKET_NAME: bucketName,
           NODE_OPTIONS: '--enable-source-maps',
         },
 
@@ -262,6 +267,16 @@ export class AuthTriggerStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
         resources: [tableArn],
+      })
+    );
+
+    // IAM Policy: S3 access for creating host folder structure
+    this.postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowS3HostFolderCreation',
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:PutObject'],
+        resources: [`${bucketArn}/*`],
       })
     );
 

@@ -3,6 +3,7 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { ParamsStack } from '../lib/params-stack';
 import { DataStack } from '../lib/data-stack';
+import { StorageStack } from '../lib/storage-stack';
 import { AuthTriggerStack } from '../lib/auth-trigger-stack';
 import { CognitoStack } from '../lib/cognito-stack';
 
@@ -49,7 +50,14 @@ const dataStack = new DataStack(app, 'LocalstaysDevDataStack', {
   stackName: 'localstays-dev-data',
 });
 
-// Stack 3: Auth Triggers (Lambda functions)
+// Stack 3: S3 Storage for host assets
+const storageStack = new StorageStack(app, 'LocalstaysDevStorageStack', {
+  env,
+  description: 'S3 storage for host documents and listing images',
+  stackName: 'localstays-dev-storage',
+});
+
+// Stack 4: Auth Triggers (Lambda functions)
 const authTriggerStack = new AuthTriggerStack(app, 'LocalstaysDevAuthTriggerStack', {
   env,
   description: 'Cognito authentication triggers and Lambda functions for Localstays development environment',
@@ -58,12 +66,15 @@ const authTriggerStack = new AuthTriggerStack(app, 'LocalstaysDevAuthTriggerStac
   tableName: dataStack.table.tableName,
   tableArn: dataStack.table.tableArn,
   sendGridParamName: paramsStack.sendGridParamName,
+  bucketName: storageStack.bucket.bucketName,
+  bucketArn: storageStack.bucket.bucketArn,
 });
 
 authTriggerStack.addDependency(paramsStack);
 authTriggerStack.addDependency(dataStack);
+authTriggerStack.addDependency(storageStack);
 
-// Stack 4: Cognito User Pool (NEW - with custom attributes)
+// Stack 5: Cognito User Pool (NEW - with custom attributes)
 const cognitoStack = new CognitoStack(app, 'LocalstaysDevCognitoStack', {
   env,
   description: 'Cognito User Pool with custom attributes for Localstays development environment',

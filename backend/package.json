@@ -11,6 +11,7 @@
     "@aws-crypto/client-node": "^4.2.1",
     "@aws-sdk/client-cognito-identity-provider": "^3.916.0",
     "@aws-sdk/client-dynamodb": "^3.470.0",
+    "@aws-sdk/client-s3": "^3.916.0",
     "@aws-sdk/client-ssm": "^3.470.0",
     "@aws-sdk/lib-dynamodb": "^3.470.0",
     "@sendgrid/mail": "^7.7.0"

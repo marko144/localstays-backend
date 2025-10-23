@@ -119,15 +119,37 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     }
 
     // 4. Build custom claims
-    const customClaims: Record<string, any> = {
+    // Note: Cognito requires claims to be strings or numbers, not arrays
+    // So we JSON-stringify the permissions array
+    const customClaims: Record<string, string> = {
       role,
-      permissions,
+      permissions: JSON.stringify(permissions),
       status: user.status || 'ACTIVE',
     };
 
-    // Add hostId for HOST users
+    // Add hostId and hostStatus for HOST users
     if (role === 'HOST' && user.hostId) {
       customClaims.hostId = user.hostId;
+      
+      // Fetch Host record to get host status
+      try {
+        const hostRecord = await docClient.send(
+          new GetCommand({
+            TableName: TABLE_NAME,
+            Key: {
+              pk: `HOST#${user.hostId}`,
+              sk: 'META',
+            },
+          })
+        );
+        
+        if (hostRecord.Item) {
+          customClaims.hostStatus = hostRecord.Item.status;
+        }
+      } catch (error) {
+        console.error('⚠️  Failed to fetch Host status:', error);
+        // Don't fail the whole login, just omit hostStatus
+      }
     }
 
     // 5. Inject claims into token
@@ -141,8 +163,9 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
       sub,
       role,
       hostId: customClaims.hostId || 'N/A',
+      hostStatus: customClaims.hostStatus || 'N/A',
       permissionCount: permissions.length,
-      status: customClaims.status,
+      userStatus: customClaims.status,
     });
 
     return event;

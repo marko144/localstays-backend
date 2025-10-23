@@ -174,7 +174,13 @@ Store role → permissions mapping for easy updates:
   hostId: string,              // Same as pk suffix
   hostType: "INDIVIDUAL" | "BUSINESS",
   businessName: string | null,
-  status: "ACTIVE" | "SUSPENDED" | "BANNED",
+  status: "INCOMPLETE" | "VERIFICATION" | "VERIFIED" | "INFO_REQUIRED" | "SUSPENDED",
+  ownerUserSub: string,        // Cognito sub of the owning user
+
+  // S3 Storage
+  s3Prefix: string,            // S3 prefix for this host (e.g., "host_uuid/")
+                               // Used for verification docs and listing images
+                               // Structure: {s3Prefix}verification/ and {s3Prefix}listings/{listingId}/images/
 
   // KYC
   kyc: {
@@ -185,20 +191,34 @@ Store role → permissions mapping for easy updates:
     rejectReason: string | null,
     approvedBy: string | null,  // Admin user ID
     rejectedBy: string | null,
-    documentUrls: string[],     // S3 keys
+    documentUrls: string[],     // S3 keys (relative to s3Prefix)
     notes: string | null
   },
 
   // Contact
   email: string,
   phone: string,
+  preferredLanguage: string,   // BCP-47 (e.g., "sr-RS", "en-GB")
+  countryCode: string,         // ISO-3166-1 alpha-2
   address: {
-    street: string,
-    city: string,
-    state: string,
-    country: string,
-    postalCode: string
+    addressLine1: string,
+    addressLine2: string | null,
+    locality: string,          // City
+    administrativeArea: string, // State/Province
+    postalCode: string,
+    countryCode: string        // ISO-3166-1 alpha-2
   },
+
+  // Polymorphic fields (INDIVIDUAL)
+  forename?: string,           // Required if type=INDIVIDUAL
+  surname?: string,            // Required if type=INDIVIDUAL
+
+  // Polymorphic fields (BUSINESS)
+  legalName?: string,          // Required if type=BUSINESS
+  registrationNumber?: string, // Required if type=BUSINESS
+  vatRegistered?: boolean,     // Required if type=BUSINESS
+  vatNumber?: string | null,   // Required if vatRegistered=true
+  displayName?: string | null, // Optional public name
 
   // Stats (denormalized for performance)
   stats: {
@@ -209,7 +229,9 @@ Store role → permissions mapping for easy updates:
   },
 
   // Metadata
-  createdBy: string,           // User sub who created this host
+  isDeleted: boolean,
+  deletedAt: string | null,
+  deletedBy: string | null,    // Cognito sub
   createdAt: string,
   updatedAt: string,
   suspendedAt: string | null,
