@@ -30,6 +30,7 @@ export class AuthTriggerStack extends cdk.Stack {
   public readonly customEmailSenderLambda: nodejs.NodejsFunction;
   public readonly preSignUpLambda: nodejs.NodejsFunction;
   public readonly postConfirmationLambda: nodejs.NodejsFunction;
+  public readonly preTokenGenerationLambda: nodejs.NodejsFunction;
   public readonly kmsKey: kms.Key;
 
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
@@ -219,6 +220,7 @@ export class AuthTriggerStack extends cdk.Stack {
         // Environment variables
         environment: {
           USER_POOL_ID: userPoolId,
+          TABLE_NAME: tableName,
           NODE_OPTIONS: '--enable-source-maps',
         },
 
@@ -253,8 +255,77 @@ export class AuthTriggerStack extends cdk.Stack {
       })
     );
 
+    // IAM Policy: DynamoDB access for RBAC initialization
+    this.postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowDynamoDBRBACInit',
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+        resources: [tableArn],
+      })
+    );
+
     // Grant Cognito permission to invoke the PostConfirmation Lambda
     this.postConfirmationLambda.addPermission('CognitoPostConfirmationInvokePermission', {
+      principal: new iam.ServicePrincipal('cognito-idp.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
+    });
+
+    // PreTokenGeneration Lambda (injects custom claims into JWT)
+    this.preTokenGenerationLambda = new nodejs.NodejsFunction(
+      this,
+      'PreTokenGenerationLambda',
+      {
+        functionName: 'localstays-dev-pre-token-generation',
+        runtime: lambda.Runtime.NODEJS_18_X,
+        handler: 'handler',
+        entry: path.join(
+          __dirname,
+          '../../backend/services/auth/cognito-pre-token-generation.ts'
+        ),
+        timeout: cdk.Duration.seconds(5),
+        memorySize: 256,
+        
+        // Environment variables
+        environment: {
+          TABLE_NAME: tableName,
+          NODE_OPTIONS: '--enable-source-maps',
+        },
+
+        // Bundling configuration
+        bundling: {
+          minify: true,
+          sourceMap: true,
+          target: 'es2020',
+          externalModules: ['aws-sdk'],
+          forceDockerBundling: false,
+        },
+
+        // CloudWatch Logs
+        logGroup: new logs.LogGroup(this, 'PreTokenGenerationLogs', {
+          logGroupName: `/aws/lambda/localstays-dev-pre-token-generation`,
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+
+        // Description
+        description: 'PreTokenGeneration trigger for Cognito - injects custom claims (role, hostId, permissions)',
+      }
+    );
+
+    // IAM Policy: DynamoDB read access for user + role lookup
+    this.preTokenGenerationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowDynamoDBReadForClaims',
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:GetItem'],
+        resources: [tableArn],
+      })
+    );
+
+    // Grant Cognito permission to invoke the PreTokenGeneration Lambda
+    this.preTokenGenerationLambda.addPermission('CognitoPreTokenGenerationInvokePermission', {
       principal: new iam.ServicePrincipal('cognito-idp.amazonaws.com'),
       action: 'lambda:InvokeFunction',
       sourceArn: `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
@@ -307,6 +378,18 @@ export class AuthTriggerStack extends cdk.Stack {
       value: this.postConfirmationLambda.functionArn,
       description: 'PostConfirmation Lambda function ARN',
       exportName: 'LocalstaysDevPostConfirmationLambdaArn',
+    });
+
+    new cdk.CfnOutput(this, 'PreTokenGenerationLambdaName', {
+      value: this.preTokenGenerationLambda.functionName,
+      description: 'PreTokenGeneration Lambda function name',
+      exportName: 'LocalstaysDevPreTokenGenerationLambdaName',
+    });
+
+    new cdk.CfnOutput(this, 'PreTokenGenerationLambdaArn', {
+      value: this.preTokenGenerationLambda.functionArn,
+      description: 'PreTokenGeneration Lambda function ARN',
+      exportName: 'LocalstaysDevPreTokenGenerationLambdaArn',
     });
 
     // Output AWS CLI command to attach triggers (manual step required)

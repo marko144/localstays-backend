@@ -100,10 +100,11 @@ export class CognitoStack extends cdk.Stack {
       // Note: Lambda triggers will be attached after deployment via CLI
       customSenderKmsKey: kmsKey,
 
-      // Advanced Security Mode (REQUIRED for Custom Email Sender)
-      // Note: This requires Cognito Premium tier (paid feature)
+      // Advanced Security Mode (optional - adds threat protection)
+      // Note: This requires Cognito Plus feature plan (paid feature)
       // Cost: ~$0.05 per MAU for advanced security features
-      advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
+      // Commented out - enable manually in AWS Console after upgrading to Plus plan
+      // advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
     });
 
     // Create User Pool Client (for frontend)

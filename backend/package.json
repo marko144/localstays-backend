@@ -4,7 +4,8 @@
   "description": "Lambda functions for Localstays backend",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "seed": "npm run build && node dist/services/seed/seed-all.js"
   },
   "dependencies": {
     "@aws-crypto/client-node": "^4.2.1",
