@@ -3,6 +3,14 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 /**
+ * Properties for StorageStack
+ */
+export interface StorageStackProps extends cdk.StackProps {
+  /** Environment stage (dev, dev1, staging, prod) */
+  stage: string;
+}
+
+/**
  * Storage Stack - S3 bucket for host documents and listing images
  * 
  * Structure:
@@ -12,10 +20,10 @@ import { Construct } from 'constructs';
 export class StorageStack extends cdk.Stack {
   public readonly bucket: s3.Bucket;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: StorageStackProps) {
     super(scope, id, props);
 
-    const stage = this.node.tryGetContext('stage') || 'dev';
+    const { stage } = props;
 
     // Create S3 bucket for host assets
     this.bucket = new s3.Bucket(this, 'HostAssetsBucket', {
@@ -72,18 +80,32 @@ export class StorageStack extends cdk.Stack {
       autoDeleteObjects: stage !== 'prod',
     });
 
-    // CloudFormation Outputs
+    // CloudFormation Outputs (with environment-specific export names)
+    const capitalizedStage = this.capitalize(stage);
+    
     new cdk.CfnOutput(this, 'BucketName', {
       value: this.bucket.bucketName,
       description: 'S3 bucket for host assets',
-      exportName: `${stage}-host-assets-bucket-name`,
+      exportName: `Localstays${capitalizedStage}BucketName`,
     });
 
     new cdk.CfnOutput(this, 'BucketArn', {
       value: this.bucket.bucketArn,
       description: 'ARN of the host assets bucket',
-      exportName: `${stage}-host-assets-bucket-arn`,
+      exportName: `Localstays${capitalizedStage}BucketArn`,
     });
+
+    // Add tags
+    cdk.Tags.of(this).add('Project', 'Localstays');
+    cdk.Tags.of(this).add('Environment', stage);
+    cdk.Tags.of(this).add('ManagedBy', 'CDK');
+  }
+
+  /**
+   * Capitalize first letter of string (for export names)
+   */
+  private capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 }
 

@@ -9,6 +9,8 @@ import { Construct } from 'constructs';
 export interface CognitoStackProps extends cdk.StackProps {
   /** KMS key for Custom Email Sender encryption */
   kmsKey: kms.IKey;
+  /** Environment stage (dev, dev1, staging, prod) */
+  stage: string;
 }
 
 /**
@@ -24,11 +26,11 @@ export class CognitoStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: CognitoStackProps) {
     super(scope, id, props);
 
-    const { kmsKey } = props;
+    const { kmsKey, stage } = props;
 
     // Create User Pool with custom attributes
     this.userPool = new cognito.UserPool(this, 'LocalstaysUserPool', {
-      userPoolName: 'localstays-dev-users',
+      userPoolName: `localstays-${stage}-users`,
       
       // Sign-in configuration
       signInAliases: {
@@ -92,9 +94,9 @@ export class CognitoStack extends cdk.Stack {
         deviceOnlyRememberedOnUserPrompt: true,
       },
 
-      // Deletion protection (disable for dev)
-      deletionProtection: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      // Deletion protection (enable for prod)
+      deletionProtection: stage === 'prod',
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
 
       // Custom Email Sender KMS key
       // Note: Lambda triggers will be attached after deployment via CLI
@@ -102,16 +104,17 @@ export class CognitoStack extends cdk.Stack {
 
       // Advanced Security Mode (REQUIRED for Custom Email Sender)
       // Note: Must be enabled for CustomEmailSender to work
-      // This is already enabled on the existing pool via CLI
-      // DO NOT REMOVE - Custom Email Sender won't trigger without it
-      // Commented for deployment - already enabled via CLI on existing pool
-      // advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
+      // ⚠️ COMMENTED OUT FOR INITIAL DEPLOYMENT - requires Plus tier
+      // After deployment, manually upgrade to Plus tier and enable ENFORCED mode via CLI:
+      // aws cognito-idp update-user-pool --user-pool-id <POOL_ID> \
+      //   --user-pool-add-ons AdvancedSecurityMode=ENFORCED --region eu-north-1
+      // advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
     });
 
     // Create User Pool Client (for frontend)
     this.userPoolClient = new cognito.UserPoolClient(this, 'LocalstaysUserPoolClient', {
       userPool: this.userPool,
-      userPoolClientName: 'localstays-web-client',
+      userPoolClientName: `localstays-${stage}-web-client`,
       
       // Auth flows
       authFlows: {
@@ -172,23 +175,25 @@ export class CognitoStack extends cdk.Stack {
       precedence: 5, // Lower precedence = higher priority
     });
 
-    // Outputs
+    // Outputs (with environment-specific export names)
+    const capitalizedStage = this.capitalize(stage);
+    
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: this.userPool.userPoolId,
       description: 'Cognito User Pool ID',
-      exportName: 'LocalstaysDevUserPoolId',
+      exportName: `Localstays${capitalizedStage}UserPoolId`,
     });
 
     new cdk.CfnOutput(this, 'UserPoolArn', {
       value: this.userPool.userPoolArn,
       description: 'Cognito User Pool ARN',
-      exportName: 'LocalstaysDevUserPoolArn',
+      exportName: `Localstays${capitalizedStage}UserPoolArn`,
     });
 
     new cdk.CfnOutput(this, 'UserPoolClientId', {
       value: this.userPoolClient.userPoolClientId,
       description: 'Cognito User Pool Client ID (for frontend)',
-      exportName: 'LocalstaysDevUserPoolClientId',
+      exportName: `Localstays${capitalizedStage}UserPoolClientId`,
     });
 
     new cdk.CfnOutput(this, 'Region', {
@@ -199,19 +204,26 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'HostGroupName', {
       value: this.hostGroup.groupName!,
       description: 'HOST group name',
-      exportName: 'LocalstaysDevHostGroupName',
+      exportName: `Localstays${capitalizedStage}HostGroupName`,
     });
 
     new cdk.CfnOutput(this, 'AdminGroupName', {
       value: this.adminGroup.groupName!,
       description: 'ADMIN group name',
-      exportName: 'LocalstaysDevAdminGroupName',
+      exportName: `Localstays${capitalizedStage}AdminGroupName`,
     });
 
     // Add tags
     cdk.Tags.of(this).add('Project', 'Localstays');
-    cdk.Tags.of(this).add('Environment', 'Development');
+    cdk.Tags.of(this).add('Environment', stage);
     cdk.Tags.of(this).add('ManagedBy', 'CDK');
+  }
+
+  /**
+   * Capitalize first letter of string (for export names)
+   */
+  private capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 }
 

@@ -3,18 +3,28 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 
 /**
+ * Properties for DataStack
+ */
+export interface DataStackProps extends cdk.StackProps {
+  /** Environment stage (dev, dev1, staging, prod) */
+  stage: string;
+}
+
+/**
  * Stack for DynamoDB tables and data layer infrastructure
  * Implements single-table design pattern for Localstays platform
  */
 export class DataStack extends cdk.Stack {
   public readonly table: dynamodb.Table;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
+
+    const { stage } = props;
 
     // Main DynamoDB table - single table design
     this.table = new dynamodb.Table(this, 'LocalstaysTable', {
-      tableName: 'localstays-dev',
+      tableName: `localstays-${stage}`,
       partitionKey: {
         name: 'pk',
         type: dynamodb.AttributeType.STRING,
@@ -31,11 +41,11 @@ export class DataStack extends cdk.Stack {
       // TTL attribute for automatic item expiration (future-proof)
       timeToLiveAttribute: 'ttl',
       
-      // Dev environment - allow destruction (change to RETAIN for prod)
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       
-      // Enable deletion protection in prod (disabled for dev convenience)
-      deletionProtection: false,
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
       
       // Encryption at rest using AWS managed keys
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
@@ -103,23 +113,32 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // Outputs
+    // Outputs (with environment-specific export names)
+    const capitalizedStage = this.capitalize(stage);
+    
     new cdk.CfnOutput(this, 'TableName', {
       value: this.table.tableName,
       description: 'DynamoDB table name',
-      exportName: 'LocalstaysDevTableName',
+      exportName: `Localstays${capitalizedStage}TableName`,
     });
 
     new cdk.CfnOutput(this, 'TableArn', {
       value: this.table.tableArn,
       description: 'DynamoDB table ARN',
-      exportName: 'LocalstaysDevTableArn',
+      exportName: `Localstays${capitalizedStage}TableArn`,
     });
 
     // Add tags for resource management
-    cdk.Tags.of(this).add('Environment', 'dev');
+    cdk.Tags.of(this).add('Environment', stage);
     cdk.Tags.of(this).add('Project', 'Localstays');
     cdk.Tags.of(this).add('ManagedBy', 'CDK');
+  }
+
+  /**
+   * Capitalize first letter of string (for export names)
+   */
+  private capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 }
 

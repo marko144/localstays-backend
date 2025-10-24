@@ -68,7 +68,29 @@
     "@aws-cdk/aws-ec2:ebsDefaultGp3Volume": true,
     "@aws-cdk/aws-ecs:removeDefaultDeploymentAlarm": true,
     "@aws-cdk/custom-resources:logApiResponseDataPropertyTrueDefault": false,
-    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": false
+    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": false,
+    "environments": {
+      "dev": {
+        "account": "041608526793",
+        "region": "eu-north-1",
+        "stage": "dev"
+      },
+      "dev1": {
+        "account": "041608526793",
+        "region": "eu-north-1",
+        "stage": "dev1"
+      },
+      "staging": {
+        "account": "041608526793",
+        "region": "eu-north-1",
+        "stage": "staging"
+      },
+      "prod": {
+        "account": "TBD",
+        "region": "eu-central-1",
+        "stage": "prod"
+      }
+    }
   }
 }
 

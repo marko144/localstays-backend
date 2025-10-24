@@ -12,8 +12,12 @@ import * as path from 'path';
  * Properties for AuthTriggerStack
  */
 export interface AuthTriggerStackProps extends cdk.StackProps {
-  /** Existing Cognito User Pool ID to attach triggers to */
+  /** Cognito User Pool ID from CognitoStack */
   userPoolId: string;
+  /** Cognito User Pool ARN from CognitoStack */
+  userPoolArn: string;
+  /** KMS key for decrypting verification codes */
+  kmsKey: kms.IKey;
   /** DynamoDB table name for user data */
   tableName: string;
   /** DynamoDB table ARN for IAM permissions */
@@ -24,6 +28,8 @@ export interface AuthTriggerStackProps extends cdk.StackProps {
   bucketName: string;
   /** S3 bucket ARN for IAM permissions */
   bucketArn: string;
+  /** Environment stage (dev, dev1, staging, prod) */
+  stage: string;
 }
 
 /**
@@ -35,43 +41,18 @@ export class AuthTriggerStack extends cdk.Stack {
   public readonly preSignUpLambda: nodejs.NodejsFunction;
   public readonly postConfirmationLambda: nodejs.NodejsFunction;
   public readonly preTokenGenerationLambda: nodejs.NodejsFunction;
-  public readonly kmsKey: kms.Key;
 
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
     super(scope, id, props);
 
-    const { userPoolId, tableName, tableArn, sendGridParamName, bucketName, bucketArn } = props;
-
-    // Create KMS key for Cognito Custom Email Sender (required by AWS)
-    this.kmsKey = new kms.Key(this, 'CognitoCustomSenderKey', {
-      description: 'KMS key for Cognito Custom Email Sender encryption',
-      enableKeyRotation: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Dev only
-      alias: 'localstays/dev/cognito-custom-sender',
-    });
-
-    // Grant Cognito service permission to use the key
-    this.kmsKey.addToResourcePolicy(
-      new iam.PolicyStatement({
-        sid: 'Allow Cognito to use the key',
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.ServicePrincipal('cognito-idp.amazonaws.com')],
-        actions: ['kms:Decrypt', 'kms:CreateGrant'],
-        resources: ['*'],
-        conditions: {
-          StringEquals: {
-            'kms:ViaService': `cognito-idp.${this.region}.amazonaws.com`,
-          },
-        },
-      })
-    );
+    const { userPoolId, userPoolArn, kmsKey, tableName, tableArn, sendGridParamName, bucketName, bucketArn, stage } = props;
 
     // Custom Email Sender Lambda
     this.customEmailSenderLambda = new nodejs.NodejsFunction(
       this,
       'CustomEmailSenderLambda',
       {
-        functionName: 'localstays-dev-custom-email-sender',
+        functionName: `localstays-${stage}-custom-email-sender`,
         runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
@@ -88,7 +69,7 @@ export class AuthTriggerStack extends cdk.Stack {
           RESET_PASSWORD_URL_BASE: 'http://localhost:3000/en/reset-password',
           SENDGRID_PARAM: sendGridParamName,
           FROM_EMAIL: 'marko@localstays.me',
-          KMS_KEY_ARN: this.kmsKey.keyArn,
+          KMS_KEY_ARN: kmsKey.keyArn,
           NODE_OPTIONS: '--enable-source-maps',
         },
 
@@ -103,7 +84,7 @@ export class AuthTriggerStack extends cdk.Stack {
 
         // CloudWatch Logs
         logGroup: new logs.LogGroup(this, 'CustomEmailSenderLogs', {
-          logGroupName: `/aws/lambda/localstays-dev-custom-email-sender`,
+          logGroupName: `/aws/lambda/localstays-${stage}-custom-email-sender`,
           retention: logs.RetentionDays.ONE_WEEK,
           removalPolicy: cdk.RemovalPolicy.DESTROY,
         }),
@@ -114,7 +95,7 @@ export class AuthTriggerStack extends cdk.Stack {
     );
 
     // Grant Lambda decrypt permission on KMS key
-    this.kmsKey.grantDecrypt(this.customEmailSenderLambda);
+    kmsKey.grantDecrypt(this.customEmailSenderLambda);
 
     // IAM Policy: SSM Parameter Store access (least privilege)
     this.customEmailSenderLambda.addToRolePolicy(
@@ -152,7 +133,7 @@ export class AuthTriggerStack extends cdk.Stack {
       this,
       'PreSignUpLambda',
       {
-        functionName: 'localstays-dev-pre-signup',
+        functionName: `localstays-${stage}-pre-signup`,
         runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
@@ -179,7 +160,7 @@ export class AuthTriggerStack extends cdk.Stack {
 
         // CloudWatch Logs
         logGroup: new logs.LogGroup(this, 'PreSignUpLogs', {
-          logGroupName: `/aws/lambda/localstays-dev-pre-signup`,
+          logGroupName: `/aws/lambda/localstays-${stage}-pre-signup`,
           retention: logs.RetentionDays.ONE_WEEK,
           removalPolicy: cdk.RemovalPolicy.DESTROY,
         }),
@@ -211,7 +192,7 @@ export class AuthTriggerStack extends cdk.Stack {
       this,
       'PostConfirmationLambda',
       {
-        functionName: 'localstays-dev-post-confirmation',
+        functionName: `localstays-${stage}-post-confirmation`,
         runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
@@ -240,7 +221,7 @@ export class AuthTriggerStack extends cdk.Stack {
 
         // CloudWatch Logs
         logGroup: new logs.LogGroup(this, 'PostConfirmationLogs', {
-          logGroupName: `/aws/lambda/localstays-dev-post-confirmation`,
+          logGroupName: `/aws/lambda/localstays-${stage}-post-confirmation`,
           retention: logs.RetentionDays.ONE_WEEK,
           removalPolicy: cdk.RemovalPolicy.DESTROY,
         }),
@@ -292,7 +273,7 @@ export class AuthTriggerStack extends cdk.Stack {
       this,
       'PreTokenGenerationLambda',
       {
-        functionName: 'localstays-dev-pre-token-generation',
+        functionName: `localstays-${stage}-pre-token-generation`,
         runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
@@ -319,7 +300,7 @@ export class AuthTriggerStack extends cdk.Stack {
 
         // CloudWatch Logs
         logGroup: new logs.LogGroup(this, 'PreTokenGenerationLogs', {
-          logGroupName: `/aws/lambda/localstays-dev-pre-token-generation`,
+          logGroupName: `/aws/lambda/localstays-${stage}-pre-token-generation`,
           retention: logs.RetentionDays.ONE_WEEK,
           removalPolicy: cdk.RemovalPolicy.DESTROY,
         }),
@@ -346,65 +327,55 @@ export class AuthTriggerStack extends cdk.Stack {
       sourceArn: `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
     });
 
-    // Outputs
+    // Outputs (with environment-specific export names)
+    const capitalizedStage = this.capitalize(stage);
+    
     new cdk.CfnOutput(this, 'CustomEmailSenderLambdaName', {
       value: this.customEmailSenderLambda.functionName,
       description: 'Custom Email Sender Lambda function name',
-      exportName: 'LocalstaysDevCustomEmailSenderName',
+      exportName: `Localstays${capitalizedStage}CustomEmailSenderName`,
     });
 
     new cdk.CfnOutput(this, 'CustomEmailSenderLambdaArn', {
       value: this.customEmailSenderLambda.functionArn,
       description: 'Custom Email Sender Lambda function ARN',
-      exportName: 'LocalstaysDevCustomEmailSenderArn',
-    });
-
-    new cdk.CfnOutput(this, 'KmsKeyId', {
-      value: this.kmsKey.keyId,
-      description: 'KMS key ID for Cognito Custom Email Sender',
-      exportName: 'LocalstaysDevCognitoKmsKeyId',
-    });
-
-    new cdk.CfnOutput(this, 'KmsKeyArn', {
-      value: this.kmsKey.keyArn,
-      description: 'KMS key ARN for Cognito Custom Email Sender',
-      exportName: 'LocalstaysDevCognitoKmsKeyArn',
+      exportName: `Localstays${capitalizedStage}CustomEmailSenderArn`,
     });
 
     new cdk.CfnOutput(this, 'PreSignUpLambdaName', {
       value: this.preSignUpLambda.functionName,
       description: 'PreSignUp Lambda function name',
-      exportName: 'LocalstaysDevPreSignUpLambdaName',
+      exportName: `Localstays${capitalizedStage}PreSignUpLambdaName`,
     });
 
     new cdk.CfnOutput(this, 'PreSignUpLambdaArn', {
       value: this.preSignUpLambda.functionArn,
       description: 'PreSignUp Lambda function ARN',
-      exportName: 'LocalstaysDevPreSignUpLambdaArn',
+      exportName: `Localstays${capitalizedStage}PreSignUpLambdaArn`,
     });
 
     new cdk.CfnOutput(this, 'PostConfirmationLambdaName', {
       value: this.postConfirmationLambda.functionName,
       description: 'PostConfirmation Lambda function name',
-      exportName: 'LocalstaysDevPostConfirmationLambdaName',
+      exportName: `Localstays${capitalizedStage}PostConfirmationLambdaName`,
     });
 
     new cdk.CfnOutput(this, 'PostConfirmationLambdaArn', {
       value: this.postConfirmationLambda.functionArn,
       description: 'PostConfirmation Lambda function ARN',
-      exportName: 'LocalstaysDevPostConfirmationLambdaArn',
+      exportName: `Localstays${capitalizedStage}PostConfirmationLambdaArn`,
     });
 
     new cdk.CfnOutput(this, 'PreTokenGenerationLambdaName', {
       value: this.preTokenGenerationLambda.functionName,
       description: 'PreTokenGeneration Lambda function name',
-      exportName: 'LocalstaysDevPreTokenGenerationLambdaName',
+      exportName: `Localstays${capitalizedStage}PreTokenGenerationLambdaName`,
     });
 
     new cdk.CfnOutput(this, 'PreTokenGenerationLambdaArn', {
       value: this.preTokenGenerationLambda.functionArn,
       description: 'PreTokenGeneration Lambda function ARN',
-      exportName: 'LocalstaysDevPreTokenGenerationLambdaArn',
+      exportName: `Localstays${capitalizedStage}PreTokenGenerationLambdaArn`,
     });
 
     // Output AWS CLI command to attach triggers (manual step required)
@@ -414,9 +385,16 @@ export class AuthTriggerStack extends cdk.Stack {
     });
 
     // Add tags
-    cdk.Tags.of(this).add('Environment', 'dev');
+    cdk.Tags.of(this).add('Environment', stage);
     cdk.Tags.of(this).add('Project', 'Localstays');
     cdk.Tags.of(this).add('ManagedBy', 'CDK');
+  }
+
+  /**
+   * Capitalize first letter of string (for export names)
+   */
+  private capitalize(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   /**
