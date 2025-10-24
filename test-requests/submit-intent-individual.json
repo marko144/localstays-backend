@@ -1,0 +1,34 @@
+{
+  "profile": {
+    "hostType": "INDIVIDUAL",
+    "email": "marko.babic@example.com",
+    "phone": "+381601234567",
+    "preferredLanguage": "sr-RS",
+    "countryCode": "RS",
+    "address": {
+      "addressLine1": "Kneza Miloša 10",
+      "addressLine2": "Stan 5",
+      "locality": "Beograd",
+      "administrativeArea": "Grad Beograd",
+      "postalCode": "11000",
+      "countryCode": "RS"
+    },
+    "forename": "Marko",
+    "surname": "Babić"
+  },
+  "documents": [
+    {
+      "documentType": "PASSPORT",
+      "fileName": "passport.pdf",
+      "fileSize": 2048000,
+      "mimeType": "application/pdf"
+    },
+    {
+      "documentType": "PROOF_OF_ADDRESS",
+      "fileName": "utility_bill.jpg",
+      "fileSize": 1024000,
+      "mimeType": "image/jpeg"
+    }
+  ]
+}
+

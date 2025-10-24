@@ -7,6 +7,8 @@ import { StorageStack } from '../lib/storage-stack';
 import { KmsStack } from '../lib/kms-stack';
 import { CognitoStack } from '../lib/cognito-stack';
 import { AuthTriggerStack } from '../lib/auth-trigger-stack';
+import { ApiGatewayStack } from '../lib/api-gateway-stack';
+import { ApiLambdaStack } from '../lib/api-lambda-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -60,6 +62,10 @@ const stackPrefix = `Localstays${stage.charAt(0).toUpperCase() + stage.slice(1)}
  * Phase 2: Authentication (Dependent Stacks)
  * 5. CognitoStack - User Pool (depends on KmsStack)
  * 6. AuthTriggerStack - Lambda triggers (depends on all Phase 1 + CognitoStack)
+ * 
+ * Phase 3: API Layer (Dependent on Auth)
+ * 7. ApiGatewayStack - REST API (depends on CognitoStack)
+ * 8. ApiLambdaStack - API handlers (depends on DataStack, StorageStack, ApiGatewayStack)
  */
 
 // Phase 1: Foundation Stacks
@@ -130,6 +136,23 @@ authTriggerStack.addDependency(storageStack);
 authTriggerStack.addDependency(kmsStack);
 authTriggerStack.addDependency(cognitoStack);
 
+// Phase 3: API Layer Stack (Combined Gateway + Lambdas to avoid circular dependency)
+
+// Stack 7: API (Gateway + Lambda Functions)
+const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
+  env,
+  description: `REST API Gateway and Lambda functions for host profile submission (${stage})`,
+  stackName: `localstays-${stage}-api`,
+  stage,
+  userPoolId: cognitoStack.userPool.userPoolId,
+  userPoolArn: cognitoStack.userPool.userPoolArn,
+  table: dataStack.table,
+  bucket: storageStack.bucket,
+});
+apiStack.addDependency(cognitoStack);
+apiStack.addDependency(dataStack);
+apiStack.addDependency(storageStack);
+
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
@@ -138,6 +161,7 @@ console.log(`   3. ${storageStack.stackName} (S3)`);
 console.log(`   4. ${kmsStack.stackName} (KMS)`);
 console.log(`   5. ${cognitoStack.stackName} (Cognito User Pool)`);
 console.log(`   6. ${authTriggerStack.stackName} (Lambda Triggers)`);
+console.log(`   7. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

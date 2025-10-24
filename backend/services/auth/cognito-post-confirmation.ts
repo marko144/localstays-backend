@@ -134,7 +134,7 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
           pk: `HOST#${hostId}`,
           sk: 'META',
           hostId,
-          status: 'INCOMPLETE',
+          status: 'NOT_SUBMITTED', // Initial status - profile never submitted
           ownerUserSub,
           s3Prefix, // Store S3 prefix for easy reference
           isDeleted: false,
@@ -144,13 +144,13 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
           gsi1pk: `OWNER#${ownerUserSub}`,
           gsi1sk: `HOST#${hostId}`,
           // GSI2: Query Hosts by status
-          gsi2pk: 'STATUS#INCOMPLETE',
+          gsi2pk: 'STATUS#NOT_SUBMITTED',
           gsi2sk: `HOST#${hostId}`,
         },
       })
     );
 
-    console.log(`✅ Created Host record: ${hostId} with S3 prefix: ${s3Prefix}`);
+    console.log(`✅ Created Host record: ${hostId} with S3 prefix: ${s3Prefix} (status: NOT_SUBMITTED)`);
     return hostId;
   } catch (error) {
     console.error('❌ Failed to create Host record:', error);

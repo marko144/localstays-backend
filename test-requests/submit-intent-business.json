@@ -1,0 +1,49 @@
+{
+  "profile": {
+    "hostType": "BUSINESS",
+    "email": "info@babicproperties.rs",
+    "phone": "+381601234567",
+    "preferredLanguage": "sr-RS",
+    "countryCode": "RS",
+    "address": {
+      "addressLine1": "Terazije 23",
+      "addressLine2": null,
+      "locality": "Beograd",
+      "administrativeArea": "Grad Beograd",
+      "postalCode": "11000",
+      "countryCode": "RS"
+    },
+    "legalName": "Babić Properties DOO",
+    "registrationNumber": "12345678",
+    "vatRegistered": true,
+    "vatNumber": "RS123456789",
+    "displayName": "Babić Rentals"
+  },
+  "documents": [
+    {
+      "documentType": "PASSPORT",
+      "fileName": "owner_passport.pdf",
+      "fileSize": 2048000,
+      "mimeType": "application/pdf"
+    },
+    {
+      "documentType": "BUSINESS_REGISTRATION",
+      "fileName": "registration_cert.pdf",
+      "fileSize": 1536000,
+      "mimeType": "application/pdf"
+    },
+    {
+      "documentType": "VAT_CERTIFICATE",
+      "fileName": "vat_certificate.pdf",
+      "fileSize": 1024000,
+      "mimeType": "application/pdf"
+    },
+    {
+      "documentType": "PROOF_OF_ADDRESS",
+      "fileName": "utility_bill.jpg",
+      "fileSize": 1024000,
+      "mimeType": "image/jpeg"
+    }
+  ]
+}
+

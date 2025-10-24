@@ -1,0 +1,14 @@
+{
+  "submissionToken": "sub_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+  "uploadedDocuments": [
+    {
+      "documentId": "doc_YYYYYYYY-YYYY-YYYY-YYYY-YYYYYYYYYYYY",
+      "documentType": "PASSPORT"
+    },
+    {
+      "documentId": "doc_ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ",
+      "documentType": "PROOF_OF_ADDRESS"
+    }
+  ]
+}
+

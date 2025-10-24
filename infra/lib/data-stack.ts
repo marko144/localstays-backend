@@ -1,5 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cr from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 
 /**
@@ -38,8 +42,9 @@ export class DataStack extends cdk.Stack {
       // Point-in-time recovery for data protection
       pointInTimeRecovery: true,
       
-      // TTL attribute for automatic item expiration (future-proof)
-      timeToLiveAttribute: 'ttl',
+      // TTL attribute for automatic item expiration
+      // Used for: submission tokens, temporary sessions, expired documents
+      timeToLiveAttribute: 'expiresAt',
       
       // Environment-specific removal policy
       removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -54,9 +59,9 @@ export class DataStack extends cdk.Stack {
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
     });
 
-    // GSI1: Lookup entities by owner (e.g., Host by ownerUserSub)
+    // GSI1 - HostIdIndex: Query users by hostId (pk=hostId, sk=USER#<sub>)
     this.table.addGlobalSecondaryIndex({
-      indexName: 'GSI1',
+      indexName: 'HostIdIndex',
       partitionKey: {
         name: 'gsi1pk',
         type: dynamodb.AttributeType.STRING,
@@ -68,12 +73,10 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // GSI2-4: Adding incrementally (DynamoDB allows only 1 GSI change per deployment)
-    // Uncomment one at a time and redeploy
-    
-    // GSI2: Query entities by status (e.g., Hosts by status, Listings by status)
+    // GSI2 - StatusIndex: Query entities by status (e.g., Hosts by status, Listings by status)
+    // pk=entityType#status (e.g., "HOST#VERIFICATION"), sk=createdAt
     this.table.addGlobalSecondaryIndex({
-      indexName: 'GSI2',
+      indexName: 'StatusIndex',
       partitionKey: {
         name: 'gsi2pk',
         type: dynamodb.AttributeType.STRING,
@@ -85,9 +88,10 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // GSI3: Lookup by email (e.g., Host by email)
+    // GSI3 - DocumentStatusIndex: Query documents by status for admin review
+    // pk=DOCUMENT_STATUS#{status}, sk=uploadedAt
     this.table.addGlobalSecondaryIndex({
-      indexName: 'GSI3',
+      indexName: 'DocumentStatusIndex',
       partitionKey: {
         name: 'gsi3pk',
         type: dynamodb.AttributeType.STRING,
@@ -99,9 +103,10 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // GSI4: Query by country (e.g., Hosts by country)
+    // GSI4 - CountryIndex: Query entities by country (e.g., Hosts by country)
+    // pk=countryCode, sk=createdAt
     this.table.addGlobalSecondaryIndex({
-      indexName: 'GSI4',
+      indexName: 'CountryIndex',
       partitionKey: {
         name: 'gsi4pk',
         type: dynamodb.AttributeType.STRING,
@@ -111,6 +116,53 @@ export class DataStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
+    // Database Seeding CustomResource
+    // ========================================
+    
+    // Lambda function to seed roles and enums
+    const seedLambda = new nodejs.NodejsFunction(this, 'SeedHandler', {
+      functionName: `localstays-${stage}-db-seed`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'backend/services/seed/seed-handler.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      environment: {
+        TABLE_NAME: this.table.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'es2022',
+        externalModules: ['@aws-sdk/*'],
+      },
+      logRetention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant permissions to write to DynamoDB
+    this.table.grantWriteData(seedLambda);
+
+    // Create custom resource provider
+    const seedProvider = new cr.Provider(this, 'SeedProvider', {
+      onEventHandler: seedLambda,
+      logRetention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Create custom resource (triggers seeding on stack create)
+    new cdk.CustomResource(this, 'SeedCustomResource', {
+      serviceToken: seedProvider.serviceToken,
+      properties: {
+        TableName: this.table.tableName,
+        // Change this value to trigger re-seeding
+        Version: '1.1.0', // Updated to include NOT_SUBMITTED status
+      },
     });
 
     // Outputs (with environment-specific export names)
