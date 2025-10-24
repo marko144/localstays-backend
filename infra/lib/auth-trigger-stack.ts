@@ -72,7 +72,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'CustomEmailSenderLambda',
       {
         functionName: 'localstays-dev-custom-email-sender',
-        runtime: lambda.Runtime.NODEJS_18_X,
+        runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -153,7 +153,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PreSignUpLambda',
       {
         functionName: 'localstays-dev-pre-signup',
-        runtime: lambda.Runtime.NODEJS_18_X,
+        runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -172,7 +172,7 @@ export class AuthTriggerStack extends cdk.Stack {
         bundling: {
           minify: true,
           sourceMap: true,
-          target: 'es2020',
+          target: 'es2022',
           externalModules: ['aws-sdk'],
           forceDockerBundling: false,
         },
@@ -212,7 +212,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PostConfirmationLambda',
       {
         functionName: 'localstays-dev-post-confirmation',
-        runtime: lambda.Runtime.NODEJS_18_X,
+        runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -233,7 +233,7 @@ export class AuthTriggerStack extends cdk.Stack {
         bundling: {
           minify: true,
           sourceMap: true,
-          target: 'es2020',
+          target: 'es2022',
           externalModules: ['aws-sdk'],
           forceDockerBundling: false,
         },
@@ -293,7 +293,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PreTokenGenerationLambda',
       {
         functionName: 'localstays-dev-pre-token-generation',
-        runtime: lambda.Runtime.NODEJS_18_X,
+        runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -312,7 +312,7 @@ export class AuthTriggerStack extends cdk.Stack {
         bundling: {
           minify: true,
           sourceMap: true,
-          target: 'es2020',
+          target: 'es2022',
           externalModules: ['aws-sdk'],
           forceDockerBundling: false,
         },
