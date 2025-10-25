@@ -23,6 +23,10 @@ export interface ApiLambdaStackProps extends cdk.StackProps {
   table: dynamodb.Table;
   /** S3 bucket for host assets */
   bucket: s3.Bucket;
+  /** Email templates DynamoDB table */
+  emailTemplatesTable: dynamodb.Table;
+  /** SSM parameter name for SendGrid API key */
+  sendGridParamName: string;
 }
 
 /**
@@ -40,7 +44,7 @@ export class ApiLambdaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
 
-    const { stage, userPoolId, userPoolArn, table, bucket } = props;
+    const { stage, userPoolId, userPoolArn, table, bucket, emailTemplatesTable, sendGridParamName } = props;
 
     // ========================================
     // API Gateway Setup
@@ -124,6 +128,9 @@ export class ApiLambdaStack extends cdk.Stack {
     const commonEnvironment = {
       TABLE_NAME: table.tableName,
       BUCKET_NAME: bucket.bucketName,
+      EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
+      SENDGRID_PARAM: sendGridParamName,
+      FROM_EMAIL: 'marko@localstays.me', // Same verified SendGrid sender as auth emails
       STAGE: stage,
       // AWS_REGION is automatically set by Lambda runtime
     };
@@ -184,6 +191,7 @@ export class ApiLambdaStack extends cdk.Stack {
 
     // Grant DynamoDB permissions (least privilege)
     table.grantReadWriteData(this.confirmSubmissionLambda); // For transactional updates
+    emailTemplatesTable.grantReadData(this.confirmSubmissionLambda); // For email templates
 
     // Grant S3 permissions for verification (HeadObject only)
     this.confirmSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
@@ -194,6 +202,15 @@ export class ApiLambdaStack extends cdk.Stack {
       ],
       resources: [
         `${bucket.bucketArn}/*`,
+      ],
+    }));
+
+    // Grant SSM permissions for SendGrid API key
+    this.confirmSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`,
       ],
     }));
 

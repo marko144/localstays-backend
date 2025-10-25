@@ -232,6 +232,26 @@ export function sanitizeString(input: string | undefined | null): string {
 }
 
 /**
+ * Sanitize and normalize language code to BCP-47 format
+ * Examples: "en-gb" -> "en-GB", "EN-US" -> "en-US", "sr" -> "sr"
+ */
+function normalizeLanguageCode(code: string): string {
+  const sanitized = sanitizeString(code);
+  if (!sanitized) return '';
+  
+  const parts = sanitized.split('-');
+  if (parts.length === 1) {
+    // Just language code: lowercase it
+    return parts[0].toLowerCase();
+  } else if (parts.length === 2) {
+    // Language-Country: lowercase language, uppercase country
+    return `${parts[0].toLowerCase()}-${parts[1].toUpperCase()}`;
+  }
+  // Invalid format, return as-is (will fail validation)
+  return sanitized;
+}
+
+/**
  * Sanitize profile data (trim strings, normalize values)
  */
 export function sanitizeProfileData(profile: ProfileData): ProfileData {
@@ -239,7 +259,7 @@ export function sanitizeProfileData(profile: ProfileData): ProfileData {
     ...profile,
     email: sanitizeString(profile.email).toLowerCase(),
     phone: sanitizeString(profile.phone),
-    preferredLanguage: sanitizeString(profile.preferredLanguage).toLowerCase(),
+    preferredLanguage: normalizeLanguageCode(profile.preferredLanguage),
     countryCode: sanitizeString(profile.countryCode).toUpperCase(),
     address: {
       addressLine1: sanitizeString(profile.address.addressLine1),

@@ -11,6 +11,7 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { objectExists } from '../lib/s3-presigned';
 import { executeTransaction } from '../lib/transaction';
+import { sendProfileSubmissionEmail } from '../lib/email-service';
 import { SubmissionToken, allDocumentsUploaded, getMissingDocuments } from '../../types/submission.types';
 import { Document } from '../../types/document.types';
 
@@ -152,7 +153,33 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`Profile submission completed for host ${hostId}`);
 
-    // 11. Return success response
+    // 11. Send confirmation email (don't fail request if email fails)
+    try {
+      const hostRecord = await getHostRecord(hostId);
+      
+      if (hostRecord) {
+        // Determine name based on host type
+        const name = hostRecord.hostType === 'INDIVIDUAL'
+          ? `${hostRecord.forename} ${hostRecord.surname}`
+          : hostRecord.legalName || hostRecord.displayName;
+
+        await sendProfileSubmissionEmail(
+          hostRecord.email,
+          hostRecord.preferredLanguage || 'sr',
+          name
+        );
+        
+        console.log(`Confirmation email sent to ${hostRecord.email}`);
+      }
+    } catch (emailError: any) {
+      // Log error but don't fail the request - submission is already complete
+      console.error('Failed to send confirmation email (non-fatal):', {
+        error: emailError.message,
+        hostId,
+      });
+    }
+
+    // 12. Return success response
     return response.success({
       success: true,
       hostId,

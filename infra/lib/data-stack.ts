@@ -161,7 +161,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.1.0', // Updated to include NOT_SUBMITTED status
+        Version: '1.5.0', // Fixed handler to seed on UPDATE
       },
     });
 

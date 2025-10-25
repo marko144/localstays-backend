@@ -122,7 +122,7 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     
     // Document metadata (no S3 URLs, just metadata)
     documents: documents
-      .filter(doc => !doc.isDeleted) // Exclude deleted documents
+      .filter(doc => !doc.isDeleted && doc.status !== 'PENDING_UPLOAD') // Exclude deleted and orphaned documents
       .map(doc => ({
         documentId: doc.documentId,
         documentType: doc.documentType,

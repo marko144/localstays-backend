@@ -3,6 +3,7 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { ParamsStack } from '../lib/params-stack';
 import { DataStack } from '../lib/data-stack';
+import { EmailTemplateStack } from '../lib/email-template-stack';
 import { StorageStack } from '../lib/storage-stack';
 import { KmsStack } from '../lib/kms-stack';
 import { CognitoStack } from '../lib/cognito-stack';
@@ -56,16 +57,16 @@ const stackPrefix = `Localstays${stage.charAt(0).toUpperCase() + stage.slice(1)}
  * Phase 1: Foundation (Independent Stacks)
  * 1. ParamsStack - SSM Parameters
  * 2. DataStack - DynamoDB tables
- * 3. StorageStack - S3 buckets
- * 4. KmsStack - KMS keys
+ * 3. EmailTemplateStack - Email templates DynamoDB table
+ * 4. StorageStack - S3 buckets
+ * 5. KmsStack - KMS keys
  * 
  * Phase 2: Authentication (Dependent Stacks)
- * 5. CognitoStack - User Pool (depends on KmsStack)
- * 6. AuthTriggerStack - Lambda triggers (depends on all Phase 1 + CognitoStack)
+ * 6. CognitoStack - User Pool (depends on KmsStack)
+ * 7. AuthTriggerStack - Lambda triggers (depends on all Phase 1 + CognitoStack)
  * 
  * Phase 3: API Layer (Dependent on Auth)
- * 7. ApiGatewayStack - REST API (depends on CognitoStack)
- * 8. ApiLambdaStack - API handlers (depends on DataStack, StorageStack, ApiGatewayStack)
+ * 8. ApiStack - REST API + Lambda handlers (depends on DataStack, EmailTemplateStack, StorageStack, CognitoStack)
  */
 
 // Phase 1: Foundation Stacks
@@ -86,7 +87,15 @@ const dataStack = new DataStack(app, `${stackPrefix}DataStack`, {
   stage,
 });
 
-// Stack 3: S3 Storage
+// Stack 3: Email Templates
+const emailTemplateStack = new EmailTemplateStack(app, `${stackPrefix}EmailTemplateStack`, {
+  env,
+  description: `Email templates DynamoDB table for multilingual emails (${stage})`,
+  stackName: `localstays-${stage}-email-templates`,
+  stage,
+});
+
+// Stack 4: S3 Storage
 const storageStack = new StorageStack(app, `${stackPrefix}StorageStack`, {
   env,
   description: `S3 storage for host documents and listing images (${stage})`,
@@ -94,7 +103,7 @@ const storageStack = new StorageStack(app, `${stackPrefix}StorageStack`, {
   stage,
 });
 
-// Stack 4: KMS Keys
+// Stack 5: KMS Keys
 const kmsStack = new KmsStack(app, `${stackPrefix}KmsStack`, {
   env,
   description: `KMS keys for encryption (${stage})`,
@@ -104,7 +113,7 @@ const kmsStack = new KmsStack(app, `${stackPrefix}KmsStack`, {
 
 // Phase 2: Authentication Stacks
 
-// Stack 5: Cognito User Pool
+// Stack 6: Cognito User Pool
 const cognitoStack = new CognitoStack(app, `${stackPrefix}CognitoStack`, {
   env,
   description: `Cognito User Pool with custom attributes (${stage})`,
@@ -114,7 +123,7 @@ const cognitoStack = new CognitoStack(app, `${stackPrefix}CognitoStack`, {
 });
 cognitoStack.addDependency(kmsStack);
 
-// Stack 6: Auth Triggers (Lambda functions)
+// Stack 7: Auth Triggers (Lambda functions)
 const authTriggerStack = new AuthTriggerStack(app, `${stackPrefix}AuthTriggerStack`, {
   env,
   description: `Cognito authentication triggers and Lambda functions (${stage})`,
@@ -138,7 +147,7 @@ authTriggerStack.addDependency(cognitoStack);
 
 // Phase 3: API Layer Stack (Combined Gateway + Lambdas to avoid circular dependency)
 
-// Stack 7: API (Gateway + Lambda Functions)
+// Stack 8: API (Gateway + Lambda Functions)
 const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   env,
   description: `REST API Gateway and Lambda functions for host profile submission (${stage})`,
@@ -148,20 +157,25 @@ const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   userPoolArn: cognitoStack.userPool.userPoolArn,
   table: dataStack.table,
   bucket: storageStack.bucket,
+  emailTemplatesTable: emailTemplateStack.table,
+  sendGridParamName: paramsStack.sendGridParamName,
 });
 apiStack.addDependency(cognitoStack);
 apiStack.addDependency(dataStack);
+apiStack.addDependency(emailTemplateStack);
 apiStack.addDependency(storageStack);
+apiStack.addDependency(paramsStack);
 
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
 console.log(`   2. ${dataStack.stackName} (DynamoDB)`);
-console.log(`   3. ${storageStack.stackName} (S3)`);
-console.log(`   4. ${kmsStack.stackName} (KMS)`);
-console.log(`   5. ${cognitoStack.stackName} (Cognito User Pool)`);
-console.log(`   6. ${authTriggerStack.stackName} (Lambda Triggers)`);
-console.log(`   7. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
+console.log(`   3. ${emailTemplateStack.stackName} (Email Templates)`);
+console.log(`   4. ${storageStack.stackName} (S3)`);
+console.log(`   5. ${kmsStack.stackName} (KMS)`);
+console.log(`   6. ${cognitoStack.stackName} (Cognito User Pool)`);
+console.log(`   7. ${authTriggerStack.stackName} (Lambda Triggers)`);
+console.log(`   8. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

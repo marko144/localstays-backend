@@ -47,10 +47,16 @@ export class StorageStack extends cdk.Stack {
             s3.HttpMethods.POST,
             s3.HttpMethods.DELETE,
           ],
-          allowedOrigins: [
-            'http://localhost:3000',
-            'https://*.localstays.com', // Production domain
-          ],
+          allowedOrigins: stage === 'prod'
+            ? ['https://*.localstays.com'] // Production only
+            : [
+                'http://localhost:3000',   // Next.js default
+                'http://localhost:5173',   // Vite default
+                'http://localhost:8080',   // Common dev port
+                'http://127.0.0.1:3000',
+                'http://127.0.0.1:5173',
+                'https://*.localstays.com',
+              ],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],
           maxAge: 3000,

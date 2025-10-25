@@ -25,9 +25,9 @@ export async function handler(event: CustomResourceEvent) {
   console.log('Seed handler invoked:', JSON.stringify(event, null, 2));
 
   try {
-    // Only seed on Create, not Update or Delete
-    if (event.RequestType === 'Create') {
-      console.log('Seeding database with roles and enums...');
+    // Seed on both Create and Update (allows re-seeding when needed)
+    if (event.RequestType === 'Create' || event.RequestType === 'Update') {
+      console.log(`${event.RequestType} detected - seeding database with roles and enums...`);
       
       await seedRoles();
       await seedEnums();
@@ -38,14 +38,6 @@ export async function handler(event: CustomResourceEvent) {
         PhysicalResourceId: 'localstays-db-seed',
         Data: {
           Message: 'Database seeded successfully',
-        },
-      };
-    } else if (event.RequestType === 'Update') {
-      console.log('Update detected - skipping seed (data already exists)');
-      return {
-        PhysicalResourceId: 'localstays-db-seed',
-        Data: {
-          Message: 'Seed skipped on update',
         },
       };
     } else {
@@ -70,17 +62,19 @@ async function seedRoles() {
   const roles = [
     {
       pk: 'ROLE#HOST',
-      sk: 'META',
-      roleId: 'HOST',
-      roleName: 'Host',
-      description: 'Property host with access to manage their own listings',
+      sk: 'CONFIG',
+      roleName: 'HOST',
+      displayName: 'Property Host',
+      description: 'Manages their own properties and KYC',
       permissions: [
-        'listings:read',
-        'listings:write',
-        'listings:delete',
-        'bookings:read',
-        'profile:read',
-        'profile:write',
+        'HOST_LISTING_CREATE',
+        'HOST_LISTING_EDIT_DRAFT',
+        'HOST_LISTING_SUBMIT_REVIEW',
+        'HOST_LISTING_SET_OFFLINE',
+        'HOST_LISTING_SET_ONLINE',
+        'HOST_LISTING_VIEW_OWN',
+        'HOST_LISTING_DELETE',
+        'HOST_KYC_SUBMIT',
       ],
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -88,26 +82,21 @@ async function seedRoles() {
     },
     {
       pk: 'ROLE#ADMIN',
-      sk: 'META',
-      roleId: 'ADMIN',
-      roleName: 'Administrator',
-      description: 'Platform administrator with full access',
+      sk: 'CONFIG',
+      roleName: 'ADMIN',
+      displayName: 'Platform Administrator',
+      description: 'Platform-wide oversight and moderation',
       permissions: [
-        'listings:read',
-        'listings:write',
-        'listings:delete',
-        'listings:approve',
-        'bookings:read',
-        'bookings:write',
-        'bookings:delete',
-        'users:read',
-        'users:write',
-        'users:delete',
-        'profile:read',
-        'profile:write',
-        'reports:read',
-        'settings:read',
-        'settings:write',
+        'ADMIN_HOST_VIEW_ALL',
+        'ADMIN_HOST_SUSPEND',
+        'ADMIN_HOST_REINSTATE',
+        'ADMIN_KYC_VIEW_ALL',
+        'ADMIN_KYC_APPROVE',
+        'ADMIN_KYC_REJECT',
+        'ADMIN_LISTING_VIEW_ALL',
+        'ADMIN_LISTING_APPROVE',
+        'ADMIN_LISTING_REJECT',
+        'ADMIN_LISTING_SUSPEND',
       ],
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -130,190 +119,207 @@ async function seedRoles() {
 
 /**
  * Seed enum configurations
+ * Uses the dev schema: separate record per enum value with sk: VALUE#xxx
  */
 async function seedEnums() {
-  const enums = [
-    // Host Status Enum
+  const now = new Date().toISOString();
+  const enumRecords = [];
+
+  // Host Status Enum (matching dev schema exactly, adding NOT_SUBMITTED)
+  const hostStatuses = [
     {
-      pk: 'ENUM#HOST_STATUS',
-      sk: 'META',
-      enumType: 'HOST_STATUS',
-      enumName: 'Host Status',
-      description: 'Valid status values for host profiles',
-      values: [
-        {
-          value: 'NOT_SUBMITTED',
-          label: 'Not Submitted',
-          description: 'Initial status - user created but profile never submitted',
-          order: 1,
-        },
-        {
-          value: 'INCOMPLETE',
-          label: 'Incomplete',
-          description: 'Profile started but incomplete, not yet submitted',
-          order: 2,
-        },
-        {
-          value: 'VERIFICATION',
-          label: 'Under Verification',
-          description: 'Profile submitted, pending admin review',
-          order: 3,
-        },
-        {
-          value: 'VERIFIED',
-          label: 'Verified',
-          description: 'Profile verified and active',
-          order: 4,
-        },
-        {
-          value: 'REJECTED',
-          label: 'Rejected',
-          description: 'Profile rejected during verification',
-          order: 5,
-        },
-        {
-          value: 'SUSPENDED',
-          label: 'Suspended',
-          description: 'Account suspended',
-          order: 6,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      enumValue: 'NOT_SUBMITTED',
+      displayLabel: 'Not Submitted',
+      description: 'User created but profile never submitted',
+      sortOrder: 1,
+      metadata: {
+        color: 'gray',
+        icon: 'user-plus',
+        requiresAction: true,
+        allowedTransitions: ['INCOMPLETE', 'VERIFICATION'],
+      },
     },
-    // Document Type Enum
     {
-      pk: 'ENUM#DOCUMENT_TYPE',
-      sk: 'META',
-      enumType: 'DOCUMENT_TYPE',
-      enumName: 'Document Type',
-      description: 'Valid document types for verification',
-      values: [
-        {
-          value: 'PASSPORT',
-          label: 'Passport',
-          description: 'Government-issued passport',
-          order: 1,
-        },
-        {
-          value: 'ID_CARD',
-          label: 'National ID Card',
-          description: 'Government-issued national identity card',
-          order: 2,
-        },
-        {
-          value: 'DRIVERS_LICENSE',
-          label: "Driver's License",
-          description: "Government-issued driver's license",
-          order: 3,
-        },
-        {
-          value: 'PROOF_OF_ADDRESS',
-          label: 'Proof of Address',
-          description: 'Utility bill or bank statement',
-          order: 4,
-        },
-        {
-          value: 'BUSINESS_REGISTRATION',
-          label: 'Business Registration',
-          description: 'Company registration certificate',
-          order: 5,
-        },
-        {
-          value: 'VAT_CERTIFICATE',
-          label: 'VAT Certificate',
-          description: 'VAT registration certificate',
-          order: 6,
-        },
-        {
-          value: 'OTHER',
-          label: 'Other',
-          description: 'Other supporting document',
-          order: 7,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      enumValue: 'INCOMPLETE',
+      displayLabel: 'Profile Incomplete',
+      description: 'Host profile created but not yet filled out',
+      sortOrder: 2,
+      metadata: {
+        color: 'orange',
+        icon: 'warning',
+        requiresAction: true,
+        allowedTransitions: ['VERIFICATION', 'SUSPENDED'],
+      },
     },
-    // Document Status Enum
     {
-      pk: 'ENUM#DOCUMENT_STATUS',
-      sk: 'META',
-      enumType: 'DOCUMENT_STATUS',
-      enumName: 'Document Status',
-      description: 'Valid status values for documents',
-      values: [
-        {
-          value: 'PENDING_UPLOAD',
-          label: 'Pending Upload',
-          description: 'Pre-signed URL generated, not yet uploaded',
-          order: 1,
-        },
-        {
-          value: 'PENDING',
-          label: 'Pending Review',
-          description: 'Document uploaded, awaiting admin review',
-          order: 2,
-        },
-        {
-          value: 'APPROVED',
-          label: 'Approved',
-          description: 'Document approved by admin',
-          order: 3,
-        },
-        {
-          value: 'REJECTED',
-          label: 'Rejected',
-          description: 'Document rejected by admin',
-          order: 4,
-        },
-        {
-          value: 'EXPIRED',
-          label: 'Expired',
-          description: 'Document has expired',
-          order: 5,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      enumValue: 'VERIFICATION',
+      displayLabel: 'Pending Verification',
+      description: 'Host profile submitted, awaiting admin verification',
+      sortOrder: 3,
+      metadata: {
+        color: 'blue',
+        icon: 'clock',
+        requiresAction: false,
+        allowedTransitions: ['VERIFIED', 'INFO_REQUIRED', 'SUSPENDED'],
+      },
     },
-    // Host Type Enum
     {
-      pk: 'ENUM#HOST_TYPE',
-      sk: 'META',
-      enumType: 'HOST_TYPE',
-      enumName: 'Host Type',
-      description: 'Valid host types',
-      values: [
-        {
-          value: 'INDIVIDUAL',
-          label: 'Individual',
-          description: 'Individual property owner',
-          order: 1,
-        },
-        {
-          value: 'BUSINESS',
-          label: 'Business',
-          description: 'Business entity or company',
-          order: 2,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      enumValue: 'VERIFIED',
+      displayLabel: 'Verified',
+      description: 'Host profile verified and active',
+      sortOrder: 4,
+      metadata: {
+        color: 'green',
+        icon: 'check-circle',
+        requiresAction: false,
+        allowedTransitions: ['SUSPENDED'],
+      },
+    },
+    {
+      enumValue: 'INFO_REQUIRED',
+      displayLabel: 'Information Required',
+      description: 'Additional information requested by admin',
+      sortOrder: 5,
+      metadata: {
+        color: 'yellow',
+        icon: 'alert-circle',
+        requiresAction: true,
+        allowedTransitions: ['VERIFICATION', 'SUSPENDED'],
+      },
+    },
+    {
+      enumValue: 'SUSPENDED',
+      displayLabel: 'Suspended',
+      description: 'Host account suspended by admin',
+      sortOrder: 6,
+      metadata: {
+        color: 'red',
+        icon: 'ban',
+        requiresAction: false,
+        allowedTransitions: ['VERIFIED'],
+      },
     },
   ];
+
+  hostStatuses.forEach((status) => {
+    enumRecords.push({
+      pk: 'ENUM#HOST_STATUS',
+      sk: `VALUE#${status.enumValue}`,
+      enumType: 'HOST_STATUS',
+      enumValue: status.enumValue,
+      displayLabel: status.displayLabel,
+      description: status.description,
+      sortOrder: status.sortOrder,
+      metadata: status.metadata,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  // Host Type Enum (matching dev schema exactly)
+  const hostTypes = [
+    {
+      enumValue: 'INDIVIDUAL',
+      displayLabel: 'Individual',
+      description: 'Individual property owner',
+      sortOrder: 1,
+      metadata: {
+        color: 'blue',
+        icon: 'user',
+        requiredFields: ['forename', 'surname', 'dateOfBirth', 'nationality'],
+      },
+    },
+    {
+      enumValue: 'BUSINESS',
+      displayLabel: 'Business',
+      description: 'Business or company',
+      sortOrder: 2,
+      metadata: {
+        color: 'purple',
+        icon: 'briefcase',
+        requiredFields: ['legalName', 'registrationNumber', 'vatRegistered'],
+      },
+    },
+  ];
+
+  hostTypes.forEach((type) => {
+    enumRecords.push({
+      pk: 'ENUM#HOST_TYPE',
+      sk: `VALUE#${type.enumValue}`,
+      enumType: 'HOST_TYPE',
+      enumValue: type.enumValue,
+      displayLabel: type.displayLabel,
+      description: type.description,
+      sortOrder: type.sortOrder,
+      metadata: type.metadata,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  // User Status Enum (matching dev schema exactly)
+  const userStatuses = [
+    {
+      enumValue: 'ACTIVE',
+      displayLabel: 'Active',
+      description: 'User account is active',
+      sortOrder: 1,
+      metadata: {
+        color: 'green',
+        icon: 'check',
+      },
+    },
+    {
+      enumValue: 'SUSPENDED',
+      displayLabel: 'Suspended',
+      description: 'User account suspended',
+      sortOrder: 2,
+      metadata: {
+        color: 'orange',
+        icon: 'pause',
+      },
+    },
+    {
+      enumValue: 'BANNED',
+      displayLabel: 'Banned',
+      description: 'User account permanently banned',
+      sortOrder: 3,
+      metadata: {
+        color: 'red',
+        icon: 'ban',
+      },
+    },
+  ];
+
+  userStatuses.forEach((status) => {
+    enumRecords.push({
+      pk: 'ENUM#USER_STATUS',
+      sk: `VALUE#${status.enumValue}`,
+      enumType: 'USER_STATUS',
+      enumValue: status.enumValue,
+      displayLabel: status.displayLabel,
+      description: status.description,
+      sortOrder: status.sortOrder,
+      metadata: status.metadata,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
 
   // DynamoDB BatchWrite can only handle 25 items at a time
   await docClient.send(
     new BatchWriteCommand({
       RequestItems: {
-        [TABLE_NAME]: enums.map((enumItem) => ({
+        [TABLE_NAME]: enumRecords.map((enumItem) => ({
           PutRequest: { Item: enumItem },
         })),
       },
     })
   );
 
-  console.log('✅ Enums seeded');
+  console.log(`✅ Enums seeded: ${enumRecords.length} records`);
 }
 

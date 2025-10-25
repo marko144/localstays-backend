@@ -26,8 +26,9 @@ export async function generateUploadUrl(
     Bucket: BUCKET_NAME,
     Key: key,
     ContentType: contentType,
-    // Optional: Add server-side encryption
-    ServerSideEncryption: 'AES256',
+    // Note: ServerSideEncryption is NOT included here because it would require
+    // the frontend to send the x-amz-server-side-encryption header.
+    // The bucket has default encryption enabled, so objects will still be encrypted.
   });
   
   const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn });

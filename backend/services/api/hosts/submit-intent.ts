@@ -54,6 +54,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // 3. Parse and validate request body
     if (!event.body) {
+      console.error('❌ Request body is missing');
       return response.badRequest('Request body is required');
     }
 
@@ -61,32 +62,70 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
       requestBody = JSON.parse(event.body);
     } catch (error) {
+      console.error('❌ Invalid JSON in request body:', error);
       return response.badRequest('Invalid JSON in request body');
     }
 
     const { profile, documents } = requestBody;
 
     if (!profile || !documents) {
+      console.error('❌ Missing required fields:', {
+        hasProfile: !!profile,
+        hasDocuments: !!documents,
+      });
       return response.badRequest('Both profile and documents are required');
     }
+
+    console.log('📝 Request parsed successfully:', {
+      hostId,
+      hostType: profile?.hostType,
+      documentCount: documents?.length,
+      documents: documents?.map(d => ({
+        type: d.documentType,
+        fileName: d.fileName,
+        mimeType: d.mimeType,
+        fileSize: d.fileSize,
+      })),
+    });
 
     // 4. Sanitize and validate profile data
     const sanitizedProfile = sanitizeProfileData(profile);
     const profileValidation = validateProfileData(sanitizedProfile);
 
     if (!profileValidation.valid) {
+      console.error('❌ Profile validation failed:', {
+        hostId,
+        hostType: profile.hostType,
+        errorCount: profileValidation.errors.length,
+        errors: profileValidation.errors,
+      });
       return response.unprocessableEntity('Profile validation failed', {
         errors: profileValidation.errors,
       });
     }
+    
+    console.log('✅ Profile validation passed:', {
+      hostId,
+      hostType: sanitizedProfile.hostType,
+    });
 
     // 5. Validate document intents
     const documentValidation = validateAllDocumentIntents(documents);
     if (!documentValidation.valid) {
+      console.error('❌ Document intent validation failed:', {
+        hostId,
+        errorCount: documentValidation.errors.length,
+        errors: documentValidation.errors,
+      });
       return response.unprocessableEntity('Document validation failed', {
         errors: documentValidation.errors,
       });
     }
+    
+    console.log('✅ Document intent validation passed:', {
+      hostId,
+      documentCount: documents.length,
+    });
 
     // 6. Validate document types match host type requirements
     const vatRegistered = profile.hostType === 'BUSINESS' ? profile.vatRegistered : false;
@@ -97,25 +136,62 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
 
     if (!documentTypeValidation.valid) {
+      console.error('❌ Document type validation failed:', {
+        hostId,
+        hostType: profile.hostType,
+        vatRegistered,
+        missingDocuments: documentTypeValidation.missing,
+        errors: documentTypeValidation.errors,
+      });
       return response.unprocessableEntity('Required documents missing', {
         missing: documentTypeValidation.missing,
         errors: documentTypeValidation.errors,
       });
     }
+    
+    console.log('✅ Document type validation passed:', {
+      hostId,
+      hostType: profile.hostType,
+      documentTypes: documents.map(d => d.documentType),
+    });
 
     // 7. Fetch current host record to verify status
     const hostRecord = await getHostRecord(hostId);
     
     if (!hostRecord) {
+      console.error('❌ Host record not found:', { hostId });
       return response.notFound(`Host ${hostId} not found`);
     }
 
+    console.log('📋 Host record fetched:', {
+      hostId,
+      currentStatus: hostRecord.status,
+      hostType: hostRecord.hostType,
+    });
+
     // 8. Verify host status allows submission
-    const allowedStatuses = ['INCOMPLETE', 'INFO_REQUIRED'];
+    const allowedStatuses = ['NOT_SUBMITTED', 'INCOMPLETE', 'INFO_REQUIRED'];
     if (!allowedStatuses.includes(hostRecord.status)) {
+      console.error('❌ Host status does not allow submission:', {
+        hostId,
+        currentStatus: hostRecord.status,
+        allowedStatuses,
+      });
       return response.conflict(
         `Cannot submit profile when status is ${hostRecord.status}. Allowed statuses: ${allowedStatuses.join(', ')}`
       );
+    }
+
+    // 8b. Clean up any previous incomplete submissions
+    // If there's an active submission token, invalidate it
+    if (hostRecord.submission?.currentToken) {
+      console.log('⚠️  Found existing submission token, will invalidate:', {
+        oldToken: hostRecord.submission.currentToken,
+        tokenExpiresAt: hostRecord.submission.tokenExpiresAt,
+      });
+      // The old token will be overwritten when we update the host record
+      // Old document records with PENDING_UPLOAD status will remain but won't be used
+      // (They could be cleaned up by a TTL or background job in the future)
     }
 
     // 9. Generate submission token and document IDs
