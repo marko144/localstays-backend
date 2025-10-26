@@ -119,7 +119,7 @@ async function createHostS3Folders(hostId: string): Promise<void> {
 }
 
 /**
- * Create minimal Host record (status=INCOMPLETE) with S3 prefix
+ * Create minimal Host record (status=NOT_SUBMITTED) with S3 prefix
  */
 async function createHostRecord(ownerUserSub: string): Promise<string> {
   const hostId = `host_${randomUUID()}`;
@@ -154,6 +154,42 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
     return hostId;
   } catch (error) {
     console.error('❌ Failed to create Host record:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create default FREE subscription for new host
+ */
+async function createHostSubscription(hostId: string): Promise<void> {
+  const now = new Date().toISOString();
+
+  try {
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          pk: `HOST#${hostId}`,
+          sk: 'SUBSCRIPTION',
+          hostId,
+          planName: 'FREE',
+          maxListings: 2, // Free tier allows 2 listings
+          status: 'ACTIVE',
+          startedAt: now,
+          expiresAt: null, // Free tier never expires
+          cancelledAt: null,
+          createdAt: now,
+          updatedAt: now,
+          // GSI4: Query subscriptions by plan
+          gsi4pk: 'SUBSCRIPTION_PLAN#FREE',
+          gsi4sk: now,
+        },
+      })
+    );
+
+    console.log(`✅ Created FREE subscription for host: ${hostId}`);
+  } catch (error) {
+    console.error('❌ Failed to create host subscription:', error);
     throw error;
   }
 }
@@ -221,19 +257,24 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
     // 2. Get HOST role permissions
     const permissions = await getHostPermissions();
 
-    // 3. Create minimal Host record (status=INCOMPLETE)
+    // 3. Create minimal Host record (status=NOT_SUBMITTED)
     const hostId = await createHostRecord(userSub);
 
-    // 4. Create S3 folder structure for host
+    // 4. Create FREE subscription for host
+    await createHostSubscription(hostId);
+
+    // 5. Create S3 folder structure for host
     await createHostS3Folders(hostId);
 
-    // 5. Update User record with RBAC fields
+    // 6. Update User record with RBAC fields
     await updateUserWithRBAC(userSub, hostId, permissions);
 
-    console.log('✅ RBAC initialization complete', {
+    console.log('✅ RBAC and subscription initialization complete', {
       userSub,
       hostId,
       role: 'HOST',
+      subscription: 'FREE',
+      maxListings: 2,
       permissionCount: permissions.length,
       s3Prefix: `${hostId}/`,
     });

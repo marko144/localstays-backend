@@ -40,6 +40,15 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly submitIntentLambda: nodejs.NodejsFunction;
   public readonly confirmSubmissionLambda: nodejs.NodejsFunction;
   public readonly getProfileLambda: nodejs.NodejsFunction;
+  public readonly getSubscriptionLambda: nodejs.NodejsFunction;
+  
+  // Listing Lambdas
+  public readonly getListingMetadataLambda: nodejs.NodejsFunction;
+  public readonly submitListingIntentLambda: nodejs.NodejsFunction;
+  public readonly confirmListingSubmissionLambda: nodejs.NodejsFunction;
+  public readonly getListingLambda: nodejs.NodejsFunction;
+  public readonly listListingsLambda: nodejs.NodejsFunction;
+  public readonly deleteListingLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
@@ -144,7 +153,7 @@ export class ApiLambdaStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         target: 'es2022',
-        externalModules: ['@aws-sdk/*'],
+        externalModules: ['@aws-sdk/*'], // Only AWS SDK is external (available in Lambda runtime)
       },
       logRetention: stage === 'prod' 
         ? logs.RetentionDays.ONE_MONTH 
@@ -228,6 +237,101 @@ export class ApiLambdaStack extends cdk.Stack {
 
     // Grant DynamoDB permissions (read-only)
     table.grantReadData(this.getProfileLambda); // Only needs read access
+
+    // ========================================
+    // Get Subscription Lambda
+    // ========================================
+    this.getSubscriptionLambda = new nodejs.NodejsFunction(this, 'GetSubscriptionLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-get-subscription`,
+      entry: 'backend/services/api/hosts/get-subscription.ts',
+      handler: 'handler',
+      description: 'Retrieve host subscription details and entitlements',
+      environment: commonEnvironment,
+    });
+
+    // Grant DynamoDB permissions (read-only)
+    table.grantReadData(this.getSubscriptionLambda); // Only needs read access
+
+    // ========================================
+    // LISTING LAMBDA FUNCTIONS
+    // ========================================
+
+    // Get Listing Metadata Lambda
+    this.getListingMetadataLambda = new nodejs.NodejsFunction(this, 'GetListingMetadataLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-get-listing-metadata`,
+      entry: 'backend/services/api/listings/get-metadata.ts',
+      handler: 'handler',
+      description: 'Get listing configuration metadata (property types, amenities, etc.)',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.getListingMetadataLambda);
+
+    // Submit Listing Intent Lambda
+    this.submitListingIntentLambda = new nodejs.NodejsFunction(this, 'SubmitListingIntentLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-submit-listing-intent`,
+      entry: 'backend/services/api/listings/submit-intent.ts',
+      handler: 'handler',
+      description: 'Create listing submission intent and generate upload URLs',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.submitListingIntentLambda);
+    this.submitListingIntentLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:PutObject'],
+      resources: [`${bucket.bucketArn}/*`],
+    }));
+
+    // Confirm Listing Submission Lambda
+    this.confirmListingSubmissionLambda = new nodejs.NodejsFunction(this, 'ConfirmListingSubmissionLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-confirm-listing-submission`,
+      entry: 'backend/services/api/listings/confirm-submission.ts',
+      handler: 'handler',
+      description: 'Verify listing uploads and complete submission',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.confirmListingSubmissionLambda);
+    this.confirmListingSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:HeadObject', 's3:GetObject'],
+      resources: [`${bucket.bucketArn}/*`],
+    }));
+
+    // Get Listing Lambda
+    this.getListingLambda = new nodejs.NodejsFunction(this, 'GetListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-get-listing`,
+      entry: 'backend/services/api/listings/get-listing.ts',
+      handler: 'handler',
+      description: 'Get full listing details',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.getListingLambda);
+
+    // List Listings Lambda
+    this.listListingsLambda = new nodejs.NodejsFunction(this, 'ListListingsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-list-listings`,
+      entry: 'backend/services/api/listings/list-listings.ts',
+      handler: 'handler',
+      description: 'List all listings for a host',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.listListingsLambda);
+
+    // Delete Listing Lambda
+    this.deleteListingLambda = new nodejs.NodejsFunction(this, 'DeleteListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-delete-listing`,
+      entry: 'backend/services/api/listings/delete-listing.ts',
+      handler: 'handler',
+      description: 'Soft delete a listing',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.deleteListingLambda);
 
     // ========================================
     // API Gateway Integrations
@@ -331,11 +435,129 @@ export class ApiLambdaStack extends cdk.Stack {
     );
 
     // Grant API Gateway permission to invoke Lambda functions
+    // GET /api/v1/hosts/{hostId}/subscription
+    const subscriptionResource = hostIdParam.addResource('subscription');
+    subscriptionResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.getSubscriptionLambda, {
+        proxy: true,
+        integrationResponses: [
+          {
+            statusCode: '200',
+            responseParameters: {
+              'method.response.header.Access-Control-Allow-Origin': "'*'",
+            },
+          },
+        ],
+      }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        methodResponses: [
+          {
+            statusCode: '200',
+            responseParameters: {
+              'method.response.header.Access-Control-Allow-Origin': true,
+            },
+          },
+        ],
+      }
+    );
+
+    // ========================================
+    // LISTING API ROUTES
+    // ========================================
+
+    // GET /api/v1/listings/metadata (no auth required for metadata)
+    const listingsResource = v1.addResource('listings');
+    const metadataResource = listingsResource.addResource('metadata');
+    metadataResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.getListingMetadataLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/submit-intent
+    const hostListingsResource = hostIdParam.addResource('listings');
+    const submitListingIntentResource = hostListingsResource.addResource('submit-intent');
+    submitListingIntentResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.submitListingIntentLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+          validateRequestParameters: true,
+        },
+      }
+    );
+
+    // GET /api/v1/hosts/{hostId}/listings (list all)
+    hostListingsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.listListingsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Listing-specific routes: /api/v1/hosts/{hostId}/listings/{listingId}
+    const listingIdParam = hostListingsResource.addResource('{listingId}');
+
+    // GET /api/v1/hosts/{hostId}/listings/{listingId}
+    listingIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.getListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // DELETE /api/v1/hosts/{hostId}/listings/{listingId}
+    listingIdParam.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(this.deleteListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/confirm-submission
+    const confirmListingSubmissionResource = listingIdParam.addResource('confirm-submission');
+    confirmListingSubmissionResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.confirmListingSubmissionLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+          validateRequestParameters: true,
+        },
+      }
+    );
+
     // Note: We use a wildcard for SourceArn to avoid circular dependency
     // The specific API Gateway ID will be validated at runtime
     this.submitIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.confirmSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.getProfileLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.getSubscriptionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    
+    // Grant invoke permissions for listing Lambdas
+    this.getListingMetadataLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.submitListingIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.confirmListingSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.getListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.listListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.deleteListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
 
     // Outputs
     const capitalizedStage = this.capitalize(stage);
@@ -372,6 +594,12 @@ export class ApiLambdaStack extends cdk.Stack {
       exportName: `Localstays${capitalizedStage}GetProfileLambda`,
     });
 
+    new cdk.CfnOutput(this, 'GetSubscriptionLambdaName', {
+      value: this.getSubscriptionLambda.functionName,
+      description: 'Get Subscription Lambda function name',
+      exportName: `Localstays${capitalizedStage}GetSubscriptionLambda`,
+    });
+
     // API Endpoint outputs
     new cdk.CfnOutput(this, 'SubmitIntentEndpoint', {
       value: `${this.api.url}api/v1/hosts/{hostId}/profile/submit-intent`,
@@ -386,6 +614,11 @@ export class ApiLambdaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'GetProfileEndpoint', {
       value: `${this.api.url}api/v1/hosts/{hostId}/profile`,
       description: 'Get Profile API endpoint',
+    });
+
+    new cdk.CfnOutput(this, 'GetSubscriptionEndpoint', {
+      value: `${this.api.url}api/v1/hosts/{hostId}/subscription`,
+      description: 'Get Subscription API endpoint',
     });
 
     // Add tags

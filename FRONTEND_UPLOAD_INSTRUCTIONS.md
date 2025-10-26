@@ -599,8 +599,3 @@ If **some uploads succeed but others fail**:
 - Use the retry logic above to retry only failed ones
 - Check file sizes (max 10MB per file)
 - Verify MIME types are allowed (pdf, jpeg, jpg, png only)
-
-
-
-
-
