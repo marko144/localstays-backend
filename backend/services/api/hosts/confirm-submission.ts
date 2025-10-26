@@ -5,15 +5,16 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { objectExists } from '../lib/s3-presigned';
 import { executeTransaction } from '../lib/transaction';
-import { sendProfileSubmissionEmail } from '../lib/email-service';
+import { sendProfileSubmissionEmail, sendLiveIdCheckRequestEmail } from '../lib/email-service';
 import { SubmissionToken, allDocumentsUploaded, getMissingDocuments } from '../../types/submission.types';
 import { Document } from '../../types/document.types';
+import { randomUUID } from 'crypto';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -179,7 +180,18 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // 12. Return success response
+    // 12. Create Live ID check request (don't fail if this fails)
+    try {
+      await createLiveIdCheckRequest(hostId);
+    } catch (requestError: any) {
+      // Log error but don't fail the request - submission is already complete
+      console.error('Failed to create Live ID check request (non-fatal):', {
+        error: requestError.message,
+        hostId,
+      });
+    }
+
+    // 13. Return success response
     return response.success({
       success: true,
       hostId,
@@ -345,5 +357,111 @@ async function executeProfileSubmissionTransaction(
   });
 
   console.log(`Transaction completed: Updated host, ${documents.length} documents, and submission token`);
+}
+
+/**
+ * Create Live ID check request for host
+ * Only creates if no active request exists (REQUESTED, RECEIVED, or VERIFIED status)
+ */
+async function createLiveIdCheckRequest(hostId: string): Promise<void> {
+  console.log(`Creating Live ID check request for host: ${hostId}`);
+
+  // 1. Check if host already has an active Live ID check request
+  const existingRequests = await docClient.send(
+    new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+      FilterExpression: 'requestType = :requestType AND (#status = :requested OR #status = :received OR #status = :verified)',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+      },
+      ExpressionAttributeValues: {
+        ':pk': `HOST#${hostId}`,
+        ':sk': 'REQUEST#',
+        ':requestType': 'LIVE_ID_CHECK',
+        ':requested': 'REQUESTED',
+        ':received': 'RECEIVED',
+        ':verified': 'VERIFIED',
+      },
+      Limit: 1,
+    })
+  );
+
+  if (existingRequests.Items && existingRequests.Items.length > 0) {
+    const status = existingRequests.Items[0].status;
+    console.log(`Active Live ID check request already exists with status: ${status}`);
+    return;
+  }
+
+  // 2. Fetch request type description from database
+  const requestTypeResult = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        pk: 'REQUEST_TYPE#LIVE_ID_CHECK',
+        sk: 'META',
+      },
+    })
+  );
+
+  if (!requestTypeResult.Item) {
+    throw new Error('Live ID check request type not found in database');
+  }
+
+  const description = requestTypeResult.Item.description;
+
+  // 3. Generate request ID
+  const requestId = `req_${randomUUID()}`;
+  const now = new Date().toISOString();
+
+  // 4. Create request record
+  await docClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: TABLE_NAME,
+            Item: {
+              pk: `HOST#${hostId}`,
+              sk: `REQUEST#${requestId}`,
+              
+              requestId,
+              hostId,
+              
+              requestType: 'LIVE_ID_CHECK',
+              status: 'REQUESTED',
+              description,
+              
+              createdAt: now,
+              updatedAt: now,
+              
+              // GSI2: Admin queries
+              gsi2pk: 'REQUEST#LIVE_ID_CHECK',
+              gsi2sk: `STATUS#REQUESTED#${now}`,
+            },
+          },
+        },
+      ],
+    })
+  );
+
+  console.log(`✅ Live ID check request created: ${requestId}`);
+
+  // 5. Send email notification
+  const hostRecord = await getHostRecord(hostId);
+  
+  if (hostRecord) {
+    const name = hostRecord.hostType === 'INDIVIDUAL'
+      ? `${hostRecord.forename} ${hostRecord.surname}`
+      : hostRecord.legalName || hostRecord.displayName;
+
+    await sendLiveIdCheckRequestEmail(
+      hostRecord.email,
+      hostRecord.preferredLanguage || 'sr',
+      name
+    );
+    
+    console.log(`✅ Live ID check request email sent to ${hostRecord.email}`);
+  }
 }
 

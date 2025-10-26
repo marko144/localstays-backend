@@ -163,6 +163,160 @@ Localstays Team`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
+
+  // ========================================
+  // LIVE_ID_CHECK_REQUEST - Serbian
+  // ========================================
+  {
+    pk: 'EMAIL_TEMPLATE#LIVE_ID_CHECK_REQUEST',
+    sk: 'LANG#sr',
+    templateName: 'LIVE_ID_CHECK_REQUEST',
+    language: 'sr',
+    subject: 'Potrebna akcija: Završite proveru identiteta uživo',
+    bodyText: `Poštovani/a {{name}},
+
+Hvala vam što ste poslali informacije o svom profilu.
+
+Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
+
+Molimo vas prijavite se da završite ovaj korak.
+
+Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte.
+
+Srdačan pozdrav,
+Localstays tim`,
+    bodyHtml: `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Potrebna akcija: Završite proveru identiteta uživo</title>
+  </head>
+  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <tr>
+              <td style="padding: 40px 40px 20px 40px;">
+                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Potrebna akcija: Završite proveru identiteta uživo</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0 40px 20px 40px;">
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Poštovani/a {{name}},
+                </p>
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Hvala vam što ste poslali informacije o svom profilu.
+                </p>
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
+                </p>
+                <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Molimo vas prijavite se da završite ovaj korak.
+                </p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
+                  Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
+                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
+                  Srdačan pozdrav,<br>
+                  Localstays tim
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+    variables: ['name'],
+    version: '1.0.0',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+
+  // ========================================
+  // LIVE_ID_CHECK_REQUEST - English
+  // ========================================
+  {
+    pk: 'EMAIL_TEMPLATE#LIVE_ID_CHECK_REQUEST',
+    sk: 'LANG#en',
+    templateName: 'LIVE_ID_CHECK_REQUEST',
+    language: 'en',
+    subject: 'Action Required: Complete Your Live ID Check',
+    bodyText: `Dear {{name}},
+
+Thank you for submitting your profile information.
+
+To complete your verification, please log in to your host portal and complete the Live ID check. This helps us verify your identity and keep our community safe.
+
+Please log in to complete this step.
+
+If you have any questions, please don't hesitate to contact us.
+
+Best regards,
+The Localstays Team`,
+    bodyHtml: `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Action Required: Complete Your Live ID Check</title>
+  </head>
+  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <tr>
+              <td style="padding: 40px 40px 20px 40px;">
+                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Action Required: Complete Your Live ID Check</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0 40px 20px 40px;">
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Dear {{name}},
+                </p>
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Thank you for submitting your profile information.
+                </p>
+                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  To complete your verification, please log in to your host portal and complete the Live ID check. This helps us verify your identity and keep our community safe.
+                </p>
+                <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.5; color: #666666;">
+                  Please log in to complete this step.
+                </p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
+                  If you have any questions, please don't hesitate to contact us.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
+                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
+                  Best regards,<br>
+                  The Localstays Team
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+    variables: ['name'],
+    version: '1.0.0',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
 /**

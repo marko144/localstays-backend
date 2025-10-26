@@ -161,7 +161,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.8.0', // Added listing enums (property types, amenities, etc.)
+        Version: '1.9.0', // Added request types (Live ID check)
       },
     });
 

@@ -80,7 +80,7 @@ export class EmailTemplateStack extends cdk.Stack {
     new cdk.CustomResource(this, 'SeedEmailTemplatesCustomResource', {
       serviceToken: seedProvider.serviceToken,
       properties: {
-        Version: '1.0.0', // Increment to force re-seeding
+        Version: '1.1.0', // Increment to force re-seeding (Added LIVE_ID_CHECK_REQUEST)
       },
     });
 

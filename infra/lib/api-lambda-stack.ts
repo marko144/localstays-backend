@@ -49,6 +49,12 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly getListingLambda: nodejs.NodejsFunction;
   public readonly listListingsLambda: nodejs.NodejsFunction;
   public readonly deleteListingLambda: nodejs.NodejsFunction;
+  
+  // Request Lambdas
+  public readonly listRequestsLambda: nodejs.NodejsFunction;
+  public readonly getRequestLambda: nodejs.NodejsFunction;
+  public readonly submitRequestIntentLambda: nodejs.NodejsFunction;
+  public readonly confirmRequestSubmissionLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
@@ -334,6 +340,56 @@ export class ApiLambdaStack extends cdk.Stack {
     table.grantReadWriteData(this.deleteListingLambda);
 
     // ========================================
+    // REQUEST LAMBDA FUNCTIONS
+    // ========================================
+
+    // List Requests Lambda
+    this.listRequestsLambda = new nodejs.NodejsFunction(this, 'ListRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-list-requests`,
+      entry: 'backend/services/api/requests/list-requests.ts',
+      handler: 'handler',
+      description: 'List all verification requests for a host',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.listRequestsLambda);
+
+    // Get Request Lambda
+    this.getRequestLambda = new nodejs.NodejsFunction(this, 'GetRequestLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-get-request`,
+      entry: 'backend/services/api/requests/get-request.ts',
+      handler: 'handler',
+      description: 'Get details of a specific verification request',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.getRequestLambda);
+
+    // Submit Request Intent Lambda
+    this.submitRequestIntentLambda = new nodejs.NodejsFunction(this, 'SubmitRequestIntentLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-submit-request-intent`,
+      entry: 'backend/services/api/requests/submit-intent.ts',
+      handler: 'handler',
+      description: 'Generate pre-signed URL for request file upload',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.submitRequestIntentLambda);
+    bucket.grantPut(this.submitRequestIntentLambda);
+
+    // Confirm Request Submission Lambda
+    this.confirmRequestSubmissionLambda = new nodejs.NodejsFunction(this, 'ConfirmRequestSubmissionLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-confirm-request-submission`,
+      entry: 'backend/services/api/requests/confirm-submission.ts',
+      handler: 'handler',
+      description: 'Verify request file upload and update status',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.confirmRequestSubmissionLambda);
+    bucket.grantRead(this.confirmRequestSubmissionLambda);
+
+    // ========================================
     // API Gateway Integrations
     // ========================================
 
@@ -544,6 +600,62 @@ export class ApiLambdaStack extends cdk.Stack {
       }
     );
 
+    // ========================================
+    // REQUEST API ROUTES
+    // ========================================
+
+    // GET /api/v1/hosts/{hostId}/requests
+    const requestsResource = hostIdParam.addResource('requests');
+    requestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.listRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/hosts/{hostId}/requests/{requestId}
+    const requestIdParam = requestsResource.addResource('{requestId}');
+    requestIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.getRequestLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/requests/{requestId}/submit-intent
+    const submitRequestIntentResource = requestIdParam.addResource('submit-intent');
+    submitRequestIntentResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.submitRequestIntentLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+          validateRequestParameters: true,
+        },
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/requests/{requestId}/confirm-submission
+    const confirmRequestSubmissionResource = requestIdParam.addResource('confirm-submission');
+    confirmRequestSubmissionResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.confirmRequestSubmissionLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+          validateRequestParameters: true,
+        },
+      }
+    );
+
     // Note: We use a wildcard for SourceArn to avoid circular dependency
     // The specific API Gateway ID will be validated at runtime
     this.submitIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
@@ -558,6 +670,12 @@ export class ApiLambdaStack extends cdk.Stack {
     this.getListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.listListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.deleteListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    
+    // Grant invoke permissions for request Lambdas
+    this.listRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.getRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.submitRequestIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.confirmRequestSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
 
     // Outputs
     const capitalizedStage = this.capitalize(stage);

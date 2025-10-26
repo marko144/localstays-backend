@@ -232,5 +232,21 @@ export async function sendProfileSubmissionEmail(
   );
 }
 
+/**
+ * Send Live ID check request email
+ */
+export async function sendLiveIdCheckRequestEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LIVE_ID_CHECK_REQUEST',
+    recipientEmail,
+    preferredLanguage,
+    { name }
+  );
+}
+
 
 

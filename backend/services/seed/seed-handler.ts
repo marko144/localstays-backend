@@ -33,6 +33,7 @@ export async function handler(event: CustomResourceEvent) {
       await seedEnums();
       await seedSubscriptionPlans();
       await seedListingEnums();
+      await seedRequestTypes();
       
       console.log('✅ Database seeding completed successfully');
       
@@ -694,5 +695,39 @@ async function seedListingEnums() {
   }
 
   console.log(`✅ Listing enums seeded: ${enumRecords.length} records`);
+}
+
+/**
+ * Seed request types
+ */
+async function seedRequestTypes() {
+  console.log('Seeding request types...');
+
+  const requestTypes = [
+    {
+      pk: 'REQUEST_TYPE#LIVE_ID_CHECK',
+      sk: 'META',
+      requestType: 'LIVE_ID_CHECK',
+      description: {
+        en: 'Please complete the live ID check to help us verify your identity',
+        sr: 'Molimo vas da završite proveru identiteta uživo kako bismo potvrdili vaš identitet',
+      },
+      displayOrder: 1,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  await docClient.send(
+    new BatchWriteCommand({
+      RequestItems: {
+        [TABLE_NAME]: requestTypes.map((record) => ({
+          PutRequest: { Item: record },
+        })),
+      },
+    })
+  );
+
+  console.log(`✅ Request types seeded: ${requestTypes.length} records`);
 }
 
