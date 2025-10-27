@@ -180,15 +180,24 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // 12. Create Live ID check request (don't fail if this fails)
-    try {
-      await createLiveIdCheckRequest(hostId);
-    } catch (requestError: any) {
-      // Log error but don't fail the request - submission is already complete
-      console.error('Failed to create Live ID check request (non-fatal):', {
-        error: requestError.message,
-        hostId,
-      });
+    // 12. Create Live ID check request ONLY for initial submissions
+    // Don't create a new request if this is a resubmission after rejection
+    const hostRecord = await getHostRecord(hostId);
+    const wasRejected = hostRecord?.previousStatus === 'REJECTED';
+    
+    if (!wasRejected) {
+      try {
+        await createLiveIdCheckRequest(hostId);
+        console.log('✅ Live ID check request created for new host submission');
+      } catch (requestError: any) {
+        // Log error but don't fail the request - submission is already complete
+        console.error('Failed to create Live ID check request (non-fatal):', {
+          error: requestError.message,
+          hostId,
+        });
+      }
+    } else {
+      console.log('ℹ️ Skipping Live ID check request creation - this is a resubmission after rejection');
     }
 
     // 13. Return success response
@@ -296,6 +305,7 @@ async function executeProfileSubmissionTransaction(
     ...hostRecord,
     ...tokenRecord.profileData,
     status: 'VERIFICATION',
+    previousStatus: hostRecord.status, // Track previous status (for detecting resubmissions)
     kyc: {
       ...hostRecord.kyc,
       status: 'PENDING',

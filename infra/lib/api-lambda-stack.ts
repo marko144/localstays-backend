@@ -39,6 +39,7 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly authorizer: apigateway.CognitoUserPoolsAuthorizer;
   public readonly submitIntentLambda: nodejs.NodejsFunction;
   public readonly confirmSubmissionLambda: nodejs.NodejsFunction;
+  public readonly updateRejectedProfileLambda: nodejs.NodejsFunction;
   public readonly getProfileLambda: nodejs.NodejsFunction;
   public readonly getSubscriptionLambda: nodejs.NodejsFunction;
   
@@ -255,6 +256,28 @@ export class ApiLambdaStack extends cdk.Stack {
       resources: [
         `arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`,
       ],
+    }));
+
+    // ========================================
+    // Update Rejected Profile Lambda
+    // ========================================
+    this.updateRejectedProfileLambda = new nodejs.NodejsFunction(this, 'UpdateRejectedProfileLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-update-rejected-profile`,
+      entry: 'backend/services/api/hosts/update-rejected-profile.ts',
+      handler: 'handler',
+      description: 'Update rejected host profile with optional new documents',
+      environment: commonEnvironment,
+    });
+
+    // Grant DynamoDB permissions
+    table.grantReadWriteData(this.updateRejectedProfileLambda);
+    
+    // Grant S3 permissions for presigned URL generation
+    this.updateRejectedProfileLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:PutObject'],
+      resources: [`${bucket.bucketArn}/*`],
     }));
 
     // ========================================
@@ -487,6 +510,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminApproveHostLambda);
+    emailTemplatesTable.grantReadData(this.adminApproveHostLambda);
+    this.adminApproveHostLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // Reject Host
     this.adminRejectHostLambda = new nodejs.NodejsFunction(this, 'AdminRejectHostLambda', {
@@ -498,6 +527,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminRejectHostLambda);
+    emailTemplatesTable.grantReadData(this.adminRejectHostLambda);
+    this.adminRejectHostLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // Suspend Host
     this.adminSuspendHostLambda = new nodejs.NodejsFunction(this, 'AdminSuspendHostLambda', {
@@ -580,6 +615,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminApproveListingLambda);
+    emailTemplatesTable.grantReadData(this.adminApproveListingLambda);
+    this.adminApproveListingLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // Reject Listing
     this.adminRejectListingLambda = new nodejs.NodejsFunction(this, 'AdminRejectListingLambda', {
@@ -591,6 +632,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminRejectListingLambda);
+    emailTemplatesTable.grantReadData(this.adminRejectListingLambda);
+    this.adminRejectListingLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // Suspend Listing
     this.adminSuspendListingLambda = new nodejs.NodejsFunction(this, 'AdminSuspendListingLambda', {
@@ -662,6 +709,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminApproveRequestLambda);
+    emailTemplatesTable.grantReadData(this.adminApproveRequestLambda);
+    this.adminApproveRequestLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // Reject Request
     this.adminRejectRequestLambda = new nodejs.NodejsFunction(this, 'AdminRejectRequestLambda', {
@@ -673,6 +726,12 @@ export class ApiLambdaStack extends cdk.Stack {
       environment: commonEnvironment,
     });
     table.grantReadWriteData(this.adminRejectRequestLambda);
+    emailTemplatesTable.grantReadData(this.adminRejectRequestLambda);
+    this.adminRejectRequestLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // ========================================
     // API Gateway Integrations
@@ -716,6 +775,39 @@ export class ApiLambdaStack extends cdk.Stack {
     confirmSubmissionResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(this.confirmSubmissionLambda, {
+        proxy: true,
+        integrationResponses: [
+          {
+            statusCode: '200',
+            responseParameters: {
+              'method.response.header.Access-Control-Allow-Origin': "'*'",
+            },
+          },
+        ],
+      }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        methodResponses: [
+          {
+            statusCode: '200',
+            responseParameters: {
+              'method.response.header.Access-Control-Allow-Origin': true,
+            },
+          },
+        ],
+        requestValidatorOptions: {
+          validateRequestBody: true,
+          validateRequestParameters: true,
+        },
+      }
+    );
+
+    // PUT /api/v1/hosts/{hostId}/profile/update-rejected
+    const updateRejectedResource = profileResource.addResource('update-rejected');
+    updateRejectedResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.updateRejectedProfileLambda, {
         proxy: true,
         integrationResponses: [
           {
