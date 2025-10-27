@@ -14,7 +14,7 @@ import { generateUploadUrl, validateS3Key } from '../lib/s3-presigned';
 import { validateDocumentTypes, validateAllDocumentIntents } from '../lib/document-validation';
 import { validateProfileData, sanitizeProfileData } from '../lib/profile-validation';
 import { ProfileData } from '../../types/host.types';
-import { DocumentUploadIntent, DocumentUploadUrl } from '../../types/document.types';
+import { DocumentUploadIntent, DocumentUploadUrl, DocumentType } from '../../types/document.types';
 import { SubmissionToken } from '../../types/submission.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -325,9 +325,6 @@ async function createDocumentRecords(
           deletedAt: null,
           createdAt: now,
           updatedAt: now,
-          // GSI3 for DocumentStatusIndex
-          gsi3pk: `DOCUMENT_STATUS#PENDING_UPLOAD`,
-          gsi3sk: now,
         },
       })
     );
@@ -358,7 +355,7 @@ async function createSubmissionToken(params: {
     profileData: params.profileData,
     expectedDocuments: params.documentRecords.map((doc) => ({
       documentId: doc.documentId,
-      documentType: doc.documentType,
+      documentType: doc.documentType as DocumentType,
       uploaded: false,
     })),
     createdAt: params.createdAt,

@@ -78,6 +78,8 @@ async function seedRoles() {
         'HOST_LISTING_VIEW_OWN',
         'HOST_LISTING_DELETE',
         'HOST_KYC_SUBMIT',
+        'HOST_REQUEST_VIEW_OWN',
+        'HOST_REQUEST_SUBMIT',
       ],
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -91,6 +93,7 @@ async function seedRoles() {
       description: 'Platform-wide oversight and moderation',
       permissions: [
         'ADMIN_HOST_VIEW_ALL',
+        'ADMIN_HOST_SEARCH',
         'ADMIN_HOST_SUSPEND',
         'ADMIN_HOST_REINSTATE',
         'ADMIN_KYC_VIEW_ALL',
@@ -100,6 +103,9 @@ async function seedRoles() {
         'ADMIN_LISTING_APPROVE',
         'ADMIN_LISTING_REJECT',
         'ADMIN_LISTING_SUSPEND',
+        'ADMIN_REQUEST_VIEW_ALL',
+        'ADMIN_REQUEST_APPROVE',
+        'ADMIN_REQUEST_REJECT',
       ],
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -126,7 +132,7 @@ async function seedRoles() {
  */
 async function seedEnums() {
   const now = new Date().toISOString();
-  const enumRecords = [];
+  const enumRecords: any[] = [];
 
   // Host Status Enum (matching dev schema exactly, adding NOT_SUBMITTED)
   const hostStatuses = [

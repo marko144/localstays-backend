@@ -15,7 +15,8 @@ import {
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME!;
-const BUCKET_NAME = process.env.BUCKET_NAME!;
+// BUCKET_NAME is used in generateUploadUrl from lib/s3-presigned
+// const BUCKET_NAME = process.env.BUCKET_NAME!;
 
 // Constants
 const SUBMISSION_TOKEN_EXPIRY_MINUTES = 30;
@@ -136,8 +137,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           gsi2pk: 'LISTING_STATUS#DRAFT',
           gsi2sk: now,
           
-          // GSI3: Query by location
-          gsi3pk: `LOCATION#${normalizedAddress.countryCode}#${normalizedAddress.city}`,
+          // GSI3: Direct lookup by listingId
+          gsi3pk: `LISTING#${listingId}`,
           gsi3sk: `LISTING_META#${listingId}`,
         },
       })

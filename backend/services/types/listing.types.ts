@@ -208,8 +208,8 @@ export interface ListingMetadata {
   gsi2pk?: string;              // LISTING_STATUS#<status>
   gsi2sk?: string;              // <timestamp>
   
-  // GSI3: Query by location (future)
-  gsi3pk?: string;              // LOCATION#<countryCode>#<city>
+  // GSI3: Direct lookup by listingId
+  gsi3pk?: string;              // LISTING#<listingId>
   gsi3sk?: string;              // LISTING_META#<listingId>
 }
 

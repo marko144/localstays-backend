@@ -111,9 +111,14 @@ export interface BaseHost {
   deletedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  
+  // Rejection tracking
+  rejectionReason: string | null;  // Max 500 chars, set when status = REJECTED
+  
+  // Suspension tracking
   suspendedAt: string | null;
   suspendedBy: string | null;
-  suspendedReason: string | null;
+  suspendedReason: string | null;  // Max 500 chars
 }
 
 /**

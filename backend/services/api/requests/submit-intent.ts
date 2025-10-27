@@ -20,7 +20,8 @@ import {
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME!;
-const BUCKET_NAME = process.env.BUCKET_NAME!;
+// BUCKET_NAME is used in generateUploadUrl from lib/s3-presigned
+// const BUCKET_NAME = process.env.BUCKET_NAME!;
 
 // Constants
 const SUBMISSION_TOKEN_EXPIRY_MINUTES = 30;

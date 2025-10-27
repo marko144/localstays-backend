@@ -4,7 +4,6 @@
  */
 
 import {
-  DocumentType,
   DocumentUploadIntent,
   DocumentValidationResult,
   DOCUMENT_REQUIREMENTS,

@@ -319,16 +319,22 @@ The Localstays Team`,
   },
 ];
 
+// Import admin email templates
+import { adminEmailTemplates } from './admin-email-templates';
+
+// Combine all templates
+const ALL_EMAIL_TEMPLATES = [...EMAIL_TEMPLATES, ...adminEmailTemplates];
+
 /**
  * Seed email templates into DynamoDB
  */
 async function seedEmailTemplates(): Promise<void> {
-  console.log(`Seeding ${EMAIL_TEMPLATES.length} email templates...`);
+  console.log(`Seeding ${ALL_EMAIL_TEMPLATES.length} email templates...`);
 
   // Batch write templates (max 25 items per batch)
   const batchSize = 25;
-  for (let i = 0; i < EMAIL_TEMPLATES.length; i += batchSize) {
-    const batch = EMAIL_TEMPLATES.slice(i, i + batchSize);
+  for (let i = 0; i < ALL_EMAIL_TEMPLATES.length; i += batchSize) {
+    const batch = ALL_EMAIL_TEMPLATES.slice(i, i + batchSize);
     
     await docClient.send(
       new BatchWriteCommand({
@@ -345,7 +351,7 @@ async function seedEmailTemplates(): Promise<void> {
     console.log(`Seeded batch ${Math.floor(i / batchSize) + 1} (${batch.length} templates)`);
   }
 
-  console.log('Email templates seeding completed successfully');
+  console.log(`Email templates seeding completed successfully (${ALL_EMAIL_TEMPLATES.length} total)`);
 }
 
 /**
@@ -372,7 +378,7 @@ export async function handler(event: any): Promise<any> {
       LogicalResourceId: event.LogicalResourceId,
       Data: {
         Message: 'Email templates seeded successfully',
-        TemplateCount: EMAIL_TEMPLATES.length,
+        TemplateCount: ALL_EMAIL_TEMPLATES.length,
       },
     };
   } catch (error: any) {

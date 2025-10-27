@@ -12,7 +12,7 @@ import * as response from '../lib/response';
 import { objectExists } from '../lib/s3-presigned';
 import { executeTransaction } from '../lib/transaction';
 import { sendProfileSubmissionEmail, sendLiveIdCheckRequestEmail } from '../lib/email-service';
-import { SubmissionToken, allDocumentsUploaded, getMissingDocuments } from '../../types/submission.types';
+import { SubmissionToken } from '../../types/submission.types';
 import { Document } from '../../types/document.types';
 import { randomUUID } from 'crypto';
 
@@ -277,7 +277,7 @@ async function getDocumentsByIds(hostId: string, documentIds: string[]): Promise
  */
 async function executeProfileSubmissionTransaction(
   hostId: string,
-  submissionToken: string,
+  _submissionToken: string,
   tokenRecord: SubmissionToken,
   documents: Document[],
   submittedAt: string
@@ -330,9 +330,6 @@ async function executeProfileSubmissionTransaction(
           status: 'PENDING',
           uploadedAt: submittedAt,
           updatedAt: submittedAt,
-          // Update GSI3 for DocumentStatusIndex
-          gsi3pk: 'DOCUMENT_STATUS#PENDING',
-          gsi3sk: submittedAt,
         },
       },
     });

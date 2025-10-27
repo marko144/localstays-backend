@@ -248,5 +248,159 @@ export async function sendLiveIdCheckRequestEmail(
   );
 }
 
+// ========================================
+// ADMIN ACTION EMAIL FUNCTIONS
+// ========================================
 
+/**
+ * Send host profile approved email
+ */
+export async function sendHostProfileApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'HOST_PROFILE_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name }
+  );
+}
+
+/**
+ * Send host profile rejected email
+ */
+export async function sendHostProfileRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'HOST_PROFILE_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, reason }
+  );
+}
+
+/**
+ * Send host suspended email
+ */
+export async function sendHostSuspendedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'HOST_SUSPENDED',
+    recipientEmail,
+    preferredLanguage,
+    { name, reason }
+  );
+}
+
+/**
+ * Send host reinstated email
+ */
+export async function sendHostReinstatedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'HOST_REINSTATED',
+    recipientEmail,
+    preferredLanguage,
+    { name }
+  );
+}
+
+/**
+ * Send listing approved email
+ */
+export async function sendListingApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName }
+  );
+}
+
+/**
+ * Send listing rejected email
+ */
+export async function sendListingRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName, reason }
+  );
+}
+
+/**
+ * Send listing suspended email
+ */
+export async function sendListingSuspendedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_SUSPENDED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName, reason }
+  );
+}
+
+/**
+ * Send request (Live ID) approved email
+ */
+export async function sendRequestApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'REQUEST_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name }
+  );
+}
+
+/**
+ * Send request (Live ID) rejected email
+ */
+export async function sendRequestRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'REQUEST_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, reason }
+  );
+}
 

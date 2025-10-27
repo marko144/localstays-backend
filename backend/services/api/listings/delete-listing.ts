@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 
@@ -21,7 +21,7 @@ const TABLE_NAME = process.env.TABLE_NAME!;
  * - Cascade soft delete to all child records (images, documents, amenities)
  * - S3 files remain (for audit purposes)
  */
-export async function handler(event: APIGatewayProxyEvent): APIGatewayProxyResult {
+export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   console.log('Delete listing request:', {
     requestId: event.requestContext.requestId,
     hostId: event.pathParameters?.hostId,

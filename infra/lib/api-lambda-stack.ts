@@ -56,6 +56,34 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly submitRequestIntentLambda: nodejs.NodejsFunction;
   public readonly confirmRequestSubmissionLambda: nodejs.NodejsFunction;
 
+  // Admin Host Lambdas
+  public readonly adminListHostsLambda: nodejs.NodejsFunction;
+  public readonly adminSearchHostsLambda: nodejs.NodejsFunction;
+  public readonly adminGetHostLambda: nodejs.NodejsFunction;
+  public readonly adminListHostDocumentsLambda: nodejs.NodejsFunction;
+  public readonly adminPendingReviewHostsLambda: nodejs.NodejsFunction;
+  public readonly adminApproveHostLambda: nodejs.NodejsFunction;
+  public readonly adminRejectHostLambda: nodejs.NodejsFunction;
+  public readonly adminSuspendHostLambda: nodejs.NodejsFunction;
+  public readonly adminReinstateHostLambda: nodejs.NodejsFunction;
+
+  // Admin Listing Lambdas
+  public readonly adminListListingsLambda: nodejs.NodejsFunction;
+  public readonly adminPendingReviewListingsLambda: nodejs.NodejsFunction;
+  public readonly adminListHostListingsLambda: nodejs.NodejsFunction;
+  public readonly adminGetListingLambda: nodejs.NodejsFunction;
+  public readonly adminApproveListingLambda: nodejs.NodejsFunction;
+  public readonly adminRejectListingLambda: nodejs.NodejsFunction;
+  public readonly adminSuspendListingLambda: nodejs.NodejsFunction;
+
+  // Admin Request Lambdas
+  public readonly adminListRequestsLambda: nodejs.NodejsFunction;
+  public readonly adminPendingReviewRequestsLambda: nodejs.NodejsFunction;
+  public readonly adminListHostRequestsLambda: nodejs.NodejsFunction;
+  public readonly adminGetRequestLambda: nodejs.NodejsFunction;
+  public readonly adminApproveRequestLambda: nodejs.NodejsFunction;
+  public readonly adminRejectRequestLambda: nodejs.NodejsFunction;
+
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
 
@@ -390,6 +418,263 @@ export class ApiLambdaStack extends cdk.Stack {
     bucket.grantRead(this.confirmRequestSubmissionLambda);
 
     // ========================================
+    // ADMIN HOST LAMBDAS
+    // ========================================
+
+    // List All Hosts
+    this.adminListHostsLambda = new nodejs.NodejsFunction(this, 'AdminListHostsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-hosts`,
+      entry: 'backend/services/api/admin/hosts/list-hosts.ts',
+      handler: 'handler',
+      description: 'Admin: List all hosts with pagination',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListHostsLambda);
+
+    // Search Hosts
+    this.adminSearchHostsLambda = new nodejs.NodejsFunction(this, 'AdminSearchHostsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-search-hosts`,
+      entry: 'backend/services/api/admin/hosts/search-hosts.ts',
+      handler: 'handler',
+      description: 'Admin: Search hosts by name or email',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminSearchHostsLambda);
+
+    // Get Host Details
+    this.adminGetHostLambda = new nodejs.NodejsFunction(this, 'AdminGetHostLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-get-host`,
+      entry: 'backend/services/api/admin/hosts/get-host.ts',
+      handler: 'handler',
+      description: 'Admin: Get full host details',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminGetHostLambda);
+
+    // List Host Documents
+    this.adminListHostDocumentsLambda = new nodejs.NodejsFunction(this, 'AdminListHostDocumentsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-host-documents`,
+      entry: 'backend/services/api/admin/hosts/list-documents.ts',
+      handler: 'handler',
+      description: 'Admin: List host KYC documents with pre-signed URLs',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListHostDocumentsLambda);
+    bucket.grantRead(this.adminListHostDocumentsLambda);
+
+    // Pending Review Hosts
+    this.adminPendingReviewHostsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewHostsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-pending-review-hosts`,
+      entry: 'backend/services/api/admin/hosts/pending-review.ts',
+      handler: 'handler',
+      description: 'Admin: Get hosts pending review (VERIFICATION status)',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminPendingReviewHostsLambda);
+
+    // Approve Host
+    this.adminApproveHostLambda = new nodejs.NodejsFunction(this, 'AdminApproveHostLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-approve-host`,
+      entry: 'backend/services/api/admin/hosts/approve-host.ts',
+      handler: 'handler',
+      description: 'Admin: Approve host profile',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminApproveHostLambda);
+
+    // Reject Host
+    this.adminRejectHostLambda = new nodejs.NodejsFunction(this, 'AdminRejectHostLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-reject-host`,
+      entry: 'backend/services/api/admin/hosts/reject-host.ts',
+      handler: 'handler',
+      description: 'Admin: Reject host profile',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminRejectHostLambda);
+
+    // Suspend Host
+    this.adminSuspendHostLambda = new nodejs.NodejsFunction(this, 'AdminSuspendHostLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-suspend-host`,
+      entry: 'backend/services/api/admin/hosts/suspend-host.ts',
+      handler: 'handler',
+      description: 'Admin: Suspend host account',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminSuspendHostLambda);
+
+    // Reinstate Host
+    this.adminReinstateHostLambda = new nodejs.NodejsFunction(this, 'AdminReinstateHostLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-reinstate-host`,
+      entry: 'backend/services/api/admin/hosts/reinstate-host.ts',
+      handler: 'handler',
+      description: 'Admin: Reinstate suspended host',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminReinstateHostLambda);
+
+    // ========================================
+    // ADMIN LISTING LAMBDAS
+    // ========================================
+
+    // List All Listings
+    this.adminListListingsLambda = new nodejs.NodejsFunction(this, 'AdminListListingsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-listings`,
+      entry: 'backend/services/api/admin/listings/list-listings.ts',
+      handler: 'handler',
+      description: 'Admin: List all listings with pagination',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListListingsLambda);
+
+    // Pending Review Listings
+    this.adminPendingReviewListingsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewListingsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-pending-review-listings`,
+      entry: 'backend/services/api/admin/listings/pending-review.ts',
+      handler: 'handler',
+      description: 'Admin: Get listings pending review (IN_REVIEW status)',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminPendingReviewListingsLambda);
+
+    // List Host Listings
+    this.adminListHostListingsLambda = new nodejs.NodejsFunction(this, 'AdminListHostListingsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-host-listings`,
+      entry: 'backend/services/api/admin/listings/list-host-listings.ts',
+      handler: 'handler',
+      description: 'Admin: Get all listings for a specific host',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListHostListingsLambda);
+
+    // Get Listing Details
+    this.adminGetListingLambda = new nodejs.NodejsFunction(this, 'AdminGetListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-get-listing`,
+      entry: 'backend/services/api/admin/listings/get-listing.ts',
+      handler: 'handler',
+      description: 'Admin: Get full listing details',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminGetListingLambda);
+    bucket.grantRead(this.adminGetListingLambda);
+
+    // Approve Listing
+    this.adminApproveListingLambda = new nodejs.NodejsFunction(this, 'AdminApproveListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-approve-listing`,
+      entry: 'backend/services/api/admin/listings/approve-listing.ts',
+      handler: 'handler',
+      description: 'Admin: Approve listing',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminApproveListingLambda);
+
+    // Reject Listing
+    this.adminRejectListingLambda = new nodejs.NodejsFunction(this, 'AdminRejectListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-reject-listing`,
+      entry: 'backend/services/api/admin/listings/reject-listing.ts',
+      handler: 'handler',
+      description: 'Admin: Reject listing',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminRejectListingLambda);
+
+    // Suspend Listing
+    this.adminSuspendListingLambda = new nodejs.NodejsFunction(this, 'AdminSuspendListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-suspend-listing`,
+      entry: 'backend/services/api/admin/listings/suspend-listing.ts',
+      handler: 'handler',
+      description: 'Admin: Suspend/lock listing',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminSuspendListingLambda);
+
+    // ========================================
+    // ADMIN REQUEST LAMBDAS
+    // ========================================
+
+    // List All Requests
+    this.adminListRequestsLambda = new nodejs.NodejsFunction(this, 'AdminListRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-requests`,
+      entry: 'backend/services/api/admin/requests/list-requests.ts',
+      handler: 'handler',
+      description: 'Admin: List all requests with pagination',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListRequestsLambda);
+
+    // Pending Review Requests
+    this.adminPendingReviewRequestsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-pending-review-requests`,
+      entry: 'backend/services/api/admin/requests/pending-review.ts',
+      handler: 'handler',
+      description: 'Admin: Get requests pending review (RECEIVED status)',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminPendingReviewRequestsLambda);
+
+    // List Host Requests
+    this.adminListHostRequestsLambda = new nodejs.NodejsFunction(this, 'AdminListHostRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-list-host-requests`,
+      entry: 'backend/services/api/admin/requests/list-host-requests.ts',
+      handler: 'handler',
+      description: 'Admin: Get all requests for a specific host',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminListHostRequestsLambda);
+
+    // Get Request Details
+    this.adminGetRequestLambda = new nodejs.NodejsFunction(this, 'AdminGetRequestLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-get-request`,
+      entry: 'backend/services/api/admin/requests/get-request.ts',
+      handler: 'handler',
+      description: 'Admin: Get full request details with video URL',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.adminGetRequestLambda);
+    bucket.grantRead(this.adminGetRequestLambda);
+
+    // Approve Request
+    this.adminApproveRequestLambda = new nodejs.NodejsFunction(this, 'AdminApproveRequestLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-approve-request`,
+      entry: 'backend/services/api/admin/requests/approve-request.ts',
+      handler: 'handler',
+      description: 'Admin: Approve Live ID request',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminApproveRequestLambda);
+
+    // Reject Request
+    this.adminRejectRequestLambda = new nodejs.NodejsFunction(this, 'AdminRejectRequestLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-reject-request`,
+      entry: 'backend/services/api/admin/requests/reject-request.ts',
+      handler: 'handler',
+      description: 'Admin: Reject Live ID request',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminRejectRequestLambda);
+
+    // ========================================
     // API Gateway Integrations
     // ========================================
 
@@ -656,6 +941,264 @@ export class ApiLambdaStack extends cdk.Stack {
       }
     );
 
+    // ========================================
+    // ADMIN API ROUTES
+    // ========================================
+
+    const adminResource = v1.addResource('admin');
+
+    // Admin Host Routes
+    const adminHostsResource = adminResource.addResource('hosts');
+
+    // GET /api/v1/admin/hosts
+    adminHostsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListHostsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/search
+    const adminHostsSearchResource = adminHostsResource.addResource('search');
+    adminHostsSearchResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminSearchHostsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/pending-review
+    const adminPendingReviewHostsResource = adminHostsResource.addResource('pending-review');
+    adminPendingReviewHostsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminPendingReviewHostsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/{hostId}
+    const adminHostIdParam = adminHostsResource.addResource('{hostId}');
+    adminHostIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminGetHostLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/{hostId}/documents
+    const adminHostDocumentsResource = adminHostIdParam.addResource('documents');
+    adminHostDocumentsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListHostDocumentsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/{hostId}/listings
+    const adminHostListingsResource = adminHostIdParam.addResource('listings');
+    adminHostListingsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListHostListingsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/hosts/{hostId}/requests
+    const adminHostRequestsResource = adminHostIdParam.addResource('requests');
+    adminHostRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListHostRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/hosts/{hostId}/approve
+    const adminApproveHostResource = adminHostIdParam.addResource('approve');
+    adminApproveHostResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminApproveHostLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/hosts/{hostId}/reject
+    const adminRejectHostResource = adminHostIdParam.addResource('reject');
+    adminRejectHostResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminRejectHostLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/hosts/{hostId}/suspend
+    const adminSuspendHostResource = adminHostIdParam.addResource('suspend');
+    adminSuspendHostResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminSuspendHostLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/hosts/{hostId}/reinstate
+    const adminReinstateHostResource = adminHostIdParam.addResource('reinstate');
+    adminReinstateHostResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminReinstateHostLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Admin Listing Routes
+    const adminListingsResource = adminResource.addResource('listings');
+
+    // GET /api/v1/admin/listings
+    adminListingsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListListingsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/listings/pending-review
+    const adminPendingReviewListingsResource = adminListingsResource.addResource('pending-review');
+    adminPendingReviewListingsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminPendingReviewListingsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/listings/{listingId}
+    const adminListingIdParam = adminListingsResource.addResource('{listingId}');
+    adminListingIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminGetListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/listings/{listingId}/approve
+    const adminApproveListingResource = adminListingIdParam.addResource('approve');
+    adminApproveListingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminApproveListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/listings/{listingId}/reject
+    const adminRejectListingResource = adminListingIdParam.addResource('reject');
+    adminRejectListingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminRejectListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/listings/{listingId}/suspend
+    const adminSuspendListingResource = adminListingIdParam.addResource('suspend');
+    adminSuspendListingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminSuspendListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Admin Request Routes
+    const adminRequestsResource = adminResource.addResource('requests');
+
+    // GET /api/v1/admin/requests
+    adminRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/requests/pending-review
+    const adminPendingReviewRequestsResource = adminRequestsResource.addResource('pending-review');
+    adminPendingReviewRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminPendingReviewRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/requests/{requestId}
+    const adminRequestIdParam = adminRequestsResource.addResource('{requestId}');
+    adminRequestIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminGetRequestLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/requests/{requestId}/approve
+    const adminApproveRequestResource = adminRequestIdParam.addResource('approve');
+    adminApproveRequestResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminApproveRequestLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/requests/{requestId}/reject
+    const adminRejectRequestResource = adminRequestIdParam.addResource('reject');
+    adminRejectRequestResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminRejectRequestLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // Grant API Gateway Invoke Permissions
+    // ========================================
+
     // Note: We use a wildcard for SourceArn to avoid circular dependency
     // The specific API Gateway ID will be validated at runtime
     this.submitIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
@@ -676,6 +1219,34 @@ export class ApiLambdaStack extends cdk.Stack {
     this.getRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.submitRequestIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     this.confirmRequestSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+
+    // Grant invoke permissions for admin host Lambdas
+    this.adminListHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminSearchHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminGetHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminListHostDocumentsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminPendingReviewHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminApproveHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminRejectHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminSuspendHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminReinstateHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+
+    // Grant invoke permissions for admin listing Lambdas
+    this.adminListListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminPendingReviewListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminListHostListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminGetListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminApproveListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminRejectListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminSuspendListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+
+    // Grant invoke permissions for admin request Lambdas
+    this.adminListRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminPendingReviewRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminListHostRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminGetRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminApproveRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    this.adminRejectRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
 
     // Outputs
     const capitalizedStage = this.capitalize(stage);

@@ -49,14 +49,17 @@ export function noContent(): APIGatewayProxyResult {
  * Bad request error (400)
  */
 export function badRequest(message: string, details?: unknown): APIGatewayProxyResult {
+  const body: Record<string, unknown> = {
+    error: 'BAD_REQUEST',
+    message,
+  };
+  if (details) {
+    body.details = details;
+  }
   return {
     statusCode: 400,
     headers: CORS_HEADERS,
-    body: JSON.stringify({
-      error: 'BAD_REQUEST',
-      message,
-      ...(details && { details }),
-    }),
+    body: JSON.stringify(body),
   };
 }
 
@@ -106,14 +109,17 @@ export function notFound(message: string = 'Resource not found'): APIGatewayProx
  * Conflict error (409)
  */
 export function conflict(message: string, details?: unknown): APIGatewayProxyResult {
+  const body: Record<string, unknown> = {
+    error: 'CONFLICT',
+    message,
+  };
+  if (details) {
+    body.details = details;
+  }
   return {
     statusCode: 409,
     headers: CORS_HEADERS,
-    body: JSON.stringify({
-      error: 'CONFLICT',
-      message,
-      ...(details && { details }),
-    }),
+    body: JSON.stringify(body),
   };
 }
 
@@ -121,14 +127,17 @@ export function conflict(message: string, details?: unknown): APIGatewayProxyRes
  * Unprocessable entity (422) - validation errors
  */
 export function unprocessableEntity(message: string, validationErrors?: unknown): APIGatewayProxyResult {
+  const body: Record<string, unknown> = {
+    error: 'VALIDATION_ERROR',
+    message,
+  };
+  if (validationErrors) {
+    body.validationErrors = validationErrors;
+  }
   return {
     statusCode: 422,
     headers: CORS_HEADERS,
-    body: JSON.stringify({
-      error: 'VALIDATION_ERROR',
-      message,
-      ...(validationErrors && { validationErrors }),
-    }),
+    body: JSON.stringify(body),
   };
 }
 

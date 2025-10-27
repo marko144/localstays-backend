@@ -46,9 +46,7 @@ export interface Document {
   rejectionReason: string | null;
   notes: string | null;
   
-  // GSI attributes
-  gsi3pk?: string;             // For DocumentStatusIndex: "DOCUMENT_STATUS#{status}"
-  gsi3sk?: string;             // uploadedAt (for sorting by date)
+  // GSI attributes (not used for documents currently)
   
   // Metadata
   uploadedAt: string;

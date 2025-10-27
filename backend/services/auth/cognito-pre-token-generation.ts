@@ -120,10 +120,10 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
 
     // 4. Build custom claims
     // Note: Cognito requires claims to be strings or numbers, not arrays
-    // So we JSON-stringify the permissions array
+    // So we convert the permissions array to a comma-separated string
     const customClaims: Record<string, string> = {
       role,
-      permissions: JSON.stringify(permissions),
+      permissions: permissions.join(','),  // Comma-separated for easy parsing
       status: user.status || 'ACTIVE',
     };
 

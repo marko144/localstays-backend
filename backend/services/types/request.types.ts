@@ -24,12 +24,13 @@ export type RequestStatus =
 
 export interface Request {
   // Keys
-  pk: string;                      // HOST#<hostId>
+  pk: string;                      // HOST#<hostId> OR LISTING#<listingId>
   sk: string;                      // REQUEST#<requestId>
   
   // Identifiers
   requestId: string;               // req_<uuid>
   hostId: string;
+  listingId?: string;              // Present for listing-specific requests
   
   // Request Details
   requestType: RequestType;
@@ -60,6 +61,10 @@ export interface Request {
   // GSI2: Admin queries (all requests by type/status)
   gsi2pk?: string;                 // REQUEST#<requestType>
   gsi2sk?: string;                 // STATUS#<status>#<createdAt>
+  
+  // GSI3: Direct lookup by requestId
+  gsi3pk?: string;                 // REQUEST#<requestId>
+  gsi3sk?: string;                 // REQUEST_META#<requestId>
 }
 
 // ============================================================================

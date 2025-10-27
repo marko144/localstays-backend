@@ -88,8 +88,8 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // GSI3 - DocumentStatusIndex: Query documents by status for admin review
-    // pk=DOCUMENT_STATUS#{status}, sk=uploadedAt
+    // GSI3 - DocumentStatusIndex: Repurposed for direct lookup of listings by listingId
+    // pk=LISTING#{listingId}, sk=LISTING_META#{listingId}
     this.table.addGlobalSecondaryIndex({
       indexName: 'DocumentStatusIndex',
       partitionKey: {
@@ -161,7 +161,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.9.0', // Added request types (Live ID check)
+        Version: '1.10.0', // Added admin request permissions + host request permissions
       },
     });
 
