@@ -54,10 +54,63 @@ async function getHostName(hostId: string): Promise<string> {
 }
 
 /**
+ * Get listing name by ID
+ */
+async function getListingName(listingId: string): Promise<string> {
+  try {
+    const result = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `LISTING#${listingId}`,
+          sk: 'META',
+        },
+      })
+    );
+
+    if (!result.Item) {
+      return 'Unnamed Listing';
+    }
+
+    return result.Item.listingName || 'Unnamed Listing';
+  } catch (error) {
+    console.error(`Failed to fetch listing ${listingId}:`, error);
+    return 'Unnamed Listing';
+  }
+}
+
+/**
+ * Get all listings for a host
+ */
+async function getHostListings(hostId: string): Promise<string[]> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `HOST#${hostId}`,
+          ':sk': 'LISTING_META#',
+        },
+      })
+    );
+
+    if (!result.Items || result.Items.length === 0) {
+      return [];
+    }
+
+    return result.Items.map(item => item.listingId as string).filter(Boolean);
+  } catch (error) {
+    console.error(`Failed to fetch listings for host ${hostId}:`, error);
+    return [];
+  }
+}
+
+/**
  * Convert Request to RequestSummary
  */
-function toRequestSummary(request: Request, hostName: string): RequestSummary {
-  return {
+async function toRequestSummary(request: Request, hostName: string): Promise<RequestSummary> {
+  const summary: RequestSummary = {
     requestId: request.requestId,
     requestType: request.requestType,
     status: request.status,
@@ -66,6 +119,14 @@ function toRequestSummary(request: Request, hostName: string): RequestSummary {
     createdAt: request.createdAt,
     uploadedAt: request.uploadedAt,
   };
+
+  // Add listing info for listing-level requests
+  if (request.listingId) {
+    summary.listingId = request.listingId;
+    summary.listingName = await getListingName(request.listingId);
+  }
+
+  return summary;
 }
 
 /**
@@ -111,8 +172,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 3. Parse pagination params
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
 
-    // 4. Query all requests for this host
-    const result = await docClient.send(
+    // 4. Get host name once
+    const hostName = await getHostName(hostId);
+
+    // 5. Query host-level requests (LIVE_ID_CHECK)
+    const hostRequestsResult = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
@@ -123,27 +187,51 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       })
     );
 
-    const requests = (result.Items || []) as Request[];
+    const hostRequests = (hostRequestsResult.Items || []) as Request[];
+    console.log(`Found ${hostRequests.length} host-level requests for host ${hostId}`);
 
-    console.log(`Found ${requests.length} requests for host ${hostId}`);
+    // 6. Get all listings for this host
+    const listingIds = await getHostListings(hostId);
+    console.log(`Found ${listingIds.length} listings for host ${hostId}`);
 
-    // 5. Get host name once
-    const hostName = await getHostName(hostId);
+    // 7. Query listing-level requests (ADDRESS_VERIFICATION, PROPERTY_VIDEO_VERIFICATION)
+    const listingRequestsPromises = listingIds.map(listingId =>
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `LISTING#${listingId}`,
+            ':sk': 'REQUEST#',
+          },
+        })
+      )
+    );
 
-    // 6. Convert to summary format
-    const requestSummaries = requests.map(request => toRequestSummary(request, hostName));
+    const listingRequestsResults = await Promise.all(listingRequestsPromises);
+    const listingRequests = listingRequestsResults.flatMap(result => (result.Items || [])) as Request[];
+    console.log(`Found ${listingRequests.length} listing-level requests for host ${hostId}`);
 
-    // 7. Sort by createdAt (newest first)
+    // 8. Combine all requests
+    const allRequests = [...hostRequests, ...listingRequests];
+    console.log(`Total ${allRequests.length} requests for host ${hostId}`);
+
+    // 9. Convert to summary format
+    const requestSummaries = await Promise.all(
+      allRequests.map(request => toRequestSummary(request, hostName))
+    );
+
+    // 10. Sort by createdAt (newest first)
     requestSummaries.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    // 8. Paginate
+    // 11. Paginate
     const resultData = paginateArray(requestSummaries, page, limit);
 
     console.log(`✅ Returning ${resultData.items.length} requests (page ${page}, total ${resultData.pagination.total})`);
 
-    // 9. Return response
+    // 12. Return response
     return {
       statusCode: 200,
       headers: {
