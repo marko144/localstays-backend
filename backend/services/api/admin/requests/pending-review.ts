@@ -90,23 +90,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 2. Parse pagination params
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
 
-    // 3. Query GSI2 for requests with status = RECEIVED
+    // 3. Query GSI2 for all request types with status = RECEIVED
     // Note: GSI2 for requests uses pattern: gsi2pk = "REQUEST#<type>", gsi2sk = "STATUS#<status>#<createdAt>"
-    const result = await docClient.send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        IndexName: 'StatusIndex',
-        KeyConditionExpression: 'gsi2pk = :gsi2pk AND begins_with(gsi2sk, :statusPrefix)',
-        ExpressionAttributeValues: {
-          ':gsi2pk': 'REQUEST#LIVE_ID_CHECK',
-          ':statusPrefix': 'STATUS#RECEIVED#',
-        },
-      })
+    // We need to query multiple request types: LIVE_ID_CHECK, PROPERTY_VIDEO_VERIFICATION, ADDRESS_VERIFICATION
+    const requestTypes = ['LIVE_ID_CHECK', 'PROPERTY_VIDEO_VERIFICATION', 'ADDRESS_VERIFICATION'];
+    
+    const queryPromises = requestTypes.map(requestType =>
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          IndexName: 'StatusIndex',
+          KeyConditionExpression: 'gsi2pk = :gsi2pk AND begins_with(gsi2sk, :statusPrefix)',
+          ExpressionAttributeValues: {
+            ':gsi2pk': `REQUEST#${requestType}`,
+            ':statusPrefix': 'STATUS#RECEIVED#',
+          },
+        })
+      )
     );
 
-    const requests = (result.Items || []) as Request[];
+    // Execute all queries in parallel
+    const results = await Promise.all(queryPromises);
 
-    console.log(`Found ${requests.length} requests pending review`);
+    // Combine all results
+    const requests = results.flatMap(result => (result.Items || [])) as Request[];
+
+    console.log(`Found ${requests.length} requests pending review across ${requestTypes.length} request types`);
 
     // 4. Convert to summary format (includes fetching host names)
     const requestSummaries = await Promise.all(

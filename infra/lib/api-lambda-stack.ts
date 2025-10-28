@@ -84,6 +84,15 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly adminGetRequestLambda: nodejs.NodejsFunction;
   public readonly adminApproveRequestLambda: nodejs.NodejsFunction;
   public readonly adminRejectRequestLambda: nodejs.NodejsFunction;
+  public readonly adminCreateVideoVerificationLambda: nodejs.NodejsFunction;
+  public readonly adminCreateAddressVerificationLambda: nodejs.NodejsFunction;
+  public readonly adminGetListingRequestsLambda: nodejs.NodejsFunction;
+
+  // Host Verification Lambdas
+  public readonly hostSubmitVideoIntentLambda: nodejs.NodejsFunction;
+  public readonly hostConfirmVideoLambda: nodejs.NodejsFunction;
+  public readonly hostSubmitVerificationCodeLambda: nodejs.NodejsFunction;
+  public readonly hostGetListingRequestsLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
@@ -441,6 +450,62 @@ export class ApiLambdaStack extends cdk.Stack {
     bucket.grantRead(this.confirmRequestSubmissionLambda);
 
     // ========================================
+    // HOST VERIFICATION LAMBDAS
+    // ========================================
+
+    // Submit Property Video Intent
+    this.hostSubmitVideoIntentLambda = new nodejs.NodejsFunction(this, 'HostSubmitVideoIntentLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-submit-video-intent`,
+      entry: 'backend/services/api/hosts/submit-video-intent.ts',
+      handler: 'handler',
+      description: 'Host: Initiate property video verification upload',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.hostSubmitVideoIntentLambda);
+    bucket.grantReadWrite(this.hostSubmitVideoIntentLambda);
+
+    // Confirm Property Video Upload
+    this.hostConfirmVideoLambda = new nodejs.NodejsFunction(this, 'HostConfirmVideoLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-confirm-video`,
+      entry: 'backend/services/api/hosts/confirm-video.ts',
+      handler: 'handler',
+      description: 'Host: Confirm property video verification upload',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.hostConfirmVideoLambda);
+    bucket.grantRead(this.hostConfirmVideoLambda);
+
+    // Submit Address Verification Code
+    this.hostSubmitVerificationCodeLambda = new nodejs.NodejsFunction(this, 'HostSubmitVerificationCodeLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-submit-verification-code`,
+      entry: 'backend/services/api/hosts/submit-verification-code.ts',
+      handler: 'handler',
+      description: 'Host: Submit address verification code',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.hostSubmitVerificationCodeLambda);
+    emailTemplatesTable.grantReadData(this.hostSubmitVerificationCodeLambda);
+    this.hostSubmitVerificationCodeLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
+
+    // Get Listing Requests
+    this.hostGetListingRequestsLambda = new nodejs.NodejsFunction(this, 'HostGetListingRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-get-listing-requests`,
+      entry: 'backend/services/api/hosts/get-listing-requests.ts',
+      handler: 'handler',
+      description: 'Host: Get all requests for a specific listing',
+      environment: commonEnvironment,
+    });
+    table.grantReadData(this.hostGetListingRequestsLambda);
+
+    // ========================================
     // ADMIN HOST LAMBDAS
     // ========================================
 
@@ -733,6 +798,74 @@ export class ApiLambdaStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
 
+    // Create Property Video Verification Request
+    this.adminCreateVideoVerificationLambda = new nodejs.NodejsFunction(this, 'AdminCreateVideoVerificationLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-create-video-verification`,
+      entry: 'backend/services/api/admin/requests/create-property-video-verification.ts',
+      handler: 'handler',
+      description: 'Admin: Create property video verification request',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminCreateVideoVerificationLambda);
+    emailTemplatesTable.grantReadData(this.adminCreateVideoVerificationLambda);
+    this.adminCreateVideoVerificationLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
+
+    // Create Address Verification Request
+    this.adminCreateAddressVerificationLambda = new nodejs.NodejsFunction(this, 'AdminCreateAddressVerificationLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-create-address-verification`,
+      entry: 'backend/services/api/admin/requests/create-address-verification.ts',
+      handler: 'handler',
+      description: 'Admin: Create address verification request with PDF letter',
+      environment: commonEnvironment,
+      bundling: {
+        ...commonLambdaProps.bundling,
+        // Include font files for pdfkit in the exact location it expects
+        commandHooks: {
+          beforeBundling(inputDir: string, outputDir: string): string[] {
+            return [];
+          },
+          afterBundling(inputDir: string, outputDir: string): string[] {
+            return [
+              // Copy AFM fonts to /var/task/data where pdfkit looks for them
+              `mkdir -p ${outputDir}/data`,
+              `cp -r ${inputDir}/backend/services/lib/fonts/data/* ${outputDir}/data/`,
+              // Copy TTF fonts to /var/task/fonts for Unicode support (Serbian Latin)
+              `mkdir -p ${outputDir}/fonts`,
+              `cp ${inputDir}/backend/services/lib/fonts/*.ttf ${outputDir}/fonts/`,
+            ];
+          },
+          beforeInstall(): string[] {
+            return [];
+          },
+        },
+      },
+    });
+    table.grantReadWriteData(this.adminCreateAddressVerificationLambda);
+    bucket.grantReadWrite(this.adminCreateAddressVerificationLambda);
+    emailTemplatesTable.grantReadData(this.adminCreateAddressVerificationLambda);
+    this.adminCreateAddressVerificationLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
+
+    // Get All Requests for a Listing (Admin)
+    this.adminGetListingRequestsLambda = new nodejs.NodejsFunction(this, 'AdminGetListingRequestsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-get-listing-requests`,
+      entry: 'backend/services/api/admin/requests/get-listing-requests.ts',
+      handler: 'handler',
+      description: 'Admin: Get all requests for a listing (any status)',
+      environment: commonEnvironment,
+    });
+    table.grantReadWriteData(this.adminGetListingRequestsLambda);
+
     // ========================================
     // API Gateway Integrations
     // ========================================
@@ -973,6 +1106,62 @@ export class ApiLambdaStack extends cdk.Stack {
         requestValidatorOptions: {
           validateRequestBody: true,
           validateRequestParameters: true,
+        },
+      }
+    );
+
+    // GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
+    const listingRequestsResource = listingIdParam.addResource('requests');
+    listingRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostGetListingRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Listing request-specific routes: /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}
+    const listingRequestIdParam = listingRequestsResource.addResource('{requestId}');
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-video-intent
+    const submitVideoIntentResource = listingRequestIdParam.addResource('submit-video-intent');
+    submitVideoIntentResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostSubmitVideoIntentLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/confirm-video
+    const confirmVideoResource = listingRequestIdParam.addResource('confirm-video');
+    confirmVideoResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostConfirmVideoLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-code
+    const submitCodeResource = listingRequestIdParam.addResource('submit-code');
+    submitCodeResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostSubmitVerificationCodeLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
         },
       }
     );
@@ -1224,6 +1413,41 @@ export class ApiLambdaStack extends cdk.Stack {
     adminSuspendListingResource.addMethod(
       'PUT',
       new apigateway.LambdaIntegration(this.adminSuspendListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Admin Listing Requests Routes
+    const adminListingRequestsResource = adminListingIdParam.addResource('requests');
+    
+    // GET /api/v1/admin/listings/{listingId}/requests
+    adminListingRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminGetListingRequestsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    
+    // POST /api/v1/admin/listings/{listingId}/requests/property-video
+    const adminPropertyVideoResource = adminListingRequestsResource.addResource('property-video');
+    adminPropertyVideoResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminCreateVideoVerificationLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/listings/{listingId}/requests/address-verification
+    const adminAddressVerificationResource = adminListingRequestsResource.addResource('address-verification');
+    adminAddressVerificationResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminCreateAddressVerificationLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

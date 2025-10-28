@@ -15,11 +15,13 @@
     "@aws-sdk/client-ssm": "^3.470.0",
     "@aws-sdk/lib-dynamodb": "^3.470.0",
     "@aws-sdk/s3-request-presigner": "^3.917.0",
-    "@sendgrid/mail": "^7.7.0"
+    "@sendgrid/mail": "^8.1.6",
+    "pdfkit": "^0.17.2"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.131",
     "@types/node": "^20.19.23",
+    "@types/pdfkit": "^0.13.5",
     "typescript": "^5.3.3"
   },
   "engines": {

@@ -14,7 +14,7 @@ import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/li
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
-import { sendRequestApprovedEmail } from '../../lib/email-service';
+import { sendRequestApprovedEmail, sendVideoVerificationApprovedEmail, sendAddressVerificationApprovedEmail } from '../../lib/email-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -123,11 +123,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 5. Update request status
     const now = new Date().toISOString();
 
+    // Determine pk based on request type (host-level vs listing-level)
+    const pk = request.listingId ? `LISTING#${request.listingId}` : `HOST#${request.hostId}`;
+
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
         Key: {
-          pk: `HOST#${request.hostId}`,
+          pk,
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression: `
@@ -175,12 +178,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const hostName = isIndividualHost(host)
           ? `${host.forename} ${host.surname}`
           : host.legalName || host.displayName || host.businessName || 'Host';
-          
-        await sendRequestApprovedEmail(
-          host.email,
-          host.preferredLanguage || 'sr',
-          hostName
-        );
+        
+        const language = host.preferredLanguage === 'sr' || host.preferredLanguage === 'sr-RS' ? 'sr' : 'en';
+        
+        // Send appropriate email based on request type
+        if (request.requestType === 'PROPERTY_VIDEO_VERIFICATION') {
+          await sendVideoVerificationApprovedEmail(
+            host.email,
+            language,
+            hostName,
+            '' // listing address not needed for approval
+          );
+        } else if (request.requestType === 'ADDRESS_VERIFICATION') {
+          await sendAddressVerificationApprovedEmail(
+            host.email,
+            language,
+            hostName,
+            ''
+          );
+        } else {
+          // Default to generic request approved email (for LIVE_ID_CHECK)
+          await sendRequestApprovedEmail(
+            host.email,
+            language,
+            hostName
+          );
+        }
         console.log(`📧 Approval email sent to ${host.email}`);
       }
     } catch (emailError) {

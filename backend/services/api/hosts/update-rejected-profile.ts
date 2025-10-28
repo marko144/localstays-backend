@@ -6,7 +6,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
@@ -361,7 +361,7 @@ async function createSubmissionToken(params: {
     profileData,
     expectedDocuments: documentRecords.map((doc) => ({
       documentId: doc.documentId,
-      documentType: doc.documentType,
+      documentType: doc.documentType as any, // Type assertion for flexible document types
       uploaded: false,
     })),
     expiresAt,

@@ -9,7 +9,10 @@
 // ENUMS
 // ============================================================================
 
-export type RequestType = 'LIVE_ID_CHECK';
+export type RequestType = 
+  | 'LIVE_ID_CHECK'
+  | 'PROPERTY_VIDEO_VERIFICATION'
+  | 'ADDRESS_VERIFICATION';
 
 export type RequestStatus = 
   | 'REQUESTED'       // Request created, awaiting host action
@@ -46,6 +49,16 @@ export interface Request {
   fileSize?: number;               // In bytes
   contentType?: string;            // video/mp4, video/mov, video/webm
   uploadedAt?: string;             // ISO timestamp
+  
+  // Property Video Verification fields
+  videoUrl?: string;               // S3 URL of uploaded verification video
+  videoUploadedAt?: string;        // ISO timestamp
+  
+  // Address Verification fields
+  verificationCode?: string;       // Encrypted 6-char code (NEVER exposed to host)
+  codeAttempts?: number;           // Number of failed code submission attempts (max 3)
+  pdfLetterUrl?: string;           // S3 URL of generated PDF verification letter
+  pdfLetterGeneratedAt?: string;   // ISO timestamp
   
   // Submission Tracking (for 2-step upload)
   submissionToken?: string;        // Temporary token for upload
@@ -100,9 +113,11 @@ export interface RequestSummary {
   createdAt: string;
   uploadedAt?: string;
   reviewedAt?: string;
+  listingId?: string; // Present for listing-level requests (video/address verification)
+  listingName?: string; // Listing name for listing-level requests
 }
 
-// Get Request Response
+// Get Request Response (Host-facing - no sensitive admin data)
 export interface GetRequestResponse {
   requestId: string;
   requestType: RequestType;
@@ -119,6 +134,11 @@ export interface GetRequestResponse {
   updatedAt: string;
   reviewedAt?: string;
   rejectionReason?: string;
+  videoUrl?: string;              // For video verification requests
+  listingId?: string;             // For listing-level requests
+  listingName?: string;           // Listing name for listing-level requests
+  codeAttempts?: number;          // For address verification requests (remaining attempts)
+  // NOTE: pdfLetterUrl is NOT included - admin-only field
 }
 
 // Submit Intent Request

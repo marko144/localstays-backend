@@ -177,6 +177,8 @@ export interface RequestSummary {
   hostName: string;                // Formatted host name
   createdAt: string;
   uploadedAt?: string;
+  listingId?: string;              // Present for listing-level requests
+  listingName?: string;            // Listing name for listing-level requests
 }
 
 /**

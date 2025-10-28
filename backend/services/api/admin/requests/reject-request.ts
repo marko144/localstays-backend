@@ -16,7 +16,7 @@ import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';
 import { RejectRequestRequest } from '../../../types/admin.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
-import { sendRequestRejectedEmail } from '../../lib/email-service';
+import { sendRequestRejectedEmail, sendVideoVerificationRejectedEmail, sendAddressVerificationRejectedEmail } from '../../lib/email-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -198,11 +198,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 6. Update request status with rejection reason
     const now = new Date().toISOString();
 
+    // Determine pk based on request type (host-level vs listing-level)
+    const pk = request.listingId ? `LISTING#${request.listingId}` : `HOST#${request.hostId}`;
+
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
         Key: {
-          pk: `HOST#${request.hostId}`,
+          pk,
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression: `
@@ -253,13 +256,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const hostName = isIndividualHost(host)
           ? `${host.forename} ${host.surname}`
           : host.legalName || host.displayName || host.businessName || 'Host';
-          
-        await sendRequestRejectedEmail(
-          host.email,
-          host.preferredLanguage || 'sr',
-          hostName,
-          rejectionReason
-        );
+        
+        const language = host.preferredLanguage === 'sr' || host.preferredLanguage === 'sr-RS' ? 'sr' : 'en';
+        
+        // Send appropriate email based on request type
+        if (request.requestType === 'PROPERTY_VIDEO_VERIFICATION') {
+          await sendVideoVerificationRejectedEmail(
+            host.email,
+            language,
+            hostName,
+            rejectionReason
+          );
+        } else if (request.requestType === 'ADDRESS_VERIFICATION') {
+          await sendAddressVerificationRejectedEmail(
+            host.email,
+            language,
+            hostName
+          );
+        } else {
+          // Default to generic request rejected email (for LIVE_ID_CHECK)
+          await sendRequestRejectedEmail(
+            host.email,
+            language,
+            hostName,
+            rejectionReason
+          );
+        }
         console.log(`📧 Rejection email sent to ${host.email}`);
       }
     } catch (emailError) {

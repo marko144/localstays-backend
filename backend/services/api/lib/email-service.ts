@@ -404,3 +404,112 @@ export async function sendRequestRejectedEmail(
   );
 }
 
+// ============================================================================
+// PROPERTY VIDEO VERIFICATION EMAILS
+// ============================================================================
+
+/**
+ * Send property video verification request email
+ */
+export async function sendVideoVerificationRequestEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingAddress: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'VIDEO_VERIFICATION_REQUEST',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingAddress, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+
+/**
+ * Send property video verification approved email
+ */
+export async function sendVideoVerificationApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingAddress: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'VIDEO_VERIFICATION_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingAddress, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+
+/**
+ * Send property video verification rejected email
+ */
+export async function sendVideoVerificationRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'VIDEO_VERIFICATION_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, reason, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+
+// ============================================================================
+// ADDRESS VERIFICATION EMAILS
+// ============================================================================
+
+/**
+ * Send address verification request email
+ */
+export async function sendAddressVerificationRequestEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingAddress: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'ADDRESS_VERIFICATION_REQUEST',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingAddress, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+
+/**
+ * Send address verification approved email
+ */
+export async function sendAddressVerificationApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingAddress: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'ADDRESS_VERIFICATION_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingAddress, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+
+/**
+ * Send address verification rejected email
+ */
+export async function sendAddressVerificationRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'ADDRESS_VERIFICATION_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, dashboardUrl: 'https://dashboard.localstays.co' }
+  );
+}
+

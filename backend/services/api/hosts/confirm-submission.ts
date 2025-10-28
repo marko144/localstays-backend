@@ -442,9 +442,13 @@ async function createLiveIdCheckRequest(hostId: string): Promise<void> {
               createdAt: now,
               updatedAt: now,
               
-              // GSI2: Admin queries
+              // GSI2: Admin queries (by type and status)
               gsi2pk: 'REQUEST#LIVE_ID_CHECK',
               gsi2sk: `STATUS#REQUESTED#${now}`,
+              
+              // GSI3: Direct lookup by requestId
+              gsi3pk: `REQUEST#${requestId}`,
+              gsi3sk: `REQUEST_META#${requestId}`,
             },
           },
         },

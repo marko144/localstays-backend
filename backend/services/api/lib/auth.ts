@@ -8,10 +8,10 @@ import { APIGatewayProxyEvent } from 'aws-lambda';
 export interface AuthContext {
   userId: string;              // Cognito sub
   email: string;
-  hostId: string;
+  hostId?: string;             // Optional - only present for HOST role
   role: 'HOST' | 'ADMIN';
   permissions: string[];
-  hostStatus: string;
+  hostStatus?: string;         // Optional - only present for HOST role
 }
 
 /**
@@ -36,12 +36,13 @@ export function getAuthContext(event: APIGatewayProxyEvent): AuthContext {
     throw new Error('UNAUTHORIZED: Missing email in claims');
   }
   
-  if (!claims.hostId) {
-    throw new Error('UNAUTHORIZED: Missing hostId in claims');
-  }
-  
   if (!claims.role || !['HOST', 'ADMIN'].includes(claims.role)) {
     throw new Error('UNAUTHORIZED: Invalid or missing role in claims');
+  }
+
+  // hostId is only required for HOST role
+  if (claims.role === 'HOST' && !claims.hostId) {
+    throw new Error('UNAUTHORIZED: Missing hostId in claims for HOST user');
   }
   
   // Parse permissions (stringified array in JWT)
@@ -128,6 +129,17 @@ export function assertHasPermission(auth: AuthContext, permission: string): void
   if (!hasPermission(auth, permission)) {
     throw new Error(
       `FORBIDDEN: User ${auth.userId} does not have permission: ${permission}`
+    );
+  }
+}
+
+/**
+ * Assert user is an admin (throws if not)
+ */
+export function assertIsAdmin(auth: AuthContext): void {
+  if (auth.role !== 'ADMIN') {
+    throw new Error(
+      `FORBIDDEN: User ${auth.userId} is not an admin`
     );
   }
 }

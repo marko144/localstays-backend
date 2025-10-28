@@ -33,7 +33,7 @@ export const adminEmailTemplates: EmailTemplateSeed[] = [
 
 Great news! Your host profile has been approved.
 
-You can now create and submit property listings on LocalStays. Log in to your dashboard to get started.
+You can now create and submit property listings on LocalStays.
 
 Welcome to the LocalStays community!
 
@@ -41,7 +41,7 @@ Best regards,
 The LocalStays Team`,
     bodyHtml: `<p>Hi {{name}},</p>
 <p>Great news! Your host profile has been approved.</p>
-<p>You can now create and submit property listings on LocalStays. Log in to your dashboard to get started.</p>
+<p>You can now create and submit property listings on LocalStays.</p>
 <p>Welcome to the LocalStays community!</p>
 <p>Best regards,<br>The LocalStays Team</p>`,
     variables: ['name'],
@@ -58,7 +58,7 @@ The LocalStays Team`,
 
 Odlične vesti! Vaš profil domaćina je odobren.
 
-Sada možete kreirati i poslati oglase za nekretnine na LocalStays. Prijavite se na svoju kontrolnu tablu da biste počeli.
+Sada možete kreirati i poslati oglase za nekretnine na LocalStays.
 
 Dobrodošli u LocalStays zajednicu!
 
@@ -66,7 +66,7 @@ Srdačan pozdrav,
 LocalStays Tim`,
     bodyHtml: `<p>Zdravo {{name}},</p>
 <p>Odlične vesti! Vaš profil domaćina je odobren.</p>
-<p>Sada možete kreirati i poslati oglase za nekretnine na LocalStays. Prijavite se na svoju kontrolnu tablu da biste počeli.</p>
+<p>Sada možete kreirati i poslati oglase za nekretnine na LocalStays.</p>
 <p>Dobrodošli u LocalStays zajednicu!</p>
 <p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
     variables: ['name'],
@@ -211,7 +211,7 @@ LocalStays Tim`,
 
 Good news! Your LocalStays host account has been reinstated.
 
-You can now access your dashboard and set your listings online again. All account features have been restored.
+All account features have been restored and you can set your listings online again.
 
 Thank you for your cooperation in resolving this matter.
 
@@ -219,7 +219,7 @@ Best regards,
 The LocalStays Team`,
     bodyHtml: `<p>Hi {{name}},</p>
 <p>Good news! Your LocalStays host account has been reinstated.</p>
-<p>You can now access your dashboard and set your listings online again. All account features have been restored.</p>
+<p>All account features have been restored and you can set your listings online again.</p>
 <p>Thank you for your cooperation in resolving this matter.</p>
 <p>Best regards,<br>The LocalStays Team</p>`,
     variables: ['name'],
@@ -236,7 +236,7 @@ The LocalStays Team`,
 
 Dobre vesti! Vaš LocalStays nalog domaćina je ponovo aktiviran.
 
-Sada možete pristupiti svojoj kontrolnoj tabli i ponovo postaviti svoje oglase na mrežu. Sve funkcije naloga su vraćene.
+Sve funkcije naloga su vraćene i možete ponovo postaviti svoje oglase na mrežu.
 
 Hvala na saradnji u rešavanju ovog pitanja.
 
@@ -244,7 +244,7 @@ Srdačan pozdrav,
 LocalStays Tim`,
     bodyHtml: `<p>Zdravo {{name}},</p>
 <p>Dobre vesti! Vaš LocalStays nalog domaćina je ponovo aktiviran.</p>
-<p>Sada možete pristupiti svojoj kontrolnoj tabli i ponovo postaviti svoje oglase na mrežu. Sve funkcije naloga su vraćene.</p>
+<p>Sve funkcije naloga su vraćene i možete ponovo postaviti svoje oglase na mrežu.</p>
 <p>Hvala na saradnji u rešavanju ovog pitanja.</p>
 <p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
     variables: ['name'],
@@ -265,7 +265,7 @@ LocalStays Tim`,
 
 Your listing "{{listingName}}" has been approved!
 
-You can now set it online to start receiving booking requests. Log in to your dashboard to make it visible to guests.
+You can now set it online to start receiving booking requests.
 
 Best of luck with your bookings!
 
@@ -273,7 +273,7 @@ Best regards,
 The LocalStays Team`,
     bodyHtml: `<p>Hi {{name}},</p>
 <p>Your listing "<strong>{{listingName}}</strong>" has been approved!</p>
-<p>You can now set it online to start receiving booking requests. Log in to your dashboard to make it visible to guests.</p>
+<p>You can now set it online to start receiving booking requests.</p>
 <p>Best of luck with your bookings!</p>
 <p>Best regards,<br>The LocalStays Team</p>`,
     variables: ['name', 'listingName'],
@@ -290,7 +290,7 @@ The LocalStays Team`,
 
 Vaš oglas "{{listingName}}" je odobren!
 
-Sada možete da ga postavite na mrežu i počnete da primate zahteve za rezervacije. Prijavite se na svoju kontrolnu tablu da biste ga učinili vidljivim gostima.
+Sada možete da ga postavite na mrežu i počnete da primate zahteve za rezervacije.
 
 Srećno sa rezervacijama!
 
@@ -298,7 +298,7 @@ Srdačan pozdrav,
 LocalStays Tim`,
     bodyHtml: `<p>Zdravo {{name}},</p>
 <p>Vaš oglas "<strong>{{listingName}}</strong>" je odobren!</p>
-<p>Sada možete da ga postavite na mrežu i počnete da primate zahteve za rezervacije. Prijavite se na svoju kontrolnu tablu da biste ga učinili vidljivim gostima.</p>
+<p>Sada možete da ga postavite na mrežu i počnete da primate zahteve za rezervacije.</p>
 <p>Srećno sa rezervacijama!</p>
 <p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
     variables: ['name', 'listingName'],
@@ -488,7 +488,7 @@ We were unable to approve your Live ID verification submission.
 Reason:
 {{reason}}
 
-Please log in to your dashboard and submit a new Live ID video that addresses the feedback provided.
+Please submit a new Live ID video from your LocalStays host account that addresses the feedback provided.
 
 If you have questions about the requirements, contact our support team.
 
@@ -497,7 +497,7 @@ The LocalStays Team`,
     bodyHtml: `<p>Hi {{name}},</p>
 <p>We were unable to approve your Live ID verification submission.</p>
 <p><strong>Reason:</strong><br>{{reason}}</p>
-<p>Please log in to your dashboard and submit a new Live ID video that addresses the feedback provided.</p>
+<p>Please submit a new Live ID video from your LocalStays host account that addresses the feedback provided.</p>
 <p>If you have questions about the requirements, contact our support team.</p>
 <p>Best regards,<br>The LocalStays Team</p>`,
     variables: ['name', 'reason'],
@@ -517,7 +517,7 @@ Nismo mogli da odobrimo vašu Live ID verifikaciju.
 Razlog:
 {{reason}}
 
-Molimo prijavite se na svoju kontrolnu tablu i pošaljite novi Live ID video koji uzima u obzir date povratne informacije.
+Molimo pošaljite novi Live ID video iz vašeg LocalStays naloga domaćina koji uzima u obzir date povratne informacije.
 
 Ako imate pitanja o zahtevima, kontaktirajte naš tim za podršku.
 
@@ -526,7 +526,7 @@ LocalStays Tim`,
     bodyHtml: `<p>Zdravo {{name}},</p>
 <p>Nismo mogli da odobrimo vašu Live ID verifikaciju.</p>
 <p><strong>Razlog:</strong><br>{{reason}}</p>
-<p>Molimo prijavite se na svoju kontrolnu tablu i pošaljite novi Live ID video koji uzima u obzir date povratne informacije.</p>
+<p>Molimo pošaljite novi Live ID video iz vašeg LocalStays naloga domaćina koji uzima u obzir date povratne informacije.</p>
 <p>Ako imate pitanja o zahtevima, kontaktirajte naš tim za podršku.</p>
 <p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
     variables: ['name', 'reason'],
