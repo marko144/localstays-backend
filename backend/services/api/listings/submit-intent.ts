@@ -126,6 +126,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           
           s3Prefix,
           
+          // Optional document reference number
+          rightToListDocumentNumber: body.rightToListDocumentNumber?.trim() || undefined,
+          
           submissionToken,
           submissionTokenExpiresAt: tokenExpiresAt.toISOString(),
           
@@ -351,6 +354,14 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   const imageIds = body.images.map((img) => img.imageId);
   if (new Set(imageIds).size !== imageIds.length) {
     return 'Image IDs must be unique';
+  }
+
+  // Optional: rightToListDocumentNumber validation
+  if (body.rightToListDocumentNumber) {
+    const trimmed = body.rightToListDocumentNumber.trim();
+    if (trimmed.length === 0 || trimmed.length > 30) {
+      return 'rightToListDocumentNumber must be between 1 and 30 characters';
+    }
   }
 
   return null;

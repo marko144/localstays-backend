@@ -13,9 +13,7 @@ export type PropertyType = 'APARTMENT' | 'HOUSE' | 'VILLA' | 'STUDIO' | 'ROOM';
 export type CheckInType = 'SELF_CHECKIN' | 'HOST_GREETING' | 'LOCKBOX' | 'DOORMAN';
 export type ParkingType = 'NO_PARKING' | 'FREE' | 'PAID';
 export type VerificationDocType = 
-  | 'PROOF_OF_OWNERSHIP' 
   | 'PROOF_OF_RIGHT_TO_LIST' 
-  | 'PROOF_OF_ADDRESS' 
   | 'EXISTING_PROFILE_PROOF';
 
 export type ListingStatus = 
@@ -183,6 +181,9 @@ export interface ListingMetadata {
   
   // S3 references
   s3Prefix: string;
+  
+  // Verification Document Details
+  rightToListDocumentNumber?: string;  // Optional document reference number (max 30 chars)
   
   // Submission tracking
   submissionToken?: string;
@@ -358,6 +359,7 @@ export interface SubmitListingIntentRequest {
     displayOrder: number;
     caption?: string;
   }>;
+  rightToListDocumentNumber?: string;  // Optional document reference number (max 30 chars)
   verificationDocuments?: Array<{
     documentType: VerificationDocType;
     contentType: string;
