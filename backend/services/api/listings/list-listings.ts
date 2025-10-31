@@ -76,7 +76,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-            FilterExpression: 'isPrimary = :isPrimary AND #status = :active AND isDeleted = :notDeleted',
+            FilterExpression: 'isPrimary = :isPrimary AND #status = :ready AND isDeleted = :notDeleted',
             ExpressionAttributeNames: {
               '#status': 'status',
             },
@@ -84,7 +84,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
               ':pk': `HOST#${hostId}`,
               ':sk': `LISTING_IMAGE#${listing.listingId}#`,
               ':isPrimary': true,
-              ':active': 'ACTIVE',
+              ':ready': 'READY',
               ':notDeleted': false,
             },
             Limit: 1,
@@ -107,10 +107,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             city: listing.address.city,
             country: listing.address.country,
           },
-          primaryImage: primaryImage
+          primaryImage: primaryImage && primaryImage.status === 'READY'
             ? {
                 imageId: primaryImage.imageId,
-                s3Url: primaryImage.s3Url || '',
+                thumbnailUrl: primaryImage.webpUrls?.thumbnail || primaryImage.s3Url || '', // Fallback for legacy
               }
             : undefined,
           createdAt: listing.createdAt,

@@ -126,13 +126,18 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 10. Determine file extension
     const fileExtension = getFileExtension(videoContentType);
 
-    // 11. Generate S3 key following structure: {hostId}/listings/{listingId}/verification/
-    const s3Key = `${hostId}/listings/${listingId}/verification/property-video-${requestId}.${fileExtension}`;
+    // 11. Generate S3 key at BUCKET ROOT with veri_ prefix for GuardDuty scanning
+    const s3Key = `veri_property-video_${requestId}.${fileExtension}`;
+    const finalS3Key = `${hostId}/listings/${listingId}/verification/property-video-${requestId}.${fileExtension}`;
 
-    // 12. Generate pre-signed URL for upload (expires in 1 hour)
-    const uploadUrl = await generateUploadUrl(s3Key, videoContentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60);
+    // 12. Generate pre-signed URL for upload with metadata (expires in 1 hour)
+    const uploadUrl = await generateUploadUrl(s3Key, videoContentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60, {
+      hostId,
+      listingId,
+      requestId,
+    });
 
-    // 13. Update request with submission token
+    // 13. Update request with submission token and S3 keys
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -141,10 +146,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression:
-          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, updatedAt = :now',
+          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, s3Key = :s3Key, finalS3Key = :finalS3Key, updatedAt = :now',
         ExpressionAttributeValues: {
           ':token': submissionToken,
           ':expiresAt': tokenExpiresAt.toISOString(),
+          ':s3Key': s3Key,
+          ':finalS3Key': finalS3Key,
           ':now': new Date().toISOString(),
         },
       })

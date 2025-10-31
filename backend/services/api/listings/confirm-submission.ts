@@ -120,7 +120,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const images = imagesResult.Items || [];
 
-    // 7. Verify all uploaded images exist in S3
+    // 7. Verify all uploaded images exist in S3 (either at root pending processing OR already processed)
     const uploadedImageIds = new Set(body.uploadedImages);
     const missingImages: string[] = [];
 
@@ -130,7 +130,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         continue;
       }
 
-      // Verify file exists in S3
+      // Check if image is already processed (READY status) OR file exists at root
+      if (img.status === 'READY') {
+        // Image already processed - OK
+        console.log(`Image ${img.imageId} already processed (READY)`);
+        continue;
+      }
+
+      // Otherwise, verify file exists in S3 at root (pending processing)
       try {
         await s3Client.send(
           new HeadObjectCommand({

@@ -102,13 +102,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 7. Determine S3 key based on content type stored during intent
-    // We need to check which file was uploaded
+    // We need to check which file was uploaded at BUCKET ROOT with veri_ prefix
     const possibleExtensions = ['mp4', 'mov', 'webm'];
     let s3Key: string | null = null;
     let fileMetadata: any = null;
 
     for (const ext of possibleExtensions) {
-      const testKey = `${hostId}/requests/${requestId}/live-id-check.${ext}`;
+      const testKey = `veri_live-id-check_${requestId}.${ext}`;
       try {
         const headResult = await s3Client.send(
           new HeadObjectCommand({
@@ -129,7 +129,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // 8. Verify file exists in S3
+    // 8. Verify file exists in S3 at bucket root
     if (!s3Key || !fileMetadata) {
       return response.badRequest('Video file not found in S3. Please upload the file first.');
     }

@@ -211,13 +211,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 9. Generate pre-signed upload URLs for new documents
     const uploadUrls: DocumentUploadUrl[] = await Promise.all(
       documentRecords.map(async (doc) => {
-        const s3Key = `${hostId}/verification/${doc.documentId}_${doc.fileName}`;
+        const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
         validateS3Key(s3Key);
         
         const uploadUrl = await generateUploadUrl(
           s3Key,
           doc.mimeType,
-          UPLOAD_URL_EXPIRY_SECONDS
+          UPLOAD_URL_EXPIRY_SECONDS,
+          {
+            hostId,
+            documentId: doc.documentId,
+          }
         );
 
         return {
@@ -312,7 +316,8 @@ async function createDocumentRecords(
           fileSize: doc.fileSize,
           mimeType: doc.mimeType,
           status: 'PENDING_UPLOAD',
-          s3Key: `${hostId}/verification/${doc.documentId}_${doc.fileName}`,
+          s3Key: `veri_profile-doc_${doc.documentId}_${doc.fileName}`,
+          finalS3Key: `${hostId}/verification/${doc.documentId}_${doc.fileName}`,
           s3Bucket: BUCKET_NAME,
           uploadedBy: userId,
           uploadedAt: now,

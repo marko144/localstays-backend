@@ -210,16 +210,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 10. Create document records in DynamoDB
     await createDocumentRecords(hostId, auth.userId, documentRecords);
 
-    // 11. Generate pre-signed upload URLs
+    // 11. Generate pre-signed upload URLs (upload to BUCKET ROOT with veri_ prefix)
     const uploadUrls: DocumentUploadUrl[] = await Promise.all(
       documentRecords.map(async (doc) => {
-        const s3Key = `${hostId}/verification/${doc.documentId}_${doc.fileName}`;
+        const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
         validateS3Key(s3Key);
         
         const uploadUrl = await generateUploadUrl(
           s3Key,
           doc.mimeType,
-          UPLOAD_URL_EXPIRY_SECONDS
+          UPLOAD_URL_EXPIRY_SECONDS,
+          {
+            hostId,
+            documentId: doc.documentId,
+          }
         );
 
         return {
@@ -297,7 +301,8 @@ async function createDocumentRecords(
   const now = new Date().toISOString();
 
   for (const doc of documents) {
-    const s3Key = `${hostId}/verification/${doc.documentId}_${doc.fileName}`;
+    const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
+    const finalS3Key = `${hostId}/verification/${doc.documentId}_${doc.fileName}`;
     
     await docClient.send(
       new PutCommand({
@@ -308,7 +313,8 @@ async function createDocumentRecords(
           documentId: doc.documentId,
           hostId,
           documentType: doc.documentType,
-          s3Key,
+          s3Key, // Root location with prefix
+          finalS3Key, // Final destination after scan
           s3Bucket: BUCKET_NAME,
           fileName: doc.fileName,
           fileSize: doc.fileSize,

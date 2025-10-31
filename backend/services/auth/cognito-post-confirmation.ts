@@ -195,10 +195,13 @@ async function createHostSubscription(hostId: string): Promise<void> {
 }
 
 /**
- * Update User record with RBAC fields
+ * Create or update User record with RBAC fields
+ * Note: Using PutCommand instead of UpdateCommand because the USER record
+ * may not exist yet when post-confirmation trigger fires
  */
 async function updateUserWithRBAC(
   userSub: string,
+  email: string,
   hostId: string,
   permissions: string[]
 ): Promise<void> {
@@ -206,34 +209,30 @@ async function updateUserWithRBAC(
 
   try {
     await docClient.send(
-      new UpdateCommand({
+      new PutCommand({
         TableName: TABLE_NAME,
-        Key: {
+        Item: {
           pk: `USER#${userSub}`,
           sk: 'PROFILE',
-        },
-        UpdateExpression:
-          'SET #role = :role, #hostId = :hostId, #permissions = :permissions, #status = :status, #updatedAt = :updatedAt',
-        ExpressionAttributeNames: {
-          '#role': 'role',
-          '#hostId': 'hostId',
-          '#permissions': 'permissions',
-          '#status': 'status',
-          '#updatedAt': 'updatedAt',
-        },
-        ExpressionAttributeValues: {
-          ':role': 'HOST',
-          ':hostId': hostId,
-          ':permissions': permissions,
-          ':status': 'ACTIVE',
-          ':updatedAt': now,
+          userSub,
+          email,
+          role: 'HOST',
+          hostId,
+          permissions,
+          status: 'ACTIVE',
+          createdAt: now,
+          updatedAt: now,
         },
       })
     );
 
-    console.log(`✅ Updated User record with RBAC fields: ${userSub}`);
+    console.log(`✅ Created/Updated User record with RBAC fields: ${userSub}`, {
+      hostId,
+      role: 'HOST',
+      permissionCount: permissions.length,
+    });
   } catch (error) {
-    console.error('❌ Failed to update User record:', error);
+    console.error('❌ Failed to create/update User record:', error);
     throw error;
   }
 }
@@ -250,6 +249,7 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
 
   try {
     const { userName: userSub } = event;
+    const email = event.request.userAttributes.email;
 
     // 1. Assign user to HOST Cognito Group
     await assignToHostGroup(userSub);
@@ -266,8 +266,8 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
     // 5. Create S3 folder structure for host
     await createHostS3Folders(hostId);
 
-    // 6. Update User record with RBAC fields
-    await updateUserWithRBAC(userSub, hostId, permissions);
+    // 6. Create/Update User record with RBAC fields
+    await updateUserWithRBAC(userSub, email, hostId, permissions);
 
     console.log('✅ RBAC and subscription initialization complete', {
       userSub,

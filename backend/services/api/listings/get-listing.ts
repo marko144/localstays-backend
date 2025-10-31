@@ -78,13 +78,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
 
     const images = (imagesResult.Items || [])
+      .filter((img) => img.status === 'READY') // Only return processed images
       .map((img) => ({
         imageId: img.imageId,
-        s3Url: img.s3Url || '',
+        thumbnailUrl: img.webpUrls?.thumbnail || img.s3Url || '', // Fallback for legacy images
+        fullUrl: img.webpUrls?.full || img.s3Url || '', // Fallback for legacy images
         displayOrder: img.displayOrder,
         isPrimary: img.isPrimary,
         caption: img.caption,
-        contentType: img.contentType,
+        width: img.dimensions?.width || img.width || 0,
+        height: img.dimensions?.height || img.height || 0,
       }))
       .sort((a, b) => a.displayOrder - b.displayOrder);
 

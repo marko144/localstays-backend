@@ -15,17 +15,20 @@ const BUCKET_NAME = process.env.BUCKET_NAME!;
  * @param key - S3 object key
  * @param contentType - MIME type of the file
  * @param expiresIn - URL expiration time in seconds (default: 600 = 10 minutes)
+ * @param metadata - Optional metadata to attach to the object (for Lambda processing)
  * @returns Pre-signed upload URL
  */
 export async function generateUploadUrl(
   key: string,
   contentType: string,
-  expiresIn: number = 600
+  expiresIn: number = 600,
+  metadata?: Record<string, string>
 ): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
     ContentType: contentType,
+    Metadata: metadata,
     // Note: ServerSideEncryption is NOT included here because it would require
     // the frontend to send the x-amz-server-side-encryption header.
     // The bucket has default encryption enabled, so objects will still be encrypted.
@@ -37,6 +40,7 @@ export async function generateUploadUrl(
     key,
     contentType,
     expiresIn,
+    metadata,
     bucket: BUCKET_NAME,
   });
   

@@ -101,7 +101,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     let fileMetadata: any = null;
 
     for (const ext of possibleExtensions) {
-      const testKey = `${hostId}/listings/${listingId}/verification/property-video-${requestId}.${ext}`;
+      const testKey = `veri_property-video_${requestId}.${ext}`;
       try {
         const headResult = await s3Client.send(
           new HeadObjectCommand({
@@ -122,7 +122,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // 10. Verify file exists in S3
+    // 10. Verify file exists in S3 at bucket root
     if (!s3Key || !fileMetadata) {
       return response.badRequest('Video file not found in S3. Please upload the file first.');
     }

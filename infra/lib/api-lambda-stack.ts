@@ -7,6 +7,13 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { Construct } from 'constructs';
 
 /**
@@ -94,6 +101,10 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly hostSubmitVerificationCodeLambda: nodejs.NodejsFunction;
   public readonly hostGetListingRequestsLambda: nodejs.NodejsFunction;
 
+  // Image Processing Lambda (Container)
+  public readonly imageProcessorLambda: lambda.Function;
+  public readonly verificationProcessorLambda: nodejs.NodejsFunction;
+
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
 
@@ -172,6 +183,380 @@ export class ApiLambdaStack extends cdk.Stack {
     const hosts = v1.addResource('hosts');
     const hostIdParam = hosts.addResource('{hostId}');
     const profileResource = hostIdParam.addResource('profile');
+
+    // ========================================
+    // Image Processing Infrastructure
+    // ========================================
+
+    // Dead Letter Queue for failed image processing
+    const imageProcessingDLQ = new sqs.Queue(this, 'ImageProcessingDLQ', {
+      queueName: `${stage}-image-processing-dlq`,
+      retentionPeriod: cdk.Duration.days(14),
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Main image processing queue
+    const imageProcessingQueue = new sqs.Queue(this, 'ImageProcessingQueue', {
+      queueName: `${stage}-image-processing-queue`,
+      
+      // Visibility timeout: 3 minutes (2x Lambda timeout of 90s)
+      visibilityTimeout: cdk.Duration.seconds(180),
+      
+      // Message retention: 4 days
+      retentionPeriod: cdk.Duration.days(4),
+      
+      // Long polling to reduce empty receives
+      receiveMessageWaitTime: cdk.Duration.seconds(20),
+      
+      // Dead Letter Queue after 3 failed attempts
+      deadLetterQueue: {
+        queue: imageProcessingDLQ,
+        maxReceiveCount: 3,
+      },
+      
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // ECR Repository for image processor Lambda container
+    const imageProcessorRepository = new ecr.Repository(this, 'ImageProcessorRepo', {
+      repositoryName: `${stage}-localstays-image-processor`,
+      
+      // Automatically delete old images (keep only 3 latest)
+      lifecycleRules: [
+        {
+          description: 'Keep only last 3 images',
+          maxImageCount: 3,
+          rulePriority: 1,
+        },
+      ],
+      
+      // Encryption at rest
+      encryption: ecr.RepositoryEncryption.AES_256,
+      
+      // Image scanning disabled to save costs ($0.10 per scan)
+      imageScanOnPush: false,
+      
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // EventBridge Rule: GuardDuty Scan Results → SQS
+    const guardDutyRule = new events.Rule(this, 'GuardDutyScanComplete', {
+      ruleName: `${stage}-guardduty-scan-complete`,
+      description: 'Capture GuardDuty malware scan completion events for listing images',
+      eventPattern: {
+        source: ['aws.guardduty'],
+        detailType: ['GuardDuty Malware Protection Object Scan Result'],
+        detail: {
+          scanStatus: ['COMPLETED'],  // Matches both NO_THREATS_FOUND and THREATS_FOUND
+          s3ObjectDetails: {
+            bucketName: [bucket.bucketName],
+            objectKey: [{ prefix: 'lstimg_' }],  // ✅ FILTER: Only listing images with lstimg_ prefix
+          },
+        },
+      },
+    });
+
+    // Send GuardDuty events directly to SQS (no Lambda router needed)
+    guardDutyRule.addTarget(new targets.SqsQueue(imageProcessingQueue));
+
+    // ========================================
+    // CloudWatch Alarms for Image Processing
+    // ========================================
+
+    // Alarm: Queue backlog (messages older than 10 minutes)
+    new cloudwatch.Alarm(this, 'ImageQueueBacklogAlarm', {
+      alarmName: `${stage}-image-queue-backlog`,
+      alarmDescription: 'Alert when image processing queue has backlog > 10 min',
+      metric: imageProcessingQueue.metricApproximateAgeOfOldestMessage({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Maximum',
+      }),
+      threshold: 600, // 10 minutes in seconds
+      evaluationPeriods: 2,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Alarm: Old messages in queue (indicates processing issues)
+    new cloudwatch.Alarm(this, 'ImageQueueOldMessagesAlarm', {
+      alarmName: `${stage}-image-queue-old-messages`,
+      alarmDescription: 'Alert when images have been queued for > 30 min',
+      metric: imageProcessingQueue.metricApproximateAgeOfOldestMessage({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Maximum',
+      }),
+      threshold: 1800, // 30 minutes in seconds
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Alarm: Messages in Dead Letter Queue
+    new cloudwatch.Alarm(this, 'ImageDLQMessagesAlarm', {
+      alarmName: `${stage}-image-dlq-messages`,
+      alarmDescription: 'Alert when failed images land in DLQ',
+      metric: imageProcessingDLQ.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // ========================================
+    // Image Processor Lambda (Container)
+    // ========================================
+
+    // NOTE: The Docker image must be pushed to ECR before first deployment
+    // See: backend/services/image-processor/README.md for build/push instructions
+    
+    this.imageProcessorLambda = new lambda.Function(this, 'ImageProcessorLambda', {
+      functionName: `${stage}-image-processor`,
+      description: 'Process listing images: malware scanning + WebP conversion',
+      
+      // Runtime required even for container images
+      runtime: lambda.Runtime.FROM_IMAGE,
+      
+      // Use container image from ECR
+      code: lambda.Code.fromEcrImage(imageProcessorRepository, {
+        tagOrDigest: 'latest',
+      }),
+      
+      handler: lambda.Handler.FROM_IMAGE,
+      
+      // ARM64 for cost savings (Graviton2)
+      architecture: lambda.Architecture.ARM_64,
+      
+      // Memory: 2048 MB (Sharp is memory-intensive)
+      memorySize: 2048,
+      
+      // Timeout: 90 seconds (max for most image processing)
+      timeout: cdk.Duration.seconds(90),
+      
+      // NOTE: Reserved concurrency removed due to account limit of 10 concurrent executions
+      // SQS queue provides natural backpressure and rate limiting
+      // Account-level limits prevent runaway costs
+      
+      // Environment variables
+      environment: {
+        TABLE_NAME: table.tableName,
+        BUCKET_NAME: bucket.bucketName,
+      },
+    });
+
+    // Set log retention separately (not supported in Function constructor)
+    new logs.LogGroup(this, 'ImageProcessorLogGroup', {
+      logGroupName: `/aws/lambda/${stage}-image-processor`,
+      retention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Grant S3 permissions (read staging/, write images/ & quarantine/)
+    bucket.grantReadWrite(this.imageProcessorLambda);
+
+    // Grant DynamoDB permissions (update images, write malware records)
+    table.grantReadWriteData(this.imageProcessorLambda);
+
+    // Connect SQS queue to Lambda (event source mapping)
+    this.imageProcessorLambda.addEventSource(new SqsEventSource(imageProcessingQueue, {
+      batchSize: 1, // Process one image at a time for predictable memory usage
+      maxBatchingWindow: cdk.Duration.seconds(0), // No batching delay
+      reportBatchItemFailures: true, // Enable partial batch failure handling
+    }));
+
+    // Additional CloudWatch alarms for Lambda
+    new cloudwatch.Alarm(this, 'ImageProcessorErrorsAlarm', {
+      alarmName: `${stage}-image-processor-errors`,
+      alarmDescription: 'Alert when image processor Lambda has errors',
+      metric: this.imageProcessorLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 5, // Alert if 5+ errors in 5 minutes
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    new cloudwatch.Alarm(this, 'ImageProcessorThrottlesAlarm', {
+      alarmName: `${stage}-image-processor-throttles`,
+      alarmDescription: 'Alert when image processor Lambda is throttled',
+      metric: this.imageProcessorLambda.metricThrottles({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 10, // Alert if 10+ throttles in 5 minutes
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // ========================================
+    // Verification File Processing Pipeline
+    // ========================================
+
+    // Dead Letter Queue for failed verification file processing
+    const verificationProcessingDLQ = new sqs.Queue(this, 'VerificationProcessingDLQ', {
+      queueName: `${stage}-verification-processing-dlq`,
+      retentionPeriod: cdk.Duration.days(14),
+      
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Verification file processing queue
+    const verificationProcessingQueue = new sqs.Queue(this, 'VerificationProcessingQueue', {
+      queueName: `${stage}-verification-processing-queue`,
+      
+      // Visibility timeout: 90 seconds (Lambda timeout + buffer)
+      visibilityTimeout: cdk.Duration.seconds(90),
+      
+      // Retention: 4 days
+      retentionPeriod: cdk.Duration.days(4),
+      
+      // Long polling: 20 seconds (reduces empty receives)
+      receiveMessageWaitTime: cdk.Duration.seconds(20),
+      
+      // DLQ after 3 failed attempts
+      deadLetterQueue: {
+        queue: verificationProcessingDLQ,
+        maxReceiveCount: 3,
+      },
+      
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // EventBridge Rule: GuardDuty Scan Results for Verification Files → SQS
+    const guardDutyRuleVerification = new events.Rule(this, 'GuardDutyScanCompleteVerification', {
+      ruleName: `${stage}-guardduty-scan-complete-verification`,
+      description: 'Capture GuardDuty malware scan completion events for verification files',
+      eventPattern: {
+        source: ['aws.guardduty'],
+        detailType: ['GuardDuty Malware Protection Object Scan Result'],
+        detail: {
+          scanStatus: ['COMPLETED'],  // Matches both NO_THREATS_FOUND and THREATS_FOUND
+          s3ObjectDetails: {
+            bucketName: [bucket.bucketName],
+            objectKey: [{ prefix: 'veri_' }],  // ✅ FILTER: Only verification files with veri_ prefix
+          },
+        },
+      },
+    });
+
+    // Send GuardDuty verification events to verification processing queue
+    guardDutyRuleVerification.addTarget(new targets.SqsQueue(verificationProcessingQueue));
+
+    // CloudWatch Alarms for Verification Processing
+    new cloudwatch.Alarm(this, 'VerificationQueueBacklogAlarm', {
+      alarmName: `${stage}-verification-queue-backlog`,
+      alarmDescription: 'Alert when verification processing queue has backlog > 10 min',
+      metric: verificationProcessingQueue.metricApproximateAgeOfOldestMessage({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Maximum',
+      }),
+      threshold: 600, // 10 minutes in seconds
+      evaluationPeriods: 2,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    new cloudwatch.Alarm(this, 'VerificationDLQMessagesAlarm', {
+      alarmName: `${stage}-verification-dlq-messages`,
+      alarmDescription: 'Alert when failed verification files land in DLQ',
+      metric: verificationProcessingDLQ.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Verification Processor Lambda
+    this.verificationProcessorLambda = new nodejs.NodejsFunction(this, 'VerificationProcessorLambda', {
+      functionName: `${stage}-verification-processor`,
+      description: 'Process verification files: malware scanning + move to final destination',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      architecture: lambda.Architecture.ARM_64,
+      entry: 'backend/services/verification-processor/index.js',
+      handler: 'handler',
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      environment: {
+        TABLE_NAME: table.tableName,
+        BUCKET_NAME: bucket.bucketName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: false,
+      },
+    });
+
+    new logs.LogGroup(this, 'VerificationProcessorLogGroup', {
+      logGroupName: `/aws/lambda/${stage}-verification-processor`,
+      retention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Grant S3 permissions
+    bucket.grantReadWrite(this.verificationProcessorLambda);
+
+    // Grant DynamoDB permissions
+    table.grantReadWriteData(this.verificationProcessorLambda);
+
+    // Connect SQS queue to Lambda
+    this.verificationProcessorLambda.addEventSource(new SqsEventSource(verificationProcessingQueue, {
+      batchSize: 1,
+      maxBatchingWindow: cdk.Duration.seconds(0),
+      reportBatchItemFailures: true,
+    }));
+
+    // CloudWatch alarms for Verification Processor Lambda
+    new cloudwatch.Alarm(this, 'VerificationProcessorErrorsAlarm', {
+      alarmName: `${stage}-verification-processor-errors`,
+      alarmDescription: 'Alert when verification processor Lambda has errors',
+      metric: this.verificationProcessorLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    new cloudwatch.Alarm(this, 'VerificationProcessorThrottlesAlarm', {
+      alarmName: `${stage}-verification-processor-throttles`,
+      alarmDescription: 'Alert when verification processor Lambda is throttled',
+      metric: this.verificationProcessorLambda.metricThrottles({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 10,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
 
     // ========================================
     // Lambda Functions Setup

@@ -93,7 +93,12 @@ export type AmenityKey =
   | 'DESK'
   | 'OFFICE_CHAIR';
 
-export type ImageUploadStatus = 'PENDING_UPLOAD' | 'ACTIVE';
+export type ImageUploadStatus = 
+  | 'PENDING_UPLOAD'  // Waiting for upload to S3
+  | 'UPLOADED'        // Uploaded to staging, awaiting scan
+  | 'SCANNING'        // Being scanned by GuardDuty
+  | 'READY'           // Processed and ready for display
+  | 'QUARANTINED';    // Infected with malware
 export type DocumentReviewStatus = 'PENDING_UPLOAD' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
 
 // ============================================================================
@@ -227,16 +232,16 @@ export interface ListingImage {
   listingId: string;
   imageId: string;
   
-  // S3 references
-  s3Key: string;
-  s3Url?: string;
+  // S3 references (original upload)
+  s3Key: string;                   // Original file in staging/
+  s3Url?: string;                  // Legacy field for backward compatibility
   
   // Image properties
   displayOrder: number;            // 1-15
   isPrimary: boolean;
   caption?: string;
   
-  // File metadata
+  // File metadata (original)
   contentType: string;
   fileSize: number;
   width?: number;
@@ -245,10 +250,44 @@ export interface ListingImage {
   // Status
   status: ImageUploadStatus;
   
+  // Processed images (WebP)
+  processedAt?: string;            // When image processing completed
+  webpUrls?: {
+    full: string;                  // Full-size WebP (85% quality)
+    thumbnail: string;             // 400px thumbnail WebP (85% quality)
+  };
+  dimensions?: {
+    width: number;                 // Actual image dimensions
+    height: number;
+  };
+  
   // Metadata
   uploadedAt: string;
   isDeleted: boolean;
   deletedAt?: string;
+}
+
+// ============================================================================
+// MALWARE DETECTION (DynamoDB Record)
+// ============================================================================
+
+export interface MalwareDetection {
+  // Keys
+  pk: string;                      // LISTING#<listingId>
+  sk: string;                      // MALWARE#<timestamp>#<imageId>
+  
+  // Identifiers
+  listingId: string;
+  imageId: string;
+  
+  // Quarantine details
+  s3Key: string;                   // Path to quarantined file
+  detectedAt: string;              // ISO timestamp
+  malwareNames: string[];          // Virus/malware signatures detected
+  
+  // Context
+  hostId?: string;
+  originalS3Key?: string;          // Original staging path
 }
 
 // ============================================================================
@@ -439,11 +478,13 @@ export interface GetListingResponse {
   };
   images: Array<{
     imageId: string;
-    s3Url: string;
+    thumbnailUrl: string;        // Thumbnail WebP (400px) for gallery
+    fullUrl: string;             // Full-size WebP for detail view
     displayOrder: number;
     isPrimary: boolean;
     caption?: string;
-    contentType: string;
+    width: number;               // Image dimensions
+    height: number;
   }>;
   amenities: Array<BilingualEnum & { category: AmenityCategory }>;
   verificationDocuments?: Array<{
@@ -473,7 +514,7 @@ export interface ListListingsResponse {
     };
     primaryImage?: {
       imageId: string;
-      s3Url: string;
+      thumbnailUrl: string;      // Thumbnail WebP for listing cards
     };
     createdAt: string;
     updatedAt: string;

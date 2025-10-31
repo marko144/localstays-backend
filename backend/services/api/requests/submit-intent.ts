@@ -110,13 +110,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 7. Determine file extension
     const fileExtension = getFileExtension(contentType);
 
-    // 8. Generate S3 key
-    const s3Key = `${hostId}/requests/${requestId}/live-id-check.${fileExtension}`;
+    // 8. Generate S3 key at BUCKET ROOT with veri_ prefix for GuardDuty scanning
+    const s3Key = `veri_live-id-check_${requestId}.${fileExtension}`;
+    const finalS3Key = `${hostId}/requests/${requestId}/live-id-check.${fileExtension}`;
 
-    // 9. Generate pre-signed URL for upload (expires in 30 minutes)
-    const uploadUrl = await generateUploadUrl(s3Key, contentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60);
+    // 9. Generate pre-signed URL for upload with metadata (expires in 30 minutes)
+    const uploadUrl = await generateUploadUrl(s3Key, contentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60, {
+      hostId,
+      requestId,
+    });
 
-    // 10. Update request with submission token
+    // 10. Update request with submission token and S3 keys
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -125,10 +129,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression:
-          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, updatedAt = :now',
+          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, s3Key = :s3Key, finalS3Key = :finalS3Key, updatedAt = :now',
         ExpressionAttributeValues: {
           ':token': submissionToken,
           ':expiresAt': tokenExpiresAt.toISOString(),
+          ':s3Key': s3Key,
+          ':finalS3Key': finalS3Key,
           ':now': new Date().toISOString(),
         },
       })

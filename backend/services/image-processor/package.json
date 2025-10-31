@@ -1,0 +1,20 @@
+{
+  "name": "image-processor-lambda",
+  "version": "1.0.0",
+  "description": "Lambda function for processing listing images with malware scanning",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'No build step required for Docker container'",
+    "test": "echo 'Tests not yet implemented'"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.709.0",
+    "@aws-sdk/client-dynamodb": "^3.709.0",
+    "@aws-sdk/lib-dynamodb": "^3.709.0",
+    "sharp": "^0.33.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
+

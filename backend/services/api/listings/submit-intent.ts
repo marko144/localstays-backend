@@ -171,12 +171,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 9. Create placeholder image records and generate pre-signed URLs
+    // Images are uploaded to BUCKET ROOT with lstimg_ prefix for GuardDuty scanning
+    // After passing scan, they are processed and moved to final destination by the image-processor Lambda
     const imageUploadUrls: SubmitListingIntentResponse['imageUploadUrls'] = [];
     
     for (const img of body.images) {
-      const s3Key = `${s3Prefix}images/${img.imageId}.${getFileExtension(img.contentType)}`;
+      const s3Key = `lstimg_${img.imageId}.${getFileExtension(img.contentType)}`;
       
-      // Create placeholder image record
+      // Create placeholder image record (status: PENDING_UPLOAD)
       await docClient.send(
         new PutCommand({
           TableName: TABLE_NAME,
@@ -186,8 +188,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             
             listingId,
             imageId: img.imageId,
+            hostId,
             
-            s3Key,
+            s3Key, // Root location with prefix: lstimg_{imageId}.jpg
+            finalS3Prefix: `${s3Prefix}images/`, // Final destination after processing
             
             displayOrder: img.displayOrder,
             isPrimary: img.isPrimary,
@@ -204,8 +208,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         })
       );
 
-      // Generate pre-signed URL
-      const uploadUrl = await generateUploadUrl(s3Key, img.contentType);
+      // Generate pre-signed URL with metadata for Lambda processing
+      const uploadUrl = await generateUploadUrl(s3Key, img.contentType, 600, {
+        hostId,
+        listingId,
+        imageId: img.imageId,
+      });
       
       imageUploadUrls.push({
         imageId: img.imageId,
@@ -221,7 +229,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     if (body.verificationDocuments && body.verificationDocuments.length > 0) {
       for (const doc of body.verificationDocuments) {
-        const s3Key = `${s3Prefix}verification/${doc.documentType}.${getFileExtension(doc.contentType)}`;
+        const s3Key = `veri_listing-doc_${listingId}_${doc.documentType}.${getFileExtension(doc.contentType)}`;
         
         // Create placeholder document record
         await docClient.send(
@@ -232,9 +240,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
               sk: `LISTING_DOC#${listingId}#${doc.documentType}`,
               
               listingId,
+              hostId,
               documentType: doc.documentType,
               
-              s3Key,
+              s3Key, // Root location with prefix: veri_listing-doc_{listingId}_{docType}.ext
+              finalS3Key: `${s3Prefix}verification/${doc.documentType}.${getFileExtension(doc.contentType)}`, // Final destination
               
               contentType: doc.contentType,
               fileSize: 0, // Will be updated after upload
@@ -247,8 +257,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           })
         );
 
-        // Generate pre-signed URL
-        const uploadUrl = await generateUploadUrl(s3Key, doc.contentType);
+        // Generate pre-signed URL with metadata for Lambda processing
+        const uploadUrl = await generateUploadUrl(s3Key, doc.contentType, 600, {
+          hostId,
+          listingId,
+          documentType: doc.documentType,
+        });
         
         documentUploadUrls.push({
           documentType: doc.documentType,
