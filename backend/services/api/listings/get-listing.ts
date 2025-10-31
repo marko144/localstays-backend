@@ -78,7 +78,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
 
     const images = (imagesResult.Items || [])
-      .filter((img) => img.status === 'READY') // Only return processed images
+      .filter((img) => img.status === 'READY' || img.status === 'ACTIVE') // READY = new processed images, ACTIVE = legacy images
       .map((img) => ({
         imageId: img.imageId,
         thumbnailUrl: img.webpUrls?.thumbnail || img.s3Url || '', // Fallback for legacy images

@@ -45,10 +45,13 @@ export function getAuthContext(event: APIGatewayProxyEvent): AuthContext {
     throw new Error('UNAUTHORIZED: Missing hostId in claims for HOST user');
   }
   
-  // Parse permissions (stringified array in JWT)
+  // Parse permissions (comma-separated string in JWT)
   let permissions: string[] = [];
   try {
-    permissions = claims.permissions ? JSON.parse(claims.permissions) : [];
+    if (claims.permissions && typeof claims.permissions === 'string') {
+      // Split comma-separated string and filter out empty strings
+      permissions = claims.permissions.split(',').filter(p => p.trim().length > 0);
+    }
   } catch (error) {
     console.error('Failed to parse permissions from JWT:', error);
     permissions = [];
