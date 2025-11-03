@@ -25,9 +25,16 @@ const BUCKET_NAME = process.env.BUCKET_NAME!;
 const SUBMISSION_EXPIRY_MINUTES = 15;
 const UPLOAD_URL_EXPIRY_SECONDS = 600; // 10 minutes
 
+interface ProfilePhotoIntent {
+  photoId: string;
+  contentType: string;
+  fileSize: number;
+}
+
 interface SubmitIntentRequest {
   profile: ProfileData;
   documents: DocumentUploadIntent[];
+  profilePhoto?: ProfilePhotoIntent;
 }
 
 /**
@@ -66,7 +73,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Invalid JSON in request body');
     }
 
-    const { profile, documents } = requestBody;
+    const { profile, documents, profilePhoto } = requestBody;
 
     if (!profile || !documents) {
       console.error('❌ Missing required fields:', {
@@ -80,6 +87,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       hostId,
       hostType: profile?.hostType,
       documentCount: documents?.length,
+      hasProfilePhoto: !!profilePhoto,
       documents: documents?.map(d => ({
         type: d.documentType,
         fileName: d.fileName,
@@ -154,6 +162,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       hostType: profile.hostType,
       documentTypes: documents.map(d => d.documentType),
     });
+
+    // 6b. Validate profile photo (if provided)
+    if (profilePhoto) {
+      const photoValidation = validateProfilePhoto(profilePhoto);
+      if (photoValidation) {
+        console.error('❌ Profile photo validation failed:', {
+          hostId,
+          error: photoValidation,
+        });
+        return response.badRequest(photoValidation);
+      }
+      
+      console.log('✅ Profile photo validation passed:', {
+        hostId,
+        photoId: profilePhoto.photoId,
+        contentType: profilePhoto.contentType,
+        fileSize: profilePhoto.fileSize,
+      });
+    }
 
     // 7. Fetch current host record to verify status
     const hostRecord = await getHostRecord(hostId);
@@ -235,6 +262,45 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       })
     );
 
+    // 11b. Handle profile photo (if provided)
+    let profilePhotoUploadUrl: {
+      photoId: string;
+      uploadUrl: string;
+      expiresAt: string;
+    } | undefined;
+
+    if (profilePhoto) {
+      // Create profile photo record in DynamoDB
+      await createProfilePhotoRecord(hostId, profilePhoto);
+
+      // Generate pre-signed upload URL (upload to BUCKET ROOT with lstimg_ prefix)
+      const photoExtension = getFileExtension(profilePhoto.contentType);
+      const s3Key = `lstimg_${profilePhoto.photoId}.${photoExtension}`;
+      validateS3Key(s3Key);
+
+      const uploadUrl = await generateUploadUrl(
+        s3Key,
+        profilePhoto.contentType,
+        UPLOAD_URL_EXPIRY_SECONDS,
+        {
+          hostId,
+          photoId: profilePhoto.photoId,
+          entityType: 'PROFILE_PHOTO',
+        }
+      );
+
+      profilePhotoUploadUrl = {
+        photoId: profilePhoto.photoId,
+        uploadUrl,
+        expiresAt: new Date(Date.now() + UPLOAD_URL_EXPIRY_SECONDS * 1000).toISOString(),
+      };
+
+      console.log('✅ Generated profile photo upload URL:', {
+        hostId,
+        photoId: profilePhoto.photoId,
+      });
+    }
+
     // 12. Create submission token record
     await createSubmissionToken({
       submissionToken,
@@ -242,6 +308,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       userId: auth.userId,
       profileData: sanitizedProfile,
       documentRecords,
+      profilePhoto: profilePhoto ? { photoId: profilePhoto.photoId, uploaded: false } : undefined,
       expiresAt,
       createdAt: now,
     });
@@ -256,6 +323,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       submissionToken,
       expiresAt: new Date(expiresAt * 1000).toISOString(),
       uploadUrls,
+      profilePhotoUploadUrl,
       requiredDocuments: documentTypeValidation.missing.length > 0 
         ? [] 
         : getRequiredDocumentsDisplay(profile.hostType, vatRegistered),
@@ -348,6 +416,7 @@ async function createSubmissionToken(params: {
   userId: string;
   profileData: ProfileData;
   documentRecords: Array<{ documentId: string; documentType: string }>;
+  profilePhoto?: { photoId: string; uploaded: boolean };
   expiresAt: number;
   createdAt: string;
 }) {
@@ -364,6 +433,7 @@ async function createSubmissionToken(params: {
       documentType: doc.documentType as DocumentType,
       uploaded: false,
     })),
+    expectedProfilePhoto: params.profilePhoto,
     createdAt: params.createdAt,
     expiresAt: params.expiresAt,
     completedAt: null,
@@ -414,6 +484,79 @@ async function updateHostSubmissionTracking(
   );
 
   console.log(`Updated submission tracking for host ${hostId}`);
+}
+
+/**
+ * Validate profile photo intent
+ */
+function validateProfilePhoto(photo: ProfilePhotoIntent): string | null {
+  // Validate photoId is UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(photo.photoId)) {
+    return 'photoId must be a valid UUID';
+  }
+
+  // Validate contentType is image
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(photo.contentType.toLowerCase())) {
+    return `contentType must be one of: ${allowedTypes.join(', ')}`;
+  }
+
+  // Validate fileSize (max 10MB)
+  const maxSize = 10 * 1024 * 1024; // 10MB
+  if (photo.fileSize <= 0 || photo.fileSize > maxSize) {
+    return `fileSize must be between 1 byte and ${maxSize} bytes (10MB)`;
+  }
+
+  return null; // Valid
+}
+
+/**
+ * Create profile photo record in DynamoDB
+ */
+async function createProfilePhotoRecord(hostId: string, photo: ProfilePhotoIntent) {
+  const now = new Date().toISOString();
+  const photoExtension = getFileExtension(photo.contentType);
+  const s3Key = `lstimg_${photo.photoId}.${photoExtension}`;
+
+  await docClient.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: {
+        pk: `HOST#${hostId}`,
+        sk: `PROFILE_PHOTO#${photo.photoId}`,
+        
+        hostId,
+        photoId: photo.photoId,
+        
+        s3Key, // Root location: lstimg_{photoId}.jpg
+        finalS3Prefix: `${hostId}/profile/`, // Final destination after processing
+        
+        contentType: photo.contentType,
+        fileSize: photo.fileSize,
+        
+        status: 'PENDING_UPLOAD',
+        
+        uploadedAt: now,
+        isDeleted: false,
+      },
+    })
+  );
+
+  console.log(`Created profile photo record for host ${hostId}, photoId ${photo.photoId}`);
+}
+
+/**
+ * Get file extension from content type
+ */
+function getFileExtension(contentType: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  };
+  return map[contentType.toLowerCase()] || 'jpg';
 }
 
 /**

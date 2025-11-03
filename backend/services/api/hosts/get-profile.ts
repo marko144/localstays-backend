@@ -110,6 +110,16 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     countryCode: host.countryCode,
     address: host.address,
     
+    // Profile photo (optional)
+    profilePhoto: host.profilePhoto ? {
+      photoId: host.profilePhoto.photoId,
+      thumbnailUrl: host.profilePhoto.webpUrls?.thumbnail || '',
+      fullUrl: host.profilePhoto.webpUrls?.full || '',
+      width: host.profilePhoto.dimensions?.width || 0,
+      height: host.profilePhoto.dimensions?.height || 0,
+      status: host.profilePhoto.status,
+    } : null,
+    
     // KYC status
     kyc: {
       status: host.kyc.status,

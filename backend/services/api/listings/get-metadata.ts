@@ -35,6 +35,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       amenities,
       checkInTypes,
       parkingTypes,
+      cancellationPolicyTypes,
       verificationDocTypes,
       listingStatuses,
       amenityCategories,
@@ -43,6 +44,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       fetchEnumValues('AMENITY'),
       fetchEnumValues('CHECKIN_TYPE'),
       fetchEnumValues('PARKING_TYPE'),
+      fetchEnumValues('CANCELLATION_POLICY'),
       fetchEnumValues('VERIFICATION_DOC_TYPE'),
       fetchEnumValues('LISTING_STATUS'),
       fetchEnumValues('AMENITY_CATEGORY'),
@@ -80,6 +82,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         sortOrder: item.sortOrder,
       })),
       
+      cancellationPolicyTypes: cancellationPolicyTypes.map((item) => ({
+        key: item.enumValue,
+        en: item.translations.en,
+        sr: item.translations.sr,
+        sortOrder: item.sortOrder,
+      })),
+      
       verificationDocumentTypes: verificationDocTypes.map((item) => ({
         key: item.enumValue,
         en: item.translations.en,
@@ -108,6 +117,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       amenities: metadata.amenities.length,
       checkInTypes: metadata.checkInTypes.length,
       parkingTypes: metadata.parkingTypes.length,
+      cancellationPolicyTypes: metadata.cancellationPolicyTypes.length,
       verificationDocTypes: metadata.verificationDocumentTypes.length,
       listingStatuses: metadata.listingStatuses.length,
       amenityCategories: metadata.amenityCategories.length,

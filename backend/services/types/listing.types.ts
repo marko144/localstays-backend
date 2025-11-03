@@ -12,6 +12,14 @@
 export type PropertyType = 'APARTMENT' | 'HOUSE' | 'VILLA' | 'STUDIO' | 'ROOM';
 export type CheckInType = 'SELF_CHECKIN' | 'HOST_GREETING' | 'LOCKBOX' | 'DOORMAN';
 export type ParkingType = 'NO_PARKING' | 'FREE' | 'PAID';
+export type CancellationPolicyType = 
+  | 'NO_CANCELLATION'
+  | '24_HOURS'
+  | '2_DAYS'
+  | '3_DAYS'
+  | '4_DAYS'
+  | 'ONE_WEEK'
+  | 'OTHER';
 export type VerificationDocType = 
   | 'PROOF_OF_RIGHT_TO_LIST' 
   | 'EXISTING_PROFILE_PROOF';
@@ -182,6 +190,15 @@ export interface ListingMetadata {
   parking: {
     type: BilingualEnum;
     description?: string;
+  };
+  
+  // Smoking Policy
+  smokingAllowed: boolean;
+  
+  // Cancellation Policy
+  cancellationPolicy: {
+    type: BilingualEnum;           // Selected preset (NO_CANCELLATION, 24_HOURS, etc.)
+    customText?: string;           // Free text if type.key === 'OTHER'
   };
   
   // S3 references
@@ -390,6 +407,11 @@ export interface SubmitListingIntentRequest {
     type: ParkingType;
     description?: string;
   };
+  smokingAllowed: boolean;
+  cancellationPolicy: {
+    type: CancellationPolicyType;
+    customText?: string;           // Required if type === 'OTHER'
+  };
   amenities: AmenityKey[];
   images: Array<{
     imageId: string;
@@ -468,6 +490,11 @@ export interface GetListingResponse {
     parking: {
       type: BilingualEnum;
       description?: string;
+    };
+    smokingAllowed: boolean;
+    cancellationPolicy: {
+      type: BilingualEnum;
+      customText?: string;
     };
     createdAt: string;
     updatedAt: string;
@@ -562,6 +589,7 @@ export interface ListingMetadataResponse {
   amenities: Array<BilingualEnum & { category: AmenityCategory; sortOrder: number }>;
   checkInTypes: Array<BilingualEnum & { sortOrder: number }>;
   parkingTypes: Array<BilingualEnum & { sortOrder: number }>;
+  cancellationPolicyTypes: Array<BilingualEnum & { sortOrder: number }>;
   verificationDocumentTypes: Array<BilingualEnum & { 
     description: BilingualText;
     sortOrder: number;

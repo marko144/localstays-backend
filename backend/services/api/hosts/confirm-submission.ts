@@ -27,6 +27,9 @@ interface ConfirmSubmissionRequest {
     documentId: string;
     documentType: string;
   }>;
+  uploadedProfilePhoto?: {
+    photoId: string;
+  };
 }
 
 /**
@@ -63,7 +66,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Invalid JSON in request body');
     }
 
-    const { submissionToken, uploadedDocuments } = requestBody;
+    const { submissionToken, uploadedDocuments, uploadedProfilePhoto } = requestBody;
 
     if (!submissionToken) {
       return response.badRequest('submissionToken is required');
@@ -142,6 +145,45 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('All documents verified in S3');
 
+    // 9b. Verify profile photo (if expected)
+    let profilePhotoRecord: any = null;
+    if (tokenRecord.expectedProfilePhoto) {
+      // Check if photo was reported as uploaded
+      if (!uploadedProfilePhoto || uploadedProfilePhoto.photoId !== tokenRecord.expectedProfilePhoto.photoId) {
+        return response.badRequest(`Profile photo ${tokenRecord.expectedProfilePhoto.photoId} was not reported as uploaded`);
+      }
+
+      // Fetch profile photo record from DynamoDB
+      const photoResult = await docClient.send(
+        new GetCommand({
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `HOST#${hostId}`,
+            sk: `PROFILE_PHOTO#${tokenRecord.expectedProfilePhoto.photoId}`,
+          },
+        })
+      );
+
+      profilePhotoRecord = photoResult.Item;
+
+      if (!profilePhotoRecord) {
+        return response.badRequest(`Profile photo record not found: ${tokenRecord.expectedProfilePhoto.photoId}`);
+      }
+
+      // If photo is already READY, it was processed - skip S3 check
+      if (profilePhotoRecord.status === 'READY') {
+        console.log(`Profile photo ${tokenRecord.expectedProfilePhoto.photoId} already processed (READY)`);
+      } else {
+        // Verify photo exists in S3 (at root, pending processing)
+        const photoExists = await objectExists(profilePhotoRecord.s3Key);
+        if (!photoExists) {
+          return response.badRequest(`Profile photo not uploaded to S3: ${profilePhotoRecord.s3Key}`);
+        }
+      }
+
+      console.log('Profile photo verified');
+    }
+
     // 10. Execute transaction to update all records atomically
     const submittedAt = new Date().toISOString();
     await executeProfileSubmissionTransaction(
@@ -149,6 +191,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       submissionToken,
       tokenRecord,
       documents,
+      profilePhotoRecord,
       submittedAt
     );
 
@@ -282,13 +325,14 @@ async function getDocumentsByIds(hostId: string, documentIds: string[]): Promise
 
 /**
  * Execute atomic transaction to complete submission
- * Updates: Host status, Document statuses, Submission token status
+ * Updates: Host status, Document statuses, Profile photo status (if any), Submission token status
  */
 async function executeProfileSubmissionTransaction(
   hostId: string,
   _submissionToken: string,
   tokenRecord: SubmissionToken,
   documents: Document[],
+  profilePhoto: any,
   submittedAt: string
 ) {
   const transactItems = [];
@@ -339,6 +383,20 @@ async function executeProfileSubmissionTransaction(
           ...doc,
           status: 'PENDING',
           uploadedAt: submittedAt,
+          updatedAt: submittedAt,
+        },
+      },
+    });
+  }
+
+  // 2b. Update profile photo record: status → PENDING_SCAN (if provided)
+  if (profilePhoto) {
+    transactItems.push({
+      Put: {
+        TableName: TABLE_NAME,
+        Item: {
+          ...profilePhoto,
+          status: 'PENDING_SCAN',
           updatedAt: submittedAt,
         },
       },

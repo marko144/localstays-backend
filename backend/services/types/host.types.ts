@@ -68,6 +68,27 @@ export interface SubmissionTracking {
 }
 
 /**
+ * Profile photo details
+ */
+export interface ProfilePhoto {
+  photoId: string;
+  s3Key: string; // Original location (root): lstimg_{photoId}.jpg
+  webpUrls?: {
+    thumbnail: string; // {hostId}/profile/photo_thumbnail.webp
+    full: string; // {hostId}/profile/photo_full.webp
+  };
+  dimensions?: {
+    width: number;
+    height: number;
+  };
+  contentType: string;
+  fileSize: number;
+  status: 'PENDING_UPLOAD' | 'PENDING_SCAN' | 'READY' | 'QUARANTINED';
+  uploadedAt: string;
+  isDeleted: boolean;
+}
+
+/**
  * Base Host entity (common fields)
  */
 export interface BaseHost {
@@ -96,6 +117,9 @@ export interface BaseHost {
   
   // Statistics
   stats: HostStats;
+  
+  // Profile photo (optional)
+  profilePhoto?: ProfilePhoto;
   
   // GSI attributes
   gsi1pk?: string;             // For HostIdIndex

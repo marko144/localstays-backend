@@ -67,27 +67,47 @@ curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
 
 ## Deployment
 
-The Docker image is built and pushed to ECR, then deployed as a Lambda function via CDK:
+### Automated Deployment (Recommended)
+
+Use the deployment script which handles Docker manifest list issues:
 
 ```bash
-# Authenticate Docker to ECR
+./deploy.sh dev1 eu-north-1 YOUR_ACCOUNT_ID
+```
+
+The script will build, push, and prepare the image for Lambda deployment.
+
+### Manual Deployment
+
+**IMPORTANT:** Docker Desktop creates manifest lists by default, which AWS Lambda does not support. The deployment script handles this automatically, but if deploying manually, follow these steps:
+
+```bash
+# 1. Authenticate Docker to ECR
 aws ecr get-login-password --region eu-north-1 | \
   docker login --username AWS --password-stdin \
   YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com
 
-# Build for ARM64 (Lambda uses Graviton2)
+# 2. Build for ARM64 (Lambda uses Graviton2)
 docker build --platform linux/arm64 -t dev1-localstays-image-processor .
 
-# Tag image
+# 3. Tag and push
 docker tag dev1-localstays-image-processor:latest \
   YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor:latest
-
-# Push to ECR
 docker push YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor:latest
 
-# Deploy via CDK
-cd ../../../
-npx cdk deploy LocalstaysDev1ApiStack -c env=dev1
+# 4. Extract ARM64 manifest digest and re-push as single-platform
+ARM64_DIGEST=$(docker inspect dev1-localstays-image-processor:latest --format '{{.Id}}' | cut -d':' -f2)
+docker pull --platform=linux/arm64 \
+  YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor@sha256:${ARM64_DIGEST}
+docker tag YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor@sha256:${ARM64_DIGEST} \
+  YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor:latest
+docker push YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor:latest
+
+# 5. Update Lambda function
+aws lambda update-function-code \
+  --function-name dev1-image-processor \
+  --image-uri YOUR_ACCOUNT_ID.dkr.ecr.eu-north-1.amazonaws.com/dev1-localstays-image-processor:latest \
+  --region eu-north-1
 ```
 
 ## Configuration

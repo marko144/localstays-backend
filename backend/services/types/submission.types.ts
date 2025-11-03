@@ -22,6 +22,14 @@ export interface ExpectedDocument {
 }
 
 /**
+ * Expected profile photo for submission
+ */
+export interface ExpectedProfilePhoto {
+  photoId: string;
+  uploaded: boolean;
+}
+
+/**
  * Submission token entity in DynamoDB
  */
 export interface SubmissionToken {
@@ -38,6 +46,9 @@ export interface SubmissionToken {
   
   // Expected documents
   expectedDocuments: ExpectedDocument[];
+  
+  // Expected profile photo (optional)
+  expectedProfilePhoto?: ExpectedProfilePhoto;
   
   // Metadata
   createdAt: string;

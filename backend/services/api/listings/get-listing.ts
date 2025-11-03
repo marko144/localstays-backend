@@ -140,6 +140,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         pets: listing.pets,
         checkIn: listing.checkIn,
         parking: listing.parking,
+        smokingAllowed: listing.smokingAllowed,
+        cancellationPolicy: listing.cancellationPolicy,
         createdAt: listing.createdAt,
         updatedAt: listing.updatedAt,
         submittedAt: listing.submittedAt,

@@ -493,6 +493,31 @@ async function seedListingEnums() {
     });
   });
 
+  // Cancellation Policy Types
+  const cancellationPolicyTypes = [
+    { key: 'NO_CANCELLATION', en: 'No Cancellation', sr: 'Bez otkaza', sortOrder: 1 },
+    { key: '24_HOURS', en: '24 Hours', sr: '24 sata', sortOrder: 2 },
+    { key: '2_DAYS', en: '2 Days', sr: '2 dana', sortOrder: 3 },
+    { key: '3_DAYS', en: '3 Days', sr: '3 dana', sortOrder: 4 },
+    { key: '4_DAYS', en: '4 Days', sr: '4 dana', sortOrder: 5 },
+    { key: 'ONE_WEEK', en: 'One Week', sr: 'Jedna nedelja', sortOrder: 6 },
+    { key: 'OTHER', en: 'Other (Custom)', sr: 'Drugo (Prilagođeno)', sortOrder: 7 },
+  ];
+
+  cancellationPolicyTypes.forEach((type) => {
+    enumRecords.push({
+      pk: 'ENUM#CANCELLATION_POLICY',
+      sk: `VALUE#${type.key}`,
+      enumType: 'CANCELLATION_POLICY',
+      enumValue: type.key,
+      translations: { en: type.en, sr: type.sr },
+      isActive: true,
+      sortOrder: type.sortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
   // Amenity Categories
   const amenityCategories = [
     { key: 'BASICS', en: 'Basics', sr: 'Osnovno', sortOrder: 1 },
