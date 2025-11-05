@@ -685,6 +685,7 @@ async function seedListingEnums() {
   const listingStatuses = [
     { key: 'DRAFT', en: 'Draft', sr: 'Nacrt', descriptionEn: 'Listing is being created', descriptionSr: 'Oglas se kreira' },
     { key: 'IN_REVIEW', en: 'In Review', sr: 'Na pregledu', descriptionEn: 'Submitted and awaiting admin approval', descriptionSr: 'Poslato i čeka odobrenje' },
+    { key: 'REVIEWING', en: 'Reviewing', sr: 'Pregled u toku', descriptionEn: 'Admin is actively reviewing this listing', descriptionSr: 'Admin aktivno pregledava ovaj oglas' },
     { key: 'APPROVED', en: 'Approved', sr: 'Odobreno', descriptionEn: 'Approved by admin, ready to go online', descriptionSr: 'Odobreno od strane admina, spremno za objavljivanje' },
     { key: 'REJECTED', en: 'Rejected', sr: 'Odbijeno', descriptionEn: 'Rejected by admin, requires changes', descriptionSr: 'Odbijeno od strane admina, potrebne izmene' },
     { key: 'ONLINE', en: 'Online', sr: 'Aktivno', descriptionEn: 'Live and visible to guests', descriptionSr: 'Objavljeno i vidljivo gostima' },

@@ -21,8 +21,8 @@ import { ApiLambdaStack } from '../lib/api-lambda-stack';
 
 const app = new cdk.App();
 
-// Get environment from context (default to 'dev' for backwards compatibility)
-const envName = app.node.tryGetContext('env') || 'dev';
+// Get environment from context (default to 'dev1')
+const envName = app.node.tryGetContext('env') || 'dev1';
 
 // Get environment configuration from cdk.json
 const environments = app.node.tryGetContext('environments');

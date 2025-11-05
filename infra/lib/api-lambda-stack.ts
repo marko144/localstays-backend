@@ -44,62 +44,28 @@ export interface ApiLambdaStackProps extends cdk.StackProps {
 export class ApiLambdaStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
   public readonly authorizer: apigateway.CognitoUserPoolsAuthorizer;
-  public readonly submitIntentLambda: nodejs.NodejsFunction;
-  public readonly confirmSubmissionLambda: nodejs.NodejsFunction;
-  public readonly updateRejectedProfileLambda: nodejs.NodejsFunction;
-  public readonly getProfileLambda: nodejs.NodejsFunction;
+  
+  // Host Profile Lambda (Consolidated)
+  public readonly hostProfileHandlerLambda: nodejs.NodejsFunction;
+  
   public readonly getSubscriptionLambda: nodejs.NodejsFunction;
   
-  // Listing Lambdas
-  public readonly getListingMetadataLambda: nodejs.NodejsFunction;
-  public readonly submitListingIntentLambda: nodejs.NodejsFunction;
-  public readonly confirmListingSubmissionLambda: nodejs.NodejsFunction;
-  public readonly getListingLambda: nodejs.NodejsFunction;
-  public readonly listListingsLambda: nodejs.NodejsFunction;
-  public readonly deleteListingLambda: nodejs.NodejsFunction;
+  // Listing Lambdas (Consolidated)
+  public readonly hostListingsHandlerLambda: nodejs.NodejsFunction;
   
-  // Request Lambdas
-  public readonly listRequestsLambda: nodejs.NodejsFunction;
-  public readonly getRequestLambda: nodejs.NodejsFunction;
-  public readonly submitRequestIntentLambda: nodejs.NodejsFunction;
-  public readonly confirmRequestSubmissionLambda: nodejs.NodejsFunction;
+  // Request Lambdas (Consolidated)
+  public readonly hostRequestsHandlerLambda: nodejs.NodejsFunction;
 
-  // Admin Host Lambdas
-  public readonly adminListHostsLambda: nodejs.NodejsFunction;
-  public readonly adminSearchHostsLambda: nodejs.NodejsFunction;
-  public readonly adminGetHostLambda: nodejs.NodejsFunction;
-  public readonly adminListHostDocumentsLambda: nodejs.NodejsFunction;
-  public readonly adminPendingReviewHostsLambda: nodejs.NodejsFunction;
-  public readonly adminApproveHostLambda: nodejs.NodejsFunction;
-  public readonly adminRejectHostLambda: nodejs.NodejsFunction;
-  public readonly adminSuspendHostLambda: nodejs.NodejsFunction;
-  public readonly adminReinstateHostLambda: nodejs.NodejsFunction;
+  // Admin Hosts Lambda (Consolidated)
+  public readonly adminHostsHandlerLambda: nodejs.NodejsFunction;
 
-  // Admin Listing Lambdas
-  public readonly adminListListingsLambda: nodejs.NodejsFunction;
-  public readonly adminPendingReviewListingsLambda: nodejs.NodejsFunction;
-  public readonly adminListHostListingsLambda: nodejs.NodejsFunction;
-  public readonly adminGetListingLambda: nodejs.NodejsFunction;
-  public readonly adminApproveListingLambda: nodejs.NodejsFunction;
-  public readonly adminRejectListingLambda: nodejs.NodejsFunction;
-  public readonly adminSuspendListingLambda: nodejs.NodejsFunction;
+  // Admin Listings Lambda (Consolidated)
+  public readonly adminListingsHandlerLambda: nodejs.NodejsFunction;
 
-  // Admin Request Lambdas
-  public readonly adminListRequestsLambda: nodejs.NodejsFunction;
-  public readonly adminPendingReviewRequestsLambda: nodejs.NodejsFunction;
-  public readonly adminListHostRequestsLambda: nodejs.NodejsFunction;
-  public readonly adminGetRequestLambda: nodejs.NodejsFunction;
-  public readonly adminApproveRequestLambda: nodejs.NodejsFunction;
-  public readonly adminRejectRequestLambda: nodejs.NodejsFunction;
-  public readonly adminCreateVideoVerificationLambda: nodejs.NodejsFunction;
-  public readonly adminCreateAddressVerificationLambda: nodejs.NodejsFunction;
-  public readonly adminGetListingRequestsLambda: nodejs.NodejsFunction;
+  // Admin Requests Lambda (Consolidated)
+  public readonly adminRequestsHandlerLambda: nodejs.NodejsFunction;
 
-  // Host Verification Lambdas
-  public readonly hostSubmitVideoIntentLambda: nodejs.NodejsFunction;
-  public readonly hostConfirmVideoLambda: nodejs.NodejsFunction;
-  public readonly hostSubmitVerificationCodeLambda: nodejs.NodejsFunction;
-  public readonly hostGetListingRequestsLambda: nodejs.NodejsFunction;
+  // Host Verification Lambdas (now consolidated into hostRequestsHandlerLambda)
 
   // Image Processing Lambda (Container)
   public readonly imageProcessorLambda: lambda.Function;
@@ -590,52 +556,27 @@ export class ApiLambdaStack extends cdk.Stack {
     };
 
     // ========================================
-    // Submit Intent Lambda
+    // HOST PROFILE LAMBDA (CONSOLIDATED)
     // ========================================
-    this.submitIntentLambda = new nodejs.NodejsFunction(this, 'SubmitIntentLambda', {
+    this.hostProfileHandlerLambda = new nodejs.NodejsFunction(this, 'HostProfileHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-submit-intent`,
-      entry: 'backend/services/api/hosts/submit-intent.ts',
+      functionName: `localstays-${stage}-host-profile-handler`,
+      entry: 'backend/services/api/hosts/handler.ts',
       handler: 'handler',
-      description: 'Create profile submission intent and generate upload URLs',
+      description: 'Consolidated: Host profile operations (submit-intent, confirm-submission, update-rejected, get-profile)',
       environment: commonEnvironment,
     });
 
-    // Grant DynamoDB permissions (least privilege)
-    table.grantReadWriteData(this.submitIntentLambda); // For host, document, submission token CRUD
+    // Grant DynamoDB permissions (read + write for all operations)
+    table.grantReadWriteData(this.hostProfileHandlerLambda);
+    emailTemplatesTable.grantReadData(this.hostProfileHandlerLambda); // For confirm-submission emails
 
-    // Grant S3 permissions for pre-signed URL generation (no actual S3 operations)
-    this.submitIntentLambda.addToRolePolicy(new iam.PolicyStatement({
+    // Grant S3 permissions (for pre-signed URLs and verification)
+    this.hostProfileHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:PutObject', // Needed for generating pre-signed PUT URLs
-      ],
-      resources: [
-        `${bucket.bucketArn}/*`,
-      ],
-    }));
-
-    // ========================================
-    // Confirm Submission Lambda
-    // ========================================
-    this.confirmSubmissionLambda = new nodejs.NodejsFunction(this, 'ConfirmSubmissionLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-confirm-submission`,
-      entry: 'backend/services/api/hosts/confirm-submission.ts',
-      handler: 'handler',
-      description: 'Verify document uploads and complete profile submission',
-      environment: commonEnvironment,
-    });
-
-    // Grant DynamoDB permissions (least privilege)
-    table.grantReadWriteData(this.confirmSubmissionLambda); // For transactional updates
-    emailTemplatesTable.grantReadData(this.confirmSubmissionLambda); // For email templates
-
-    // Grant S3 permissions for verification (HeadObject only)
-    this.confirmSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        's3:HeadObject',     // Verify object exists
+        's3:PutObject',      // For generating pre-signed PUT URLs
+        's3:HeadObject',     // For verifying object exists (confirm-submission)
         's3:GetObject',      // For future document validation
       ],
       resources: [
@@ -643,51 +584,14 @@ export class ApiLambdaStack extends cdk.Stack {
       ],
     }));
 
-    // Grant SSM permissions for SendGrid API key
-    this.confirmSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
+    // Grant SSM permissions for SendGrid API key (for confirm-submission emails)
+    this.hostProfileHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
       resources: [
         `arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`,
       ],
     }));
-
-    // ========================================
-    // Update Rejected Profile Lambda
-    // ========================================
-    this.updateRejectedProfileLambda = new nodejs.NodejsFunction(this, 'UpdateRejectedProfileLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-update-rejected-profile`,
-      entry: 'backend/services/api/hosts/update-rejected-profile.ts',
-      handler: 'handler',
-      description: 'Update rejected host profile with optional new documents',
-      environment: commonEnvironment,
-    });
-
-    // Grant DynamoDB permissions
-    table.grantReadWriteData(this.updateRejectedProfileLambda);
-    
-    // Grant S3 permissions for presigned URL generation
-    this.updateRejectedProfileLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['s3:PutObject'],
-      resources: [`${bucket.bucketArn}/*`],
-    }));
-
-    // ========================================
-    // Get Profile Lambda
-    // ========================================
-    this.getProfileLambda = new nodejs.NodejsFunction(this, 'GetProfileLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-get-profile`,
-      entry: 'backend/services/api/hosts/get-profile.ts',
-      handler: 'handler',
-      description: 'Retrieve host profile and document metadata',
-      environment: commonEnvironment,
-    });
-
-    // Grant DynamoDB permissions (read-only)
-    table.grantReadData(this.getProfileLambda); // Only needs read access
 
     // ========================================
     // Get Subscription Lambda
@@ -708,509 +612,134 @@ export class ApiLambdaStack extends cdk.Stack {
     // LISTING LAMBDA FUNCTIONS
     // ========================================
 
-    // Get Listing Metadata Lambda
-    this.getListingMetadataLambda = new nodejs.NodejsFunction(this, 'GetListingMetadataLambda', {
+    // ========================================
+    // Host Listings Handler Lambda (Consolidated)
+    // ========================================
+    this.hostListingsHandlerLambda = new nodejs.NodejsFunction(this, 'HostListingsHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-get-listing-metadata`,
-      entry: 'backend/services/api/listings/get-metadata.ts',
+      functionName: `localstays-${stage}-host-listings-handler`,
+      entry: 'backend/services/api/listings/handler.ts',
       handler: 'handler',
-      description: 'Get listing configuration metadata (property types, amenities, etc.)',
+      description: 'Consolidated: Host listings operations (get-metadata, submit-intent, confirm-submission, list, get, delete)',
       environment: commonEnvironment,
     });
-    table.grantReadData(this.getListingMetadataLambda);
 
-    // Submit Listing Intent Lambda
-    this.submitListingIntentLambda = new nodejs.NodejsFunction(this, 'SubmitListingIntentLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-submit-listing-intent`,
-      entry: 'backend/services/api/listings/submit-intent.ts',
-      handler: 'handler',
-      description: 'Create listing submission intent and generate upload URLs',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.submitListingIntentLambda);
-    this.submitListingIntentLambda.addToRolePolicy(new iam.PolicyStatement({
+    // Grant DynamoDB permissions (read + write for all operations)
+    table.grantReadWriteData(this.hostListingsHandlerLambda);
+
+    // Grant S3 permissions (for pre-signed URLs and verification)
+    this.hostListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['s3:PutObject'],
-      resources: [`${bucket.bucketArn}/*`],
+      actions: [
+        's3:PutObject',      // For generating pre-signed PUT URLs (submit-intent)
+        's3:HeadObject',     // For verifying object exists (confirm-submission)
+        's3:GetObject',      // For future document validation
+      ],
+      resources: [
+        `${bucket.bucketArn}/*`,
+      ],
     }));
-
-    // Confirm Listing Submission Lambda
-    this.confirmListingSubmissionLambda = new nodejs.NodejsFunction(this, 'ConfirmListingSubmissionLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-confirm-listing-submission`,
-      entry: 'backend/services/api/listings/confirm-submission.ts',
-      handler: 'handler',
-      description: 'Verify listing uploads and complete submission',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.confirmListingSubmissionLambda);
-    this.confirmListingSubmissionLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['s3:HeadObject', 's3:GetObject'],
-      resources: [`${bucket.bucketArn}/*`],
-    }));
-
-    // Get Listing Lambda
-    this.getListingLambda = new nodejs.NodejsFunction(this, 'GetListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-get-listing`,
-      entry: 'backend/services/api/listings/get-listing.ts',
-      handler: 'handler',
-      description: 'Get full listing details',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.getListingLambda);
-
-    // List Listings Lambda
-    this.listListingsLambda = new nodejs.NodejsFunction(this, 'ListListingsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-list-listings`,
-      entry: 'backend/services/api/listings/list-listings.ts',
-      handler: 'handler',
-      description: 'List all listings for a host',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.listListingsLambda);
-
-    // Delete Listing Lambda
-    this.deleteListingLambda = new nodejs.NodejsFunction(this, 'DeleteListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-delete-listing`,
-      entry: 'backend/services/api/listings/delete-listing.ts',
-      handler: 'handler',
-      description: 'Soft delete a listing',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.deleteListingLambda);
 
     // ========================================
     // REQUEST LAMBDA FUNCTIONS
     // ========================================
 
-    // List Requests Lambda
-    this.listRequestsLambda = new nodejs.NodejsFunction(this, 'ListRequestsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-list-requests`,
-      entry: 'backend/services/api/requests/list-requests.ts',
-      handler: 'handler',
-      description: 'List all verification requests for a host',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.listRequestsLambda);
-
-    // Get Request Lambda
-    this.getRequestLambda = new nodejs.NodejsFunction(this, 'GetRequestLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-get-request`,
-      entry: 'backend/services/api/requests/get-request.ts',
-      handler: 'handler',
-      description: 'Get details of a specific verification request',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.getRequestLambda);
-
-    // Submit Request Intent Lambda
-    this.submitRequestIntentLambda = new nodejs.NodejsFunction(this, 'SubmitRequestIntentLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-submit-request-intent`,
-      entry: 'backend/services/api/requests/submit-intent.ts',
-      handler: 'handler',
-      description: 'Generate pre-signed URL for request file upload',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.submitRequestIntentLambda);
-    bucket.grantPut(this.submitRequestIntentLambda);
-
-    // Confirm Request Submission Lambda
-    this.confirmRequestSubmissionLambda = new nodejs.NodejsFunction(this, 'ConfirmRequestSubmissionLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-confirm-request-submission`,
-      entry: 'backend/services/api/requests/confirm-submission.ts',
-      handler: 'handler',
-      description: 'Verify request file upload and update status',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.confirmRequestSubmissionLambda);
-    bucket.grantRead(this.confirmRequestSubmissionLambda);
-
     // ========================================
-    // HOST VERIFICATION LAMBDAS
+    // HOST REQUESTS HANDLER LAMBDA (CONSOLIDATED)
     // ========================================
-
-    // Submit Property Video Intent
-    this.hostSubmitVideoIntentLambda = new nodejs.NodejsFunction(this, 'HostSubmitVideoIntentLambda', {
+    this.hostRequestsHandlerLambda = new nodejs.NodejsFunction(this, 'HostRequestsHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-host-submit-video-intent`,
-      entry: 'backend/services/api/hosts/submit-video-intent.ts',
+      functionName: `localstays-${stage}-host-requests-handler`,
+      entry: 'backend/services/api/requests/handler.ts',
       handler: 'handler',
-      description: 'Host: Initiate property video verification upload',
+      description: 'Consolidated: Host requests operations (list, get, submit-intent, confirm-submission, video, verification)',
       environment: commonEnvironment,
     });
-    table.grantReadWriteData(this.hostSubmitVideoIntentLambda);
-    bucket.grantReadWrite(this.hostSubmitVideoIntentLambda);
 
-    // Confirm Property Video Upload
-    this.hostConfirmVideoLambda = new nodejs.NodejsFunction(this, 'HostConfirmVideoLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-host-confirm-video`,
-      entry: 'backend/services/api/hosts/confirm-video.ts',
-      handler: 'handler',
-      description: 'Host: Confirm property video verification upload',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.hostConfirmVideoLambda);
-    bucket.grantRead(this.hostConfirmVideoLambda);
+    // Grant DynamoDB permissions (read + write for all operations)
+    table.grantReadWriteData(this.hostRequestsHandlerLambda);
 
-    // Submit Address Verification Code
-    this.hostSubmitVerificationCodeLambda = new nodejs.NodejsFunction(this, 'HostSubmitVerificationCodeLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-host-submit-verification-code`,
-      entry: 'backend/services/api/hosts/submit-verification-code.ts',
-      handler: 'handler',
-      description: 'Host: Submit address verification code',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.hostSubmitVerificationCodeLambda);
-    emailTemplatesTable.grantReadData(this.hostSubmitVerificationCodeLambda);
-    this.hostSubmitVerificationCodeLambda.addToRolePolicy(new iam.PolicyStatement({
+    // Grant S3 permissions (for pre-signed URLs and verification)
+    bucket.grantReadWrite(this.hostRequestsHandlerLambda);
+
+    // Grant email templates table read access (for verification code emails)
+    emailTemplatesTable.grantReadData(this.hostRequestsHandlerLambda);
+
+    // Grant SSM parameter access (for SendGrid API key)
+    this.hostRequestsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
 
-    // Get Listing Requests
-    this.hostGetListingRequestsLambda = new nodejs.NodejsFunction(this, 'HostGetListingRequestsLambda', {
+    // ========================================
+    // ADMIN HOST LAMBDA (CONSOLIDATED)
+    // ========================================
+    // Consolidates 9 operations into 1 Lambda to reduce CloudFormation resources
+    // Operations: list, search, get, list-documents, pending-review, approve, reject, suspend, reinstate
+
+    this.adminHostsHandlerLambda = new nodejs.NodejsFunction(this, 'AdminHostsHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-host-get-listing-requests`,
-      entry: 'backend/services/api/hosts/get-listing-requests.ts',
+      functionName: `localstays-${stage}-admin-hosts-handler`,
+      entry: 'backend/services/api/admin/hosts/handler.ts',
       handler: 'handler',
-      description: 'Host: Get all requests for a specific listing',
+      description: 'Admin: Consolidated handler for all host operations',
       environment: commonEnvironment,
     });
-    table.grantReadData(this.hostGetListingRequestsLambda);
+    
+    // Grant permissions for all operations
+    table.grantReadWriteData(this.adminHostsHandlerLambda);
+    bucket.grantRead(this.adminHostsHandlerLambda);
+    emailTemplatesTable.grantReadData(this.adminHostsHandlerLambda);
+    
+    // Grant SSM parameter access for email operations (approve/reject)
+    this.adminHostsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
 
     // ========================================
-    // ADMIN HOST LAMBDAS
+    // ADMIN LISTING LAMBDA (CONSOLIDATED)
     // ========================================
+    // Consolidates 8 operations into 1 Lambda to reduce CloudFormation resources
+    // Operations: list, pending-review, list-host-listings, get, set-reviewing, approve, reject, suspend
 
-    // List All Hosts
-    this.adminListHostsLambda = new nodejs.NodejsFunction(this, 'AdminListHostsLambda', {
+    this.adminListingsHandlerLambda = new nodejs.NodejsFunction(this, 'AdminListingsHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-hosts`,
-      entry: 'backend/services/api/admin/hosts/list-hosts.ts',
+      functionName: `localstays-${stage}-admin-listings-handler`,
+      entry: 'backend/services/api/admin/listings/handler.ts',
       handler: 'handler',
-      description: 'Admin: List all hosts with pagination',
+      description: 'Admin: Consolidated handler for all listing operations',
       environment: commonEnvironment,
     });
-    table.grantReadData(this.adminListHostsLambda);
-
-    // Search Hosts
-    this.adminSearchHostsLambda = new nodejs.NodejsFunction(this, 'AdminSearchHostsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-search-hosts`,
-      entry: 'backend/services/api/admin/hosts/search-hosts.ts',
-      handler: 'handler',
-      description: 'Admin: Search hosts by name or email',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminSearchHostsLambda);
-
-    // Get Host Details
-    this.adminGetHostLambda = new nodejs.NodejsFunction(this, 'AdminGetHostLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-get-host`,
-      entry: 'backend/services/api/admin/hosts/get-host.ts',
-      handler: 'handler',
-      description: 'Admin: Get full host details',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminGetHostLambda);
-
-    // List Host Documents
-    this.adminListHostDocumentsLambda = new nodejs.NodejsFunction(this, 'AdminListHostDocumentsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-host-documents`,
-      entry: 'backend/services/api/admin/hosts/list-documents.ts',
-      handler: 'handler',
-      description: 'Admin: List host KYC documents with pre-signed URLs',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminListHostDocumentsLambda);
-    bucket.grantRead(this.adminListHostDocumentsLambda);
-
-    // Pending Review Hosts
-    this.adminPendingReviewHostsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewHostsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-pending-review-hosts`,
-      entry: 'backend/services/api/admin/hosts/pending-review.ts',
-      handler: 'handler',
-      description: 'Admin: Get hosts pending review (VERIFICATION status)',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminPendingReviewHostsLambda);
-
-    // Approve Host
-    this.adminApproveHostLambda = new nodejs.NodejsFunction(this, 'AdminApproveHostLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-approve-host`,
-      entry: 'backend/services/api/admin/hosts/approve-host.ts',
-      handler: 'handler',
-      description: 'Admin: Approve host profile',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminApproveHostLambda);
-    emailTemplatesTable.grantReadData(this.adminApproveHostLambda);
-    this.adminApproveHostLambda.addToRolePolicy(new iam.PolicyStatement({
+    
+    // Grant permissions for all operations
+    table.grantReadWriteData(this.adminListingsHandlerLambda);
+    bucket.grantRead(this.adminListingsHandlerLambda);
+    emailTemplatesTable.grantReadData(this.adminListingsHandlerLambda);
+    
+    // Grant SSM parameter access for email operations (approve/reject)
+    this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
-
-    // Reject Host
-    this.adminRejectHostLambda = new nodejs.NodejsFunction(this, 'AdminRejectHostLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-reject-host`,
-      entry: 'backend/services/api/admin/hosts/reject-host.ts',
-      handler: 'handler',
-      description: 'Admin: Reject host profile',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminRejectHostLambda);
-    emailTemplatesTable.grantReadData(this.adminRejectHostLambda);
-    this.adminRejectHostLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Suspend Host
-    this.adminSuspendHostLambda = new nodejs.NodejsFunction(this, 'AdminSuspendHostLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-suspend-host`,
-      entry: 'backend/services/api/admin/hosts/suspend-host.ts',
-      handler: 'handler',
-      description: 'Admin: Suspend host account',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminSuspendHostLambda);
-
-    // Reinstate Host
-    this.adminReinstateHostLambda = new nodejs.NodejsFunction(this, 'AdminReinstateHostLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-reinstate-host`,
-      entry: 'backend/services/api/admin/hosts/reinstate-host.ts',
-      handler: 'handler',
-      description: 'Admin: Reinstate suspended host',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminReinstateHostLambda);
 
     // ========================================
-    // ADMIN LISTING LAMBDAS
+    // ADMIN REQUEST LAMBDA (Consolidated)
     // ========================================
 
-    // List All Listings
-    this.adminListListingsLambda = new nodejs.NodejsFunction(this, 'AdminListListingsLambda', {
+    this.adminRequestsHandlerLambda = new nodejs.NodejsFunction(this, 'AdminRequestsHandlerLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-listings`,
-      entry: 'backend/services/api/admin/listings/list-listings.ts',
+      functionName: `localstays-${stage}-admin-requests-handler`,
+      entry: 'backend/services/api/admin/requests/handler.ts',
       handler: 'handler',
-      description: 'Admin: List all listings with pagination',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminListListingsLambda);
-
-    // Pending Review Listings
-    this.adminPendingReviewListingsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewListingsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-pending-review-listings`,
-      entry: 'backend/services/api/admin/listings/pending-review.ts',
-      handler: 'handler',
-      description: 'Admin: Get listings pending review (IN_REVIEW status)',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminPendingReviewListingsLambda);
-
-    // List Host Listings
-    this.adminListHostListingsLambda = new nodejs.NodejsFunction(this, 'AdminListHostListingsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-host-listings`,
-      entry: 'backend/services/api/admin/listings/list-host-listings.ts',
-      handler: 'handler',
-      description: 'Admin: Get all listings for a specific host',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminListHostListingsLambda);
-
-    // Get Listing Details
-    this.adminGetListingLambda = new nodejs.NodejsFunction(this, 'AdminGetListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-get-listing`,
-      entry: 'backend/services/api/admin/listings/get-listing.ts',
-      handler: 'handler',
-      description: 'Admin: Get full listing details',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminGetListingLambda);
-    bucket.grantRead(this.adminGetListingLambda);
-
-    // Approve Listing
-    this.adminApproveListingLambda = new nodejs.NodejsFunction(this, 'AdminApproveListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-approve-listing`,
-      entry: 'backend/services/api/admin/listings/approve-listing.ts',
-      handler: 'handler',
-      description: 'Admin: Approve listing',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminApproveListingLambda);
-    emailTemplatesTable.grantReadData(this.adminApproveListingLambda);
-    this.adminApproveListingLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Reject Listing
-    this.adminRejectListingLambda = new nodejs.NodejsFunction(this, 'AdminRejectListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-reject-listing`,
-      entry: 'backend/services/api/admin/listings/reject-listing.ts',
-      handler: 'handler',
-      description: 'Admin: Reject listing',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminRejectListingLambda);
-    emailTemplatesTable.grantReadData(this.adminRejectListingLambda);
-    this.adminRejectListingLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Suspend Listing
-    this.adminSuspendListingLambda = new nodejs.NodejsFunction(this, 'AdminSuspendListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-suspend-listing`,
-      entry: 'backend/services/api/admin/listings/suspend-listing.ts',
-      handler: 'handler',
-      description: 'Admin: Suspend/lock listing',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminSuspendListingLambda);
-
-    // ========================================
-    // ADMIN REQUEST LAMBDAS
-    // ========================================
-
-    // List All Requests
-    this.adminListRequestsLambda = new nodejs.NodejsFunction(this, 'AdminListRequestsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-requests`,
-      entry: 'backend/services/api/admin/requests/list-requests.ts',
-      handler: 'handler',
-      description: 'Admin: List all requests with pagination',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminListRequestsLambda);
-
-    // Pending Review Requests
-    this.adminPendingReviewRequestsLambda = new nodejs.NodejsFunction(this, 'AdminPendingReviewRequestsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-pending-review-requests`,
-      entry: 'backend/services/api/admin/requests/pending-review.ts',
-      handler: 'handler',
-      description: 'Admin: Get requests pending review (RECEIVED status)',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminPendingReviewRequestsLambda);
-
-    // List Host Requests
-    this.adminListHostRequestsLambda = new nodejs.NodejsFunction(this, 'AdminListHostRequestsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-list-host-requests`,
-      entry: 'backend/services/api/admin/requests/list-host-requests.ts',
-      handler: 'handler',
-      description: 'Admin: Get all requests for a specific host',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminListHostRequestsLambda);
-
-    // Get Request Details
-    this.adminGetRequestLambda = new nodejs.NodejsFunction(this, 'AdminGetRequestLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-get-request`,
-      entry: 'backend/services/api/admin/requests/get-request.ts',
-      handler: 'handler',
-      description: 'Admin: Get full request details with video URL',
-      environment: commonEnvironment,
-    });
-    table.grantReadData(this.adminGetRequestLambda);
-    bucket.grantRead(this.adminGetRequestLambda);
-
-    // Approve Request
-    this.adminApproveRequestLambda = new nodejs.NodejsFunction(this, 'AdminApproveRequestLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-approve-request`,
-      entry: 'backend/services/api/admin/requests/approve-request.ts',
-      handler: 'handler',
-      description: 'Admin: Approve Live ID request',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminApproveRequestLambda);
-    emailTemplatesTable.grantReadData(this.adminApproveRequestLambda);
-    this.adminApproveRequestLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Reject Request
-    this.adminRejectRequestLambda = new nodejs.NodejsFunction(this, 'AdminRejectRequestLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-reject-request`,
-      entry: 'backend/services/api/admin/requests/reject-request.ts',
-      handler: 'handler',
-      description: 'Admin: Reject Live ID request',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminRejectRequestLambda);
-    emailTemplatesTable.grantReadData(this.adminRejectRequestLambda);
-    this.adminRejectRequestLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Create Property Video Verification Request
-    this.adminCreateVideoVerificationLambda = new nodejs.NodejsFunction(this, 'AdminCreateVideoVerificationLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-create-video-verification`,
-      entry: 'backend/services/api/admin/requests/create-property-video-verification.ts',
-      handler: 'handler',
-      description: 'Admin: Create property video verification request',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminCreateVideoVerificationLambda);
-    emailTemplatesTable.grantReadData(this.adminCreateVideoVerificationLambda);
-    this.adminCreateVideoVerificationLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
-    }));
-
-    // Create Address Verification Request
-    this.adminCreateAddressVerificationLambda = new nodejs.NodejsFunction(this, 'AdminCreateAddressVerificationLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-create-address-verification`,
-      entry: 'backend/services/api/admin/requests/create-address-verification.ts',
-      handler: 'handler',
-      description: 'Admin: Create address verification request with PDF letter',
+      description: 'Admin: Consolidated handler for all request operations',
       environment: commonEnvironment,
       bundling: {
         ...commonLambdaProps.bundling,
-        // Include font files for pdfkit in the exact location it expects
+        // Include font files for pdfkit (needed by create-address-verification)
         commandHooks: {
           beforeBundling(inputDir: string, outputDir: string): string[] {
             return [];
@@ -1231,25 +760,16 @@ export class ApiLambdaStack extends cdk.Stack {
         },
       },
     });
-    table.grantReadWriteData(this.adminCreateAddressVerificationLambda);
-    bucket.grantReadWrite(this.adminCreateAddressVerificationLambda);
-    emailTemplatesTable.grantReadData(this.adminCreateAddressVerificationLambda);
-    this.adminCreateAddressVerificationLambda.addToRolePolicy(new iam.PolicyStatement({
+    
+    // Grant permissions for all request operations
+    table.grantReadWriteData(this.adminRequestsHandlerLambda);
+    bucket.grantReadWrite(this.adminRequestsHandlerLambda);
+    emailTemplatesTable.grantReadData(this.adminRequestsHandlerLambda);
+    this.adminRequestsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
-
-    // Get All Requests for a Listing (Admin)
-    this.adminGetListingRequestsLambda = new nodejs.NodejsFunction(this, 'AdminGetListingRequestsLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-admin-get-listing-requests`,
-      entry: 'backend/services/api/admin/requests/get-listing-requests.ts',
-      handler: 'handler',
-      description: 'Admin: Get all requests for a listing (any status)',
-      environment: commonEnvironment,
-    });
-    table.grantReadWriteData(this.adminGetListingRequestsLambda);
 
     // ========================================
     // API Gateway Integrations
@@ -1259,7 +779,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const submitIntentResource = profileResource.addResource('submit-intent');
     submitIntentResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.submitIntentLambda, {
+      new apigateway.LambdaIntegration(this.hostProfileHandlerLambda, {
         proxy: true,
         integrationResponses: [
           {
@@ -1292,7 +812,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const confirmSubmissionResource = profileResource.addResource('confirm-submission');
     confirmSubmissionResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.confirmSubmissionLambda, {
+      new apigateway.LambdaIntegration(this.hostProfileHandlerLambda, {
         proxy: true,
         integrationResponses: [
           {
@@ -1325,7 +845,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const updateRejectedResource = profileResource.addResource('update-rejected');
     updateRejectedResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.updateRejectedProfileLambda, {
+      new apigateway.LambdaIntegration(this.hostProfileHandlerLambda, {
         proxy: true,
         integrationResponses: [
           {
@@ -1357,7 +877,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // GET /api/v1/hosts/{hostId}/profile
     profileResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.getProfileLambda, {
+      new apigateway.LambdaIntegration(this.hostProfileHandlerLambda, {
         proxy: true,
         integrationResponses: [
           {
@@ -1424,7 +944,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const metadataResource = listingsResource.addResource('metadata');
     metadataResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.getListingMetadataLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1436,7 +956,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const submitListingIntentResource = hostListingsResource.addResource('submit-intent');
     submitListingIntentResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.submitListingIntentLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1450,7 +970,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // GET /api/v1/hosts/{hostId}/listings (list all)
     hostListingsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.listListingsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1463,7 +983,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // GET /api/v1/hosts/{hostId}/listings/{listingId}
     listingIdParam.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.getListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1473,7 +993,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // DELETE /api/v1/hosts/{hostId}/listings/{listingId}
     listingIdParam.addMethod(
       'DELETE',
-      new apigateway.LambdaIntegration(this.deleteListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1484,7 +1004,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const confirmListingSubmissionResource = listingIdParam.addResource('confirm-submission');
     confirmListingSubmissionResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.confirmListingSubmissionLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1499,7 +1019,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const listingRequestsResource = listingIdParam.addResource('requests');
     listingRequestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.hostGetListingRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1513,7 +1033,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const submitVideoIntentResource = listingRequestIdParam.addResource('submit-video-intent');
     submitVideoIntentResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.hostSubmitVideoIntentLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1527,7 +1047,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const confirmVideoResource = listingRequestIdParam.addResource('confirm-video');
     confirmVideoResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.hostConfirmVideoLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1541,7 +1061,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const submitCodeResource = listingRequestIdParam.addResource('submit-code');
     submitCodeResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.hostSubmitVerificationCodeLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1559,7 +1079,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const requestsResource = hostIdParam.addResource('requests');
     requestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.listRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1570,7 +1090,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const requestIdParam = requestsResource.addResource('{requestId}');
     requestIdParam.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.getRequestLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1581,7 +1101,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const submitRequestIntentResource = requestIdParam.addResource('submit-intent');
     submitRequestIntentResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.submitRequestIntentLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1596,7 +1116,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const confirmRequestSubmissionResource = requestIdParam.addResource('confirm-submission');
     confirmRequestSubmissionResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.confirmRequestSubmissionLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.hostRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1613,13 +1133,14 @@ export class ApiLambdaStack extends cdk.Stack {
 
     const adminResource = v1.addResource('admin');
 
-    // Admin Host Routes
+    // Admin Host Routes (Consolidated)
+    // All routes now point to the same consolidated Lambda handler
     const adminHostsResource = adminResource.addResource('hosts');
 
     // GET /api/v1/admin/hosts
     adminHostsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListHostsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1630,7 +1151,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminHostsSearchResource = adminHostsResource.addResource('search');
     adminHostsSearchResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminSearchHostsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1641,7 +1162,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminPendingReviewHostsResource = adminHostsResource.addResource('pending-review');
     adminPendingReviewHostsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminPendingReviewHostsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1652,7 +1173,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminHostIdParam = adminHostsResource.addResource('{hostId}');
     adminHostIdParam.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminGetHostLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1663,7 +1184,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminHostDocumentsResource = adminHostIdParam.addResource('documents');
     adminHostDocumentsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListHostDocumentsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1674,7 +1195,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminHostListingsResource = adminHostIdParam.addResource('listings');
     adminHostListingsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListHostListingsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1685,7 +1206,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminHostRequestsResource = adminHostIdParam.addResource('requests');
     adminHostRequestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListHostRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1696,7 +1217,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminApproveHostResource = adminHostIdParam.addResource('approve');
     adminApproveHostResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminApproveHostLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1707,7 +1228,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminRejectHostResource = adminHostIdParam.addResource('reject');
     adminRejectHostResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminRejectHostLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1718,7 +1239,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminSuspendHostResource = adminHostIdParam.addResource('suspend');
     adminSuspendHostResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminSuspendHostLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1729,20 +1250,21 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminReinstateHostResource = adminHostIdParam.addResource('reinstate');
     adminReinstateHostResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminReinstateHostLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
       }
     );
 
-    // Admin Listing Routes
+    // Admin Listing Routes (Consolidated)
+    // All routes now point to the same consolidated Lambda handler
     const adminListingsResource = adminResource.addResource('listings');
 
     // GET /api/v1/admin/listings
     adminListingsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListListingsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1753,7 +1275,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminPendingReviewListingsResource = adminListingsResource.addResource('pending-review');
     adminPendingReviewListingsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminPendingReviewListingsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1764,7 +1286,18 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminListingIdParam = adminListingsResource.addResource('{listingId}');
     adminListingIdParam.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminGetListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/listings/{listingId}/reviewing
+    const adminSetReviewingListingResource = adminListingIdParam.addResource('reviewing');
+    adminSetReviewingListingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1775,7 +1308,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminApproveListingResource = adminListingIdParam.addResource('approve');
     adminApproveListingResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminApproveListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1786,7 +1319,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminRejectListingResource = adminListingIdParam.addResource('reject');
     adminRejectListingResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminRejectListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1797,7 +1330,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminSuspendListingResource = adminListingIdParam.addResource('suspend');
     adminSuspendListingResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminSuspendListingLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1810,7 +1343,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // GET /api/v1/admin/listings/{listingId}/requests
     adminListingRequestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminGetListingRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1821,7 +1354,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminPropertyVideoResource = adminListingRequestsResource.addResource('property-video');
     adminPropertyVideoResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.adminCreateVideoVerificationLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1832,7 +1365,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminAddressVerificationResource = adminListingRequestsResource.addResource('address-verification');
     adminAddressVerificationResource.addMethod(
       'POST',
-      new apigateway.LambdaIntegration(this.adminCreateAddressVerificationLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1845,7 +1378,7 @@ export class ApiLambdaStack extends cdk.Stack {
     // GET /api/v1/admin/requests
     adminRequestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminListRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1856,7 +1389,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminPendingReviewRequestsResource = adminRequestsResource.addResource('pending-review');
     adminPendingReviewRequestsResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminPendingReviewRequestsLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1867,7 +1400,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminRequestIdParam = adminRequestsResource.addResource('{requestId}');
     adminRequestIdParam.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(this.adminGetRequestLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1878,7 +1411,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminApproveRequestResource = adminRequestIdParam.addResource('approve');
     adminApproveRequestResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminApproveRequestLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1889,7 +1422,7 @@ export class ApiLambdaStack extends cdk.Stack {
     const adminRejectRequestResource = adminRequestIdParam.addResource('reject');
     adminRejectRequestResource.addMethod(
       'PUT',
-      new apigateway.LambdaIntegration(this.adminRejectRequestLambda, { proxy: true }),
+      new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -1899,55 +1432,10 @@ export class ApiLambdaStack extends cdk.Stack {
     // ========================================
     // Grant API Gateway Invoke Permissions
     // ========================================
-
-    // Note: We use a wildcard for SourceArn to avoid circular dependency
-    // The specific API Gateway ID will be validated at runtime
-    this.submitIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.confirmSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.getProfileLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.getSubscriptionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
     
-    // Grant invoke permissions for listing Lambdas
-    this.getListingMetadataLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.submitListingIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.confirmListingSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.getListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.listListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.deleteListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    
-    // Grant invoke permissions for request Lambdas
-    this.listRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.getRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.submitRequestIntentLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.confirmRequestSubmissionLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-
-    // Grant invoke permissions for admin host Lambdas
-    this.adminListHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminSearchHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminGetHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminListHostDocumentsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminPendingReviewHostsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminApproveHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminRejectHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminSuspendHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminReinstateHostLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-
-    // Grant invoke permissions for admin listing Lambdas
-    this.adminListListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminPendingReviewListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminListHostListingsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminGetListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminApproveListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminRejectListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminSuspendListingLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-
-    // Grant invoke permissions for admin request Lambdas
-    this.adminListRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminPendingReviewRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminListHostRequestsLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminGetRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminApproveRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
-    this.adminRejectRequestLambda.grantInvoke(new iam.ServicePrincipal('apigateway.amazonaws.com'));
+    // NOTE: Permissions are automatically granted by LambdaIntegration in each addMethod() call
+    // These explicit grants are redundant and were removed to stay under CloudFormation's 500 resource limit
+    // Each LambdaIntegration creates its own Lambda::Permission resource automatically
 
     // Outputs
     const capitalizedStage = this.capitalize(stage);
@@ -1966,22 +1454,10 @@ export class ApiLambdaStack extends cdk.Stack {
     });
 
     // Lambda outputs
-    new cdk.CfnOutput(this, 'SubmitIntentLambdaName', {
-      value: this.submitIntentLambda.functionName,
-      description: 'Submit Intent Lambda function name',
-      exportName: `Localstays${capitalizedStage}SubmitIntentLambda`,
-    });
-
-    new cdk.CfnOutput(this, 'ConfirmSubmissionLambdaName', {
-      value: this.confirmSubmissionLambda.functionName,
-      description: 'Confirm Submission Lambda function name',
-      exportName: `Localstays${capitalizedStage}ConfirmSubmissionLambda`,
-    });
-
-    new cdk.CfnOutput(this, 'GetProfileLambdaName', {
-      value: this.getProfileLambda.functionName,
-      description: 'Get Profile Lambda function name',
-      exportName: `Localstays${capitalizedStage}GetProfileLambda`,
+    new cdk.CfnOutput(this, 'HostProfileHandlerLambdaName', {
+      value: this.hostProfileHandlerLambda.functionName,
+      description: 'Host Profile Handler Lambda function name (consolidated: submit-intent, confirm-submission, update-rejected, get-profile)',
+      exportName: `Localstays${capitalizedStage}HostProfileHandlerLambda`,
     });
 
     new cdk.CfnOutput(this, 'GetSubscriptionLambdaName', {

@@ -76,6 +76,18 @@ export class StorageStack extends cdk.Stack {
           enabled: true,
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
         },
+        {
+          id: 'CleanupUnconfirmedDocuments',
+          enabled: true,
+          prefix: 'veri_profile-doc_', // Temporary document uploads
+          expiration: cdk.Duration.days(7), // Delete after 7 days (gives GuardDuty time to process)
+        },
+        {
+          id: 'CleanupUnconfirmedPhotos',
+          enabled: true,
+          prefix: 'lstimg_', // Temporary photo uploads
+          expiration: cdk.Duration.days(7), // Delete after 7 days (gives processing time)
+        },
       ],
       
       // Removal policy - RETAIN in production, DESTROY in dev

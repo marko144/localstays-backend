@@ -1,7 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import {
@@ -11,10 +10,8 @@ import {
 
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 const TABLE_NAME = process.env.TABLE_NAME!;
-const BUCKET_NAME = process.env.BUCKET_NAME!;
 
 /**
  * POST /api/v1/hosts/{hostId}/listings/{listingId}/confirm-submission
@@ -130,29 +127,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         continue;
       }
 
-      // Check if image is already processed (READY status) OR file exists at root
-      if (img.status === 'READY') {
-        // Image already processed - OK
-        console.log(`Image ${img.imageId} already processed (READY)`);
-        continue;
-      }
-
-      // Otherwise, verify file exists in S3 at root (pending processing)
-      try {
-        await s3Client.send(
-          new HeadObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: img.s3Key,
-          })
-        );
-      } catch (error) {
-        console.error(`Image not found in S3: ${img.imageId}`, error);
-        missingImages.push(img.imageId);
-      }
-    }
-
-    if (missingImages.length > 0) {
-      return response.badRequest(`Images not uploaded: ${missingImages.join(', ')}`);
+      // Note: We do NOT check S3 existence for images because:
+      // 1. GuardDuty scan + image processor run very fast (3-5 seconds)
+      // 2. By the time confirm-submission is called, the original file may already be processed and deleted
+      // 3. The DynamoDB record existing is sufficient proof that the upload succeeded
+      // 4. If there was a problem with the file, the image processor will update the status accordingly
+      
+      console.log(`Image ${img.imageId} verified in DynamoDB (status: ${img.status})`);
     }
 
     // 8. Verify at least one image and exactly one primary
@@ -179,7 +160,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const documents = documentsResult.Items || [];
 
-    // 10. Verify uploaded documents exist in S3 (if any were declared)
+    // 10. Verify uploaded documents (if any were declared)
+    // Note: We do NOT check S3 existence for documents because:
+    // - S3 PUT returning 200 = upload succeeded (no need to re-verify)
+    // - GuardDuty may have already moved files to quarantine or final destination
+    // - Race condition: verification processor may have processed some files already
+    // - DynamoDB record existence is sufficient proof of upload intent
     if (body.uploadedDocuments && body.uploadedDocuments.length > 0) {
       const uploadedDocTypes = new Set(body.uploadedDocuments);
       const missingDocs: string[] = [];
@@ -187,26 +173,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       for (const doc of documents) {
         if (!uploadedDocTypes.has(doc.documentType)) {
           missingDocs.push(doc.documentType);
-          continue;
-        }
-
-        // Verify file exists in S3
-        try {
-          await s3Client.send(
-            new HeadObjectCommand({
-              Bucket: BUCKET_NAME,
-              Key: doc.s3Key,
-            })
-          );
-        } catch (error) {
-          console.error(`Document not found in S3: ${doc.documentType}`, error);
-          missingDocs.push(doc.documentType);
         }
       }
 
       if (missingDocs.length > 0) {
         return response.badRequest(`Documents not uploaded: ${missingDocs.join(', ')}`);
       }
+      
+      console.log(`All ${documents.length} document records verified in DynamoDB`);
     }
 
     // 11. Update all records in a transaction

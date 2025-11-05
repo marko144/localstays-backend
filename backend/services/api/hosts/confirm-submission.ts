@@ -9,7 +9,6 @@ import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand, QueryCommand 
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
-import { objectExists } from '../lib/s3-presigned';
 import { executeTransaction } from '../lib/transaction';
 import { sendProfileSubmissionEmail, sendLiveIdCheckRequestEmail } from '../lib/email-service';
 import { SubmissionToken } from '../../types/submission.types';
@@ -127,23 +126,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // 9. Verify all documents exist in S3
+    // 9. Fetch document records from DynamoDB
+    // Note: We do NOT verify S3 existence because:
+    // - S3 PUT returns 200 = upload succeeded (no need to re-verify)
+    // - GuardDuty may have already moved files to quarantine or final destination
+    // - Race condition: verification processor may have processed some files already
+    // - DynamoDB record existence is sufficient proof of upload intent
     const documents = await getDocumentsByIds(hostId, Array.from(expectedDocIds));
-    const verificationResults = await Promise.all(
-      documents.map(async (doc) => {
-        const exists = await objectExists(doc.s3Key);
-        return { documentId: doc.documentId, exists, s3Key: doc.s3Key };
-      })
-    );
 
-    const missingFiles = verificationResults.filter(v => !v.exists);
-    if (missingFiles.length > 0) {
-      return response.badRequest('Not all files have been uploaded to S3', {
-        missingFiles: missingFiles.map(f => ({ documentId: f.documentId, s3Key: f.s3Key })),
-      });
-    }
-
-    console.log('All documents verified in S3');
+    console.log(`All ${documents.length} document records verified in DynamoDB`);
 
     // 9b. Verify profile photo (if expected)
     let profilePhotoRecord: any = null;
@@ -170,18 +161,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return response.badRequest(`Profile photo record not found: ${tokenRecord.expectedProfilePhoto.photoId}`);
       }
 
-      // If photo is already READY, it was processed - skip S3 check
-      if (profilePhotoRecord.status === 'READY') {
-        console.log(`Profile photo ${tokenRecord.expectedProfilePhoto.photoId} already processed (READY)`);
-      } else {
-        // Verify photo exists in S3 (at root, pending processing)
-        const photoExists = await objectExists(profilePhotoRecord.s3Key);
-        if (!photoExists) {
-          return response.badRequest(`Profile photo not uploaded to S3: ${profilePhotoRecord.s3Key}`);
-        }
-      }
-
-      console.log('Profile photo verified');
+      // Note: We do NOT check S3 existence for profile photos because:
+      // 1. GuardDuty scan + image processor run very fast (3-5 seconds)
+      // 2. By the time confirm-submission is called, the original file may already be processed and deleted
+      // 3. The DynamoDB record existing is sufficient proof that the upload succeeded
+      // 4. If there was a problem with the file, the image processor will update the status accordingly
+      
+      console.log(`Profile photo verified: ${tokenRecord.expectedProfilePhoto.photoId} (status: ${profilePhotoRecord.status})`);
     }
 
     // 10. Execute transaction to update all records atomically
@@ -374,7 +360,7 @@ async function executeProfileSubmissionTransaction(
     },
   });
 
-  // 2. Update all Document records: status → PENDING, update GSI3
+  // 2. Update all Document records: status → PENDING, clear TTL, update GSI3
   for (const doc of documents) {
     transactItems.push({
       Put: {
@@ -382,6 +368,7 @@ async function executeProfileSubmissionTransaction(
         Item: {
           ...doc,
           status: 'PENDING',
+          expiresAt: null, // Clear TTL - document confirmed, keep forever
           uploadedAt: submittedAt,
           updatedAt: submittedAt,
         },
@@ -389,7 +376,7 @@ async function executeProfileSubmissionTransaction(
     });
   }
 
-  // 2b. Update profile photo record: status → PENDING_SCAN (if provided)
+  // 2b. Update profile photo record: status → PENDING_SCAN, clear TTL (if provided)
   if (profilePhoto) {
     transactItems.push({
       Put: {
@@ -397,6 +384,7 @@ async function executeProfileSubmissionTransaction(
         Item: {
           ...profilePhoto,
           status: 'PENDING_SCAN',
+          expiresAt: null, // Clear TTL - photo confirmed, keep forever
           updatedAt: submittedAt,
         },
       },

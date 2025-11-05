@@ -177,8 +177,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 5. Validate current status
-    if (listing.status !== 'IN_REVIEW') {
+    // 5. Validate current status (allow IN_REVIEW, REVIEWING, or LOCKED)
+    const allowedStatuses = ['IN_REVIEW', 'REVIEWING', 'LOCKED'];
+    if (!allowedStatuses.includes(listing.status)) {
       return {
         statusCode: 400,
         headers: {
@@ -189,7 +190,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           success: false,
           error: {
             code: 'INVALID_STATUS_TRANSITION',
-            message: `Cannot reject listing with status ${listing.status}. Expected IN_REVIEW.`,
+            message: `Cannot reject listing with status ${listing.status}. Expected one of: ${allowedStatuses.join(', ')}.`,
           },
         }),
       };

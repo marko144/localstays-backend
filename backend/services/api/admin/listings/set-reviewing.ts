@@ -1,12 +1,11 @@
 /**
- * Admin API: Approve Listing
+ * Admin API: Set Listing to Reviewing
  * 
- * PUT /api/v1/admin/listings/{listingId}/approve
+ * PUT /api/v1/admin/listings/{listingId}/reviewing
  * 
- * Approves a listing (IN_REVIEW → APPROVED).
- * Host can later manually set to ONLINE.
- * Sends approval email notification.
- * Permission required: ADMIN_LISTING_APPROVE
+ * Sets a listing to REVIEWING status (IN_REVIEW → REVIEWING).
+ * Indicates an admin is actively reviewing this listing.
+ * Permission required: ADMIN_LISTING_REVIEW
  */
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
@@ -14,8 +13,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { ListingMetadata } from '../../../types/listing.types';
-import { Host, isIndividualHost } from '../../../types/host.types';
-import { sendListingApprovedEmail } from '../../lib/email-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -50,11 +47,11 @@ async function findListing(listingId: string): Promise<ListingMetadata | null> {
  * Main handler
  */
 export const handler: APIGatewayProxyHandler = async (event) => {
-  console.log('Approve listing request:', { pathParameters: event.pathParameters });
+  console.log('Set listing to reviewing request:', { pathParameters: event.pathParameters });
 
   try {
     // 1. Require admin permission
-    const authResult = requirePermission(event, 'ADMIN_LISTING_APPROVE');
+    const authResult = requirePermission(event, 'ADMIN_LISTING_REVIEW');
     if ('error' in authResult) {
       return authResult.error;
     }
@@ -81,7 +78,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    console.log(`Admin ${user.email} approving listing: ${listingId}`);
+    console.log(`Admin ${user.email} setting listing to reviewing: ${listingId}`);
 
     // 3. Find listing
     const listing = await findListing(listingId);
@@ -103,9 +100,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 4. Validate current status (allow IN_REVIEW, REVIEWING, or LOCKED/SUSPENDED)
-    const allowedStatuses = ['IN_REVIEW', 'REVIEWING', 'LOCKED'];
-    if (!allowedStatuses.includes(listing.status)) {
+    // 4. Validate current status (only IN_REVIEW can transition to REVIEWING)
+    if (listing.status !== 'IN_REVIEW') {
       return {
         statusCode: 400,
         headers: {
@@ -116,7 +112,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           success: false,
           error: {
             code: 'INVALID_STATUS_TRANSITION',
-            message: `Cannot approve listing with status ${listing.status}. Expected one of: ${allowedStatuses.join(', ')}.`,
+            message: `Cannot set listing to REVIEWING with current status ${listing.status}. Expected IN_REVIEW.`,
           },
         }),
       };
@@ -134,69 +130,40 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         },
         UpdateExpression: `
           SET #status = :status,
-              #approvedAt = :approvedAt,
+              #reviewStartedAt = :reviewStartedAt,
+              #reviewedBy = :reviewedBy,
               #updatedAt = :updatedAt,
               #gsi2pk = :gsi2pk,
               #gsi2sk = :gsi2sk
         `,
         ExpressionAttributeNames: {
           '#status': 'status',
-          '#approvedAt': 'approvedAt',
+          '#reviewStartedAt': 'reviewStartedAt',
+          '#reviewedBy': 'reviewedBy',
           '#updatedAt': 'updatedAt',
           '#gsi2pk': 'gsi2pk',
           '#gsi2sk': 'gsi2sk',
         },
         ExpressionAttributeValues: {
-          ':status': 'APPROVED',
-          ':approvedAt': now,
+          ':status': 'REVIEWING',
+          ':reviewStartedAt': now,
+          ':reviewedBy': user.email,
           ':updatedAt': now,
-          ':gsi2pk': 'LISTING_STATUS#APPROVED',
+          ':gsi2pk': 'LISTING_STATUS#REVIEWING',
           ':gsi2sk': now,
         },
       })
     );
 
-    console.log(`✅ Listing ${listingId} approved successfully`);
+    console.log(`✅ Listing ${listingId} set to REVIEWING by ${user.email}`);
 
-    // 6. Send approval email
-    try {
-      // Fetch host details for email
-      const hostResult = await docClient.send(
-        new QueryCommand({
-          TableName: TABLE_NAME,
-          KeyConditionExpression: 'pk = :pk AND sk = :sk',
-          ExpressionAttributeValues: {
-            ':pk': `HOST#${listing.hostId}`,
-            ':sk': 'META',
-          },
-        })
-      );
-      
-      const host = hostResult.Items?.[0] as Host;
-      if (host) {
-        const hostName = isIndividualHost(host)
-          ? `${host.forename} ${host.surname}`
-          : host.legalName || host.displayName || host.businessName || 'Host';
-          
-        await sendListingApprovedEmail(
-          host.email,
-          host.preferredLanguage || 'sr',
-          hostName,
-          listing.listingName
-        );
-        console.log(`📧 Approval email sent to ${host.email}`);
-      }
-    } catch (emailError) {
-      console.error('Failed to send approval email:', emailError);
-      // Don't fail the request if email fails
-    }
-
-    // 7. Log admin action
-    logAdminAction(user, 'APPROVE_LISTING', 'LISTING', listingId, {
+    // 6. Log admin action
+    logAdminAction(user, 'SET_LISTING_REVIEWING', 'LISTING', listingId, {
       hostId: listing.hostId,
+      reviewedBy: user.email,
     });
 
-    // 8. Return success response
+    // 7. Return success response
     return {
       statusCode: 200,
       headers: {
@@ -205,11 +172,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       },
       body: JSON.stringify({
         success: true,
-        message: 'Listing approved successfully',
+        message: 'Listing set to reviewing status',
+        data: {
+          listingId,
+          status: 'REVIEWING',
+          reviewedBy: user.email,
+          reviewStartedAt: now,
+        },
       }),
     };
   } catch (error) {
-    console.error('❌ Approve listing error:', error);
+    console.error('❌ Set listing reviewing error:', error);
 
     return {
       statusCode: 500,
@@ -221,7 +194,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to approve listing',
+          message: 'Failed to set listing to reviewing status',
         },
       }),
     };

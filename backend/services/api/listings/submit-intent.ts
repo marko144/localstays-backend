@@ -123,6 +123,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             type: parkingTypeEnum,
             description: body.parking.description,
           },
+          smokingAllowed: body.smokingAllowed,
+          cancellationPolicy: body.cancellationPolicy,
           
           s3Prefix,
           

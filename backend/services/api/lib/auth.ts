@@ -50,7 +50,7 @@ export function getAuthContext(event: APIGatewayProxyEvent): AuthContext {
   try {
     if (claims.permissions && typeof claims.permissions === 'string') {
       // Split comma-separated string and filter out empty strings
-      permissions = claims.permissions.split(',').filter(p => p.trim().length > 0);
+      permissions = claims.permissions.split(',').filter((p: string) => p.trim().length > 0);
     }
   } catch (error) {
     console.error('Failed to parse permissions from JWT:', error);

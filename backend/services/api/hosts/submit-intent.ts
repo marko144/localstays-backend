@@ -367,6 +367,7 @@ async function createDocumentRecords(
   }>
 ) {
   const now = new Date().toISOString();
+  const expiresAtTimestamp = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
 
   for (const doc of documents) {
     const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
@@ -394,7 +395,7 @@ async function createDocumentRecords(
           notes: null,
           uploadedAt: now,
           uploadedBy: userId,
-          expiresAt: null,
+          expiresAt: expiresAtTimestamp, // TTL: Auto-delete after 24h if not confirmed
           isDeleted: false,
           deletedAt: null,
           createdAt: now,
@@ -404,7 +405,7 @@ async function createDocumentRecords(
     );
   }
 
-  console.log(`Created ${documents.length} document records for host ${hostId}`);
+  console.log(`Created ${documents.length} document records for host ${hostId} (expires in 24h if not confirmed)`);
 }
 
 /**
@@ -516,6 +517,7 @@ function validateProfilePhoto(photo: ProfilePhotoIntent): string | null {
  */
 async function createProfilePhotoRecord(hostId: string, photo: ProfilePhotoIntent) {
   const now = new Date().toISOString();
+  const expiresAtTimestamp = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
   const photoExtension = getFileExtension(photo.contentType);
   const s3Key = `lstimg_${photo.photoId}.${photoExtension}`;
 
@@ -536,6 +538,7 @@ async function createProfilePhotoRecord(hostId: string, photo: ProfilePhotoInten
         fileSize: photo.fileSize,
         
         status: 'PENDING_UPLOAD',
+        expiresAt: expiresAtTimestamp, // TTL: Auto-delete after 24h if not confirmed
         
         uploadedAt: now,
         isDeleted: false,
@@ -543,7 +546,7 @@ async function createProfilePhotoRecord(hostId: string, photo: ProfilePhotoInten
     })
   );
 
-  console.log(`Created profile photo record for host ${hostId}, photoId ${photo.photoId}`);
+  console.log(`Created profile photo record for host ${hostId}, photoId ${photo.photoId} (expires in 24h if not confirmed)`);
 }
 
 /**

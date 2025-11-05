@@ -27,6 +27,7 @@ export type VerificationDocType =
 export type ListingStatus = 
   | 'DRAFT'           // Being created by host
   | 'IN_REVIEW'       // Submitted, waiting for admin approval
+  | 'REVIEWING'       // Admin is actively reviewing the listing
   | 'APPROVED'        // Approved by admin, not yet live
   | 'REJECTED'        // Rejected by admin
   | 'ONLINE'          // Live and bookable
@@ -221,6 +222,10 @@ export interface ListingMetadata {
   approvedAt?: string;
   rejectedAt?: string;
   rejectionReason?: string;
+  
+  // Review tracking
+  reviewStartedAt?: string;     // When admin started reviewing
+  reviewedBy?: string;          // Admin email who is reviewing
   
   // Admin lock (for LOCKED status)
   lockedAt?: string;
