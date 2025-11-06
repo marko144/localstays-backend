@@ -69,8 +69,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           TableName: TABLE_NAME,
           KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
           ExpressionAttributeValues: {
-            ':pk': `HOST#${hostId}`,
-            ':sk': `LISTING_IMAGE#${listingId}#`,
+            ':pk': `LISTING#${listingId}`,
+            ':sk': 'IMAGE#',
           },
         })
       ),
@@ -131,8 +131,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         Update: {
           TableName: TABLE_NAME,
           Key: {
-            pk: `HOST#${hostId}`,
-            sk: `LISTING_IMAGE#${listingId}#${img.imageId}`,
+            pk: `LISTING#${listingId}`,
+            sk: `IMAGE#${img.imageId}`,
           },
           UpdateExpression: 'SET isDeleted = :deleted, deletedAt = :now',
           ExpressionAttributeValues: {

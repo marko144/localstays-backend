@@ -533,6 +533,176 @@ LocalStays Tim`,
     createdAt: now,
     updatedAt: now,
   },
+
+  // ========================================
+  // 10. LISTING_IMAGE_UPDATE_SUBMITTED
+  // ========================================
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_SUBMITTED',
+    sk: 'LANG#en',
+    templateName: 'LISTING_IMAGE_UPDATE_SUBMITTED',
+    language: 'en',
+    subject: 'Image Update Request Received for "{{listingName}}"',
+    bodyText: `Hi {{name}},
+
+We've received your request to update images for your listing "{{listingName}}".
+
+Our team will review your changes and notify you once the review is complete. This typically takes 1-2 business days.
+
+Thank you for keeping your listing up to date!
+
+Best regards,
+The LocalStays Team`,
+    bodyHtml: `<p>Hi {{name}},</p>
+<p>We've received your request to update images for your listing "<strong>{{listingName}}</strong>".</p>
+<p>Our team will review your changes and notify you once the review is complete. This typically takes 1-2 business days.</p>
+<p>Thank you for keeping your listing up to date!</p>
+<p>Best regards,<br>The LocalStays Team</p>`,
+    variables: ['name', 'listingName'],
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_SUBMITTED',
+    sk: 'LANG#sr',
+    templateName: 'LISTING_IMAGE_UPDATE_SUBMITTED',
+    language: 'sr',
+    subject: 'Zahtev za ažuriranje slika primljen za "{{listingName}}"',
+    bodyText: `Zdravo {{name}},
+
+Primili smo vaš zahtev za ažuriranje slika za vaš oglas "{{listingName}}".
+
+Naš tim će pregledati vaše izmene i obavestiti vas kada pregled bude završen. Ovo obično traje 1-2 radna dana.
+
+Hvala što održavate svoj oglas ažurnim!
+
+Srdačan pozdrav,
+LocalStays Tim`,
+    bodyHtml: `<p>Zdravo {{name}},</p>
+<p>Primili smo vaš zahtev za ažuriranje slika za vaš oglas "<strong>{{listingName}}</strong>".</p>
+<p>Naš tim će pregledati vaše izmene i obavestiti vas kada pregled bude završen. Ovo obično traje 1-2 radna dana.</p>
+<p>Hvala što održavate svoj oglas ažurnim!</p>
+<p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
+    variables: ['name', 'listingName'],
+    createdAt: now,
+    updatedAt: now,
+  },
+
+  // ========================================
+  // 11. LISTING_IMAGE_UPDATE_APPROVED
+  // ========================================
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_APPROVED',
+    sk: 'LANG#en',
+    templateName: 'LISTING_IMAGE_UPDATE_APPROVED',
+    language: 'en',
+    subject: 'Image Updates Approved for "{{listingName}}" ✓',
+    bodyText: `Hi {{name}},
+
+Great news! Your image updates for "{{listingName}}" have been approved.
+
+The changes are now live on your listing and visible to guests.
+
+Thank you for keeping your listing fresh and accurate!
+
+Best regards,
+The LocalStays Team`,
+    bodyHtml: `<p>Hi {{name}},</p>
+<p>Great news! Your image updates for "<strong>{{listingName}}</strong>" have been approved.</p>
+<p>The changes are now live on your listing and visible to guests.</p>
+<p>Thank you for keeping your listing fresh and accurate!</p>
+<p>Best regards,<br>The LocalStays Team</p>`,
+    variables: ['name', 'listingName'],
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_APPROVED',
+    sk: 'LANG#sr',
+    templateName: 'LISTING_IMAGE_UPDATE_APPROVED',
+    language: 'sr',
+    subject: 'Ažuriranje slika odobreno za "{{listingName}}" ✓',
+    bodyText: `Zdravo {{name}},
+
+Odlične vesti! Vaše izmene slika za "{{listingName}}" su odobrene.
+
+Izmene su sada aktivne na vašem oglasu i vidljive gostima.
+
+Hvala što održavate svoj oglas svežim i tačnim!
+
+Srdačan pozdrav,
+LocalStays Tim`,
+    bodyHtml: `<p>Zdravo {{name}},</p>
+<p>Odlične vesti! Vaše izmene slika za "<strong>{{listingName}}</strong>" su odobrene.</p>
+<p>Izmene su sada aktivne na vašem oglasu i vidljive gostima.</p>
+<p>Hvala što održavate svoj oglas svežim i tačnim!</p>
+<p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
+    variables: ['name', 'listingName'],
+    createdAt: now,
+    updatedAt: now,
+  },
+
+  // ========================================
+  // 12. LISTING_IMAGE_UPDATE_REJECTED
+  // ========================================
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_REJECTED',
+    sk: 'LANG#en',
+    templateName: 'LISTING_IMAGE_UPDATE_REJECTED',
+    language: 'en',
+    subject: 'Image Update Request for "{{listingName}}" - Action Required',
+    bodyText: `Hi {{name}},
+
+We were unable to approve your image update request for "{{listingName}}".
+
+Reason:
+{{reason}}
+
+Your listing images remain unchanged. Please review the feedback and submit a new image update request that addresses the concerns.
+
+If you need assistance, contact our support team.
+
+Best regards,
+The LocalStays Team`,
+    bodyHtml: `<p>Hi {{name}},</p>
+<p>We were unable to approve your image update request for "<strong>{{listingName}}</strong>".</p>
+<p><strong>Reason:</strong><br>{{reason}}</p>
+<p>Your listing images remain unchanged. Please review the feedback and submit a new image update request that addresses the concerns.</p>
+<p>If you need assistance, contact our support team.</p>
+<p>Best regards,<br>The LocalStays Team</p>`,
+    variables: ['name', 'listingName', 'reason'],
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    pk: 'EMAIL_TEMPLATE#LISTING_IMAGE_UPDATE_REJECTED',
+    sk: 'LANG#sr',
+    templateName: 'LISTING_IMAGE_UPDATE_REJECTED',
+    language: 'sr',
+    subject: 'Zahtev za ažuriranje slika za "{{listingName}}" - Potrebna akcija',
+    bodyText: `Zdravo {{name}},
+
+Nismo mogli da odobrimo vaš zahtev za ažuriranje slika za "{{listingName}}".
+
+Razlog:
+{{reason}}
+
+Slike vašeg oglasa ostaju nepromenjene. Molimo pregledajte povratne informacije i pošaljite novi zahtev za ažuriranje slika koji uzima u obzir date komentare.
+
+Ako vam je potrebna pomoć, kontaktirajte naš tim za podršku.
+
+Srdačan pozdrav,
+LocalStays Tim`,
+    bodyHtml: `<p>Zdravo {{name}},</p>
+<p>Nismo mogli da odobrimo vaš zahtev za ažuriranje slika za "<strong>{{listingName}}</strong>".</p>
+<p><strong>Razlog:</strong><br>{{reason}}</p>
+<p>Slike vašeg oglasa ostaju nepromenjene. Molimo pregledajte povratne informacije i pošaljite novi zahtev za ažuriranje slika koji uzima u obzir date komentare.</p>
+<p>Ako vam je potrebna pomoć, kontaktirajte naš tim za podršku.</p>
+<p>Srdačan pozdrav,<br>LocalStays Tim</p>`,
+    variables: ['name', 'listingName', 'reason'],
+    createdAt: now,
+    updatedAt: now,
+  },
 ];
 
 

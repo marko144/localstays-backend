@@ -59,20 +59,21 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.notFound(`Listing has been deleted: ${listingId}`);
     }
 
-    // 3. Fetch images (exclude PENDING_UPLOAD and deleted)
+    // 3. Fetch images (exclude PENDING_UPLOAD, pendingApproval, and deleted)
     const imagesResult = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-        FilterExpression: '#status <> :pendingUpload AND isDeleted = :notDeleted',
+        FilterExpression: '#status <> :pendingUpload AND isDeleted = :notDeleted AND (attribute_not_exists(pendingApproval) OR pendingApproval = :false)',
         ExpressionAttributeNames: {
           '#status': 'status',
         },
         ExpressionAttributeValues: {
-          ':pk': `HOST#${hostId}`,
-          ':sk': `LISTING_IMAGE#${listingId}#`,
+          ':pk': `LISTING#${listingId}`,
+          ':sk': 'IMAGE#',
           ':pendingUpload': 'PENDING_UPLOAD',
           ':notDeleted': false,
+          ':false': false,
         },
       })
     );

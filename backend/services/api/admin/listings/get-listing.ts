@@ -143,8 +143,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
         FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
-          ':pk': `HOST#${hostId}`,
-          ':sk': `LISTING_IMAGE#${listingId}#`,
+          ':pk': `LISTING#${listingId}`,
+          ':sk': 'IMAGE#',
           ':isDeleted': false,
         },
       })
@@ -152,20 +152,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const images = (imagesResult.Items || []) as ListingImage[];
 
-    // Generate pre-signed URLs for images
+    // Separate current images from pending approval images
+    const currentImages = images.filter(img => !img.pendingApproval);
+    const pendingImages = images.filter(img => img.pendingApproval);
+
+    // Generate pre-signed URLs for current images
     const imageDetails = await Promise.all(
-      images.map(async (img) => ({
+      currentImages.map(async (img) => ({
         imageId: img.imageId,
         s3Url: await generatePresignedUrl(img.s3Key),
         displayOrder: img.displayOrder,
         isPrimary: img.isPrimary,
         caption: img.caption,
         contentType: img.contentType,
+        pendingApproval: false,
       }))
     );
 
     // Sort by display order
     imageDetails.sort((a, b) => a.displayOrder - b.displayOrder);
+
+    // Generate pre-signed URLs for pending images (if any)
+    const pendingImageDetails = await Promise.all(
+      pendingImages.map(async (img) => ({
+        imageId: img.imageId,
+        s3Url: await generatePresignedUrl(img.s3Key),
+        displayOrder: img.displayOrder,
+        isPrimary: img.isPrimary,
+        caption: img.caption,
+        contentType: img.contentType,
+        pendingApproval: true,
+        status: img.status,
+      }))
+    );
+
+    pendingImageDetails.sort((a, b) => a.displayOrder - b.displayOrder);
 
     // 5. Fetch amenities
     const amenitiesResult = await docClient.send(
@@ -210,18 +231,75 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }))
     );
 
-    // 7. Build response
+    // 7. Check for pending image update requests
+    const pendingRequestsResult = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+        FilterExpression: 'requestType = :requestType AND #status = :status',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+        },
+        ExpressionAttributeValues: {
+          ':pk': `LISTING#${listingId}`,
+          ':sk': 'REQUEST#',
+          ':requestType': 'LISTING_IMAGE_UPDATE',
+          ':status': 'RECEIVED',
+        },
+      })
+    );
+
+    const pendingRequest = pendingRequestsResult.Items?.[0];
+    let pendingImageChanges;
+
+    if (pendingRequest) {
+      // Fetch images marked for deletion
+      const imagesToDeleteDetails = [];
+      if (pendingRequest.imagesToDelete && pendingRequest.imagesToDelete.length > 0) {
+        for (const imageId of pendingRequest.imagesToDelete) {
+          const imgResult = await docClient.send(
+            new GetCommand({
+              TableName: TABLE_NAME,
+              Key: {
+                pk: `LISTING#${listingId}`,
+                sk: `IMAGE#${imageId}`,
+              },
+            })
+          );
+          
+          if (imgResult.Item && !imgResult.Item.isDeleted) {
+            imagesToDeleteDetails.push({
+              imageId: imgResult.Item.imageId,
+              s3Url: await generatePresignedUrl(imgResult.Item.s3Key),
+              displayOrder: imgResult.Item.displayOrder,
+              isPrimary: imgResult.Item.isPrimary,
+              caption: imgResult.Item.caption,
+            });
+          }
+        }
+      }
+
+      pendingImageChanges = {
+        requestId: pendingRequest.requestId,
+        imagesToAdd: pendingImageDetails, // Already fetched above
+        imagesToDelete: imagesToDeleteDetails,
+        createdAt: pendingRequest.createdAt,
+      };
+    }
+
+    // 8. Build response
     const response: AdminListingDetails = {
       listing,
       images: imageDetails,
       amenities,
       verificationDocuments: documentDetails,
+      ...(pendingImageChanges && { pendingImageChanges }),
     };
 
-    // 8. Log admin action
+    // 9. Log admin action
     logAdminAction(user, 'VIEW_LISTING', 'LISTING', listingId);
 
-    // 9. Return response
+    // 10. Return response
     return {
       statusCode: 200,
       headers: {

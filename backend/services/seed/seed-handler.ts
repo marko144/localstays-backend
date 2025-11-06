@@ -748,6 +748,18 @@ async function seedRequestTypes() {
       isActive: true,
       createdAt: new Date().toISOString(),
     },
+    {
+      pk: 'REQUEST_TYPE#LISTING_IMAGE_UPDATE',
+      sk: 'META',
+      requestType: 'LISTING_IMAGE_UPDATE',
+      description: {
+        en: 'Listing Image Update',
+        sr: 'Ažuriranje slika oglasa',
+      },
+      displayOrder: 4,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    },
   ];
 
   await docClient.send(

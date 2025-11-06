@@ -11,17 +11,21 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand, QueryCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';
 import { RejectRequestRequest } from '../../../types/admin.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
+import { ListingImage } from '../../../types/listing.types';
 import { sendRequestRejectedEmail, sendVideoVerificationRejectedEmail, sendAddressVerificationRejectedEmail } from '../../lib/email-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const s3Client = new S3Client({});
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const BUCKET_NAME = process.env.BUCKET_NAME!;
 const MAX_REJECTION_REASON_LENGTH = 500;
 
 /**
@@ -195,7 +199,88 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 6. Update request status with rejection reason
+    // 6. Handle LISTING_IMAGE_UPDATE specific logic
+    if (request.requestType === 'LISTING_IMAGE_UPDATE') {
+      console.log('Processing LISTING_IMAGE_UPDATE rejection...');
+      
+      // 6a. Delete pending images (imagesToAdd) from DynamoDB and S3
+      if (request.imagesToAdd && request.imagesToAdd.length > 0) {
+        for (const imageId of request.imagesToAdd) {
+          try {
+            // Fetch image record to get S3 keys
+            const imageResult = await docClient.send(
+              new GetCommand({
+                TableName: TABLE_NAME,
+                Key: {
+                  pk: `LISTING#${request.listingId}`,
+                  sk: `IMAGE#${imageId}`,
+                },
+              })
+            );
+
+            if (imageResult.Item) {
+              const image = imageResult.Item as ListingImage;
+
+              // Delete from S3 (original, full WebP, thumbnail WebP if they exist)
+              const deletePromises = [];
+              
+              // Delete original file
+              if (image.s3Key) {
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: image.s3Key,
+                  })).catch(err => console.error(`Failed to delete ${image.s3Key}:`, err))
+                );
+              }
+
+              // Delete WebP files if they exist (may have been processed before rejection)
+              if (image.webpUrls) {
+                const fullKey = image.webpUrls.full.split('.amazonaws.com/')[1];
+                const thumbKey = image.webpUrls.thumbnail.split('.amazonaws.com/')[1];
+                
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: fullKey,
+                  })).catch(err => console.error(`Failed to delete ${fullKey}:`, err))
+                );
+                
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: thumbKey,
+                  })).catch(err => console.error(`Failed to delete ${thumbKey}:`, err))
+                );
+              }
+
+              await Promise.all(deletePromises);
+
+              // Delete image record from DynamoDB
+              await docClient.send(
+                new DeleteCommand({
+                  TableName: TABLE_NAME,
+                  Key: {
+                    pk: `LISTING#${request.listingId}`,
+                    sk: `IMAGE#${imageId}`,
+                  },
+                })
+              );
+
+              console.log(`✅ Deleted pending image: ${imageId}`);
+            }
+          } catch (error) {
+            console.error(`Failed to delete pending image ${imageId}:`, error);
+            // Continue with other images
+          }
+        }
+      }
+
+      // 6b. Keep existing images (imagesToDelete) - do nothing, they remain unchanged
+      console.log('✅ LISTING_IMAGE_UPDATE rejection complete - existing images preserved');
+    }
+
+    // 7. Update request status with rejection reason
     const now = new Date().toISOString();
 
     // Determine pk based on request type (host-level vs listing-level)
@@ -237,7 +322,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Request ${requestId} rejected successfully`);
 
-    // 7. Send rejection email
+    // 8. Send rejection email
     try {
       // Fetch host details for email
       const hostResult = await docClient.send(
@@ -273,6 +358,30 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             language,
             hostName
           );
+        } else if (request.requestType === 'LISTING_IMAGE_UPDATE') {
+          // Send image update rejection email
+          const { sendListingImageUpdateRejectedEmail } = await import('../../lib/email-service');
+          
+          // Get listing name
+          const listingResult = await docClient.send(
+            new GetCommand({
+              TableName: TABLE_NAME,
+              Key: {
+                pk: `HOST#${request.hostId}`,
+                sk: `LISTING_META#${request.listingId}`,
+              },
+            })
+          );
+          
+          const listingName = listingResult.Item?.listingName || 'Your Listing';
+          
+          await sendListingImageUpdateRejectedEmail(
+            host.email,
+            language,
+            hostName,
+            listingName,
+            rejectionReason
+          );
         } else {
           // Default to generic request rejected email (for LIVE_ID_CHECK)
           await sendRequestRejectedEmail(
@@ -289,14 +398,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       // Don't fail the request if email fails
     }
 
-    // 8. Log admin action
+    // 9. Log admin action
     logAdminAction(user, 'REJECT_REQUEST', 'REQUEST', requestId, {
       hostId: request.hostId,
       requestType: request.requestType,
       rejectionReason,
     });
 
-    // 9. Return success response
+    // 10. Return success response
     return {
       statusCode: 200,
       headers: {

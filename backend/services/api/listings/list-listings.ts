@@ -81,8 +81,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
               '#status': 'status',
             },
             ExpressionAttributeValues: {
-              ':pk': `HOST#${hostId}`,
-              ':sk': `LISTING_IMAGE#${listing.listingId}#`,
+              ':pk': `LISTING#${listing.listingId}`,
+              ':sk': 'IMAGE#',
               ':isPrimary': true,
               ':ready': 'READY',
               ':notDeleted': false,

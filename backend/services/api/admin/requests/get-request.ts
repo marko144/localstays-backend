@@ -16,6 +16,7 @@ import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { AdminRequestDetails } from '../../../types/admin.types';
+import { ListingImage } from '../../../types/listing.types';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -99,6 +100,52 @@ async function findRequest(requestId: string): Promise<Request | null> {
 }
 
 /**
+ * Fetch image details with pre-signed URLs
+ */
+async function fetchImageDetails(listingId: string, imageIds: string[]): Promise<Array<ListingImage & { url: string; thumbnailUrl: string }>> {
+  const imagePromises = imageIds.map(async (imageId) => {
+    console.log(`Fetching image ${imageId} for listing ${listingId}`);
+    
+    const result = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `LISTING#${listingId}`,
+          sk: `IMAGE#${imageId}`,
+        },
+      })
+    );
+
+    if (!result.Item) {
+      console.warn(`Image ${imageId} not found in DynamoDB`);
+      return null;
+    }
+
+    const image = result.Item as ListingImage;
+    console.log(`Found image ${imageId}, s3Key: ${image.s3Key}, status: ${image.status}`);
+
+    // Generate pre-signed URLs for original and WebP versions
+    const url = await generateDownloadUrl(image.s3Key);
+    const thumbnailUrl = image.webpS3Key 
+      ? await generateDownloadUrl(image.webpS3Key)
+      : url;
+
+    console.log(`Generated URLs for image ${imageId}`);
+
+    return {
+      ...image,
+      url,
+      thumbnailUrl,
+    };
+  });
+
+  const images = await Promise.all(imagePromises);
+  const filtered = images.filter((img): img is NonNullable<typeof img> => img !== null);
+  console.log(`Returning ${filtered.length} of ${imageIds.length} images`);
+  return filtered;
+}
+
+/**
  * Main handler
  */
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -164,19 +211,47 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       s3DownloadUrl = await generateDownloadUrl(request.s3Key);
     }
 
-    // 6. Build response
+    // 6. For LISTING_IMAGE_UPDATE requests, fetch image details
+    let imagesToAddDetails;
+    let imagesToDeleteDetails;
+    
+    if (request.requestType === 'LISTING_IMAGE_UPDATE' && request.listingId) {
+      console.log('Processing LISTING_IMAGE_UPDATE request:', {
+        listingId: request.listingId,
+        imagesToAdd: request.imagesToAdd,
+        imagesToDelete: request.imagesToDelete,
+      });
+      
+      // Fetch details for images to be added (with pendingApproval flag)
+      if (request.imagesToAdd && request.imagesToAdd.length > 0) {
+        console.log(`Fetching details for ${request.imagesToAdd.length} images to add`);
+        imagesToAddDetails = await fetchImageDetails(request.listingId, request.imagesToAdd);
+        console.log(`Fetched ${imagesToAddDetails.length} image details for imagesToAdd`);
+      }
+      
+      // Fetch details for images to be deleted (existing images)
+      if (request.imagesToDelete && request.imagesToDelete.length > 0) {
+        console.log(`Fetching details for ${request.imagesToDelete.length} images to delete`);
+        imagesToDeleteDetails = await fetchImageDetails(request.listingId, request.imagesToDelete);
+        console.log(`Fetched ${imagesToDeleteDetails.length} image details for imagesToDelete`);
+      }
+    }
+
+    // 7. Build response
     const response: AdminRequestDetails = {
       ...request,
       hostName,
       s3DownloadUrl,
+      ...(imagesToAddDetails && { imagesToAddDetails }),
+      ...(imagesToDeleteDetails && { imagesToDeleteDetails }),
     };
 
-    // 7. Log admin action
+    // 8. Log admin action
     logAdminAction(user, 'VIEW_REQUEST', 'REQUEST', requestId, {
       hostId: request.hostId,
     });
 
-    // 8. Return response
+    // 9. Return response
     return {
       statusCode: 200,
       headers: {

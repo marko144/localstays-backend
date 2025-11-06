@@ -109,8 +109,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
         ExpressionAttributeValues: {
-          ':pk': `HOST#${hostId}`,
-          ':sk': `LISTING_IMAGE#${listingId}#`,
+          ':pk': `LISTING#${listingId}`,
+          ':sk': 'IMAGE#',
         },
       })
     );
@@ -208,21 +208,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
     });
 
-    // Update image records
+    // Update image records: PENDING_UPLOAD → PENDING_SCAN
+    // (Image processor will move PENDING_SCAN → READY after optimization)
     for (const img of images) {
       transactItems.push({
         Update: {
           TableName: TABLE_NAME,
           Key: {
-            pk: `HOST#${hostId}`,
-            sk: `LISTING_IMAGE#${listingId}#${img.imageId}`,
+            pk: `LISTING#${listingId}`,
+            sk: `IMAGE#${img.imageId}`,
           },
           UpdateExpression: 'SET #status = :status',
           ExpressionAttributeNames: {
             '#status': 'status',
           },
           ExpressionAttributeValues: {
-            ':status': 'ACTIVE',
+            ':status': 'PENDING_SCAN',
           },
         },
       });

@@ -10,16 +10,20 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand, QueryCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
+import { ListingImage } from '../../../types/listing.types';
 import { sendRequestApprovedEmail, sendVideoVerificationApprovedEmail, sendAddressVerificationApprovedEmail } from '../../lib/email-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const s3Client = new S3Client({});
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const BUCKET_NAME = process.env.BUCKET_NAME!;
 
 /**
  * Find request by requestId using GSI3 (DocumentStatusIndex)
@@ -120,7 +124,117 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 5. Update request status
+    // 5. Handle LISTING_IMAGE_UPDATE specific logic
+    if (request.requestType === 'LISTING_IMAGE_UPDATE') {
+      console.log('Processing LISTING_IMAGE_UPDATE approval...');
+      
+      // 5a. Remove pendingApproval flag from new images
+      if (request.imagesToAdd && request.imagesToAdd.length > 0) {
+        for (const imageId of request.imagesToAdd) {
+          try {
+            await docClient.send(
+              new UpdateCommand({
+                TableName: TABLE_NAME,
+                Key: {
+                  pk: `LISTING#${request.listingId}`,
+                  sk: `IMAGE#${imageId}`,
+                },
+                UpdateExpression: 'REMOVE pendingApproval SET updatedAt = :now',
+                ExpressionAttributeValues: {
+                  ':now': new Date().toISOString(),
+                },
+              })
+            );
+            console.log(`✅ Approved new image: ${imageId}`);
+          } catch (error) {
+            console.error(`Failed to approve image ${imageId}:`, error);
+            // Continue with other images
+          }
+        }
+      }
+
+      // 5b. Delete images marked for deletion
+      if (request.imagesToDelete && request.imagesToDelete.length > 0) {
+        for (const imageId of request.imagesToDelete) {
+          try {
+            // Fetch image record to get S3 keys
+            const imageResult = await docClient.send(
+              new GetCommand({
+                TableName: TABLE_NAME,
+                Key: {
+                  pk: `LISTING#${request.listingId}`,
+                  sk: `IMAGE#${imageId}`,
+                },
+              })
+            );
+
+            if (imageResult.Item) {
+              const image = imageResult.Item as ListingImage;
+
+              // Delete from S3 (original, full WebP, thumbnail WebP)
+              const deletePromises = [];
+              
+              // Delete original file
+              if (image.s3Key) {
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: image.s3Key,
+                  })).catch(err => console.error(`Failed to delete ${image.s3Key}:`, err))
+                );
+              }
+
+              // Delete WebP files if they exist
+              if (image.webpUrls) {
+                const fullKey = image.webpUrls.full.split('.amazonaws.com/')[1];
+                const thumbKey = image.webpUrls.thumbnail.split('.amazonaws.com/')[1];
+                
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: fullKey,
+                  })).catch(err => console.error(`Failed to delete ${fullKey}:`, err))
+                );
+                
+                deletePromises.push(
+                  s3Client.send(new DeleteObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: thumbKey,
+                  })).catch(err => console.error(`Failed to delete ${thumbKey}:`, err))
+                );
+              }
+
+              await Promise.all(deletePromises);
+
+              // Mark as deleted in DynamoDB
+              await docClient.send(
+                new UpdateCommand({
+                  TableName: TABLE_NAME,
+                  Key: {
+                    pk: `LISTING#${request.listingId}`,
+                    sk: `IMAGE#${imageId}`,
+                  },
+                  UpdateExpression: 'SET isDeleted = :true, deletedAt = :now, updatedAt = :now',
+                  ExpressionAttributeValues: {
+                    ':true': true,
+                    ':now': new Date().toISOString(),
+                  },
+                })
+              );
+
+              console.log(`✅ Deleted image: ${imageId}`);
+            }
+          } catch (error) {
+            console.error(`Failed to delete image ${imageId}:`, error);
+            // Continue with other images
+          }
+        }
+      }
+
+      console.log('✅ LISTING_IMAGE_UPDATE processing complete');
+    }
+
+    // 6. Update request status
     const now = new Date().toISOString();
 
     // Determine pk based on request type (host-level vs listing-level)
@@ -159,7 +273,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Request ${requestId} approved successfully`);
 
-    // 6. Send approval email
+    // 7. Send approval email
     try {
       // Fetch host details for email
       const hostResult = await docClient.send(
@@ -196,6 +310,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             hostName,
             ''
           );
+        } else if (request.requestType === 'LISTING_IMAGE_UPDATE') {
+          // Send image update approval email
+          const { sendListingImageUpdateApprovedEmail } = await import('../../lib/email-service');
+          
+          // Get listing name
+          const listingResult = await docClient.send(
+            new GetCommand({
+              TableName: TABLE_NAME,
+              Key: {
+                pk: `HOST#${request.hostId}`,
+                sk: `LISTING_META#${request.listingId}`,
+              },
+            })
+          );
+          
+          const listingName = listingResult.Item?.listingName || 'Your Listing';
+          
+          await sendListingImageUpdateApprovedEmail(
+            host.email,
+            language,
+            hostName,
+            listingName
+          );
         } else {
           // Default to generic request approved email (for LIVE_ID_CHECK)
           await sendRequestApprovedEmail(
@@ -211,13 +348,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       // Don't fail the request if email fails
     }
 
-    // 7. Log admin action
+    // 8. Log admin action
     logAdminAction(user, 'APPROVE_REQUEST', 'REQUEST', requestId, {
       hostId: request.hostId,
       requestType: request.requestType,
     });
 
-    // 8. Return success response
+    // 9. Return success response
     return {
       statusCode: 200,
       headers: {

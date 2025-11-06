@@ -12,7 +12,8 @@
 export type RequestType = 
   | 'LIVE_ID_CHECK'
   | 'PROPERTY_VIDEO_VERIFICATION'
-  | 'ADDRESS_VERIFICATION';
+  | 'ADDRESS_VERIFICATION'
+  | 'LISTING_IMAGE_UPDATE';
 
 export type RequestStatus = 
   | 'REQUESTED'       // Request created, awaiting host action
@@ -59,6 +60,10 @@ export interface Request {
   codeAttempts?: number;           // Number of failed code submission attempts (max 3)
   pdfLetterUrl?: string;           // S3 URL of generated PDF verification letter
   pdfLetterGeneratedAt?: string;   // ISO timestamp
+  
+  // Listing Image Update fields
+  imagesToAdd?: string[];          // Array of imageIds being added (for LISTING_IMAGE_UPDATE)
+  imagesToDelete?: string[];       // Array of imageIds to delete (for LISTING_IMAGE_UPDATE)
   
   // Submission Tracking (for 2-step upload)
   submissionToken?: string;        // Temporary token for upload
@@ -162,6 +167,46 @@ export interface ConfirmRequestSubmissionRequest {
 
 // Confirm Submission Response
 export interface ConfirmRequestSubmissionResponse {
+  requestId: string;
+  status: RequestStatus;
+  message: string;
+}
+
+// ============================================================================
+// LISTING IMAGE UPDATE TYPES
+// ============================================================================
+
+// Submit Image Update Request
+export interface SubmitImageUpdateRequest {
+  imagesToAdd?: Array<{
+    imageId: string;
+    contentType: string;
+    isPrimary: boolean;
+    displayOrder: number;
+    caption?: string;
+  }>;
+  imagesToDelete?: string[];  // Array of imageIds to delete
+}
+
+// Submit Image Update Response
+export interface SubmitImageUpdateResponse {
+  requestId: string;
+  submissionToken?: string; // Optional: only present if there are images to upload
+  expiresAt?: string; // Optional: only present if there are images to upload
+  imageUploadUrls?: Array<{
+    imageId: string;
+    uploadUrl: string;
+    expiresAt: string;
+  }>;
+}
+
+// Confirm Image Update Request
+export interface ConfirmImageUpdateRequest {
+  submissionToken: string;
+}
+
+// Confirm Image Update Response
+export interface ConfirmImageUpdateResponse {
   requestId: string;
   status: RequestStatus;
   message: string;

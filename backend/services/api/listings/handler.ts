@@ -13,6 +13,8 @@ import { handler as confirmSubmissionHandler } from './confirm-submission';
 import { handler as listListingsHandler } from './list-listings';
 import { handler as getListingHandler } from './get-listing';
 import { handler as deleteListingHandler } from './delete-listing';
+import { handler as submitImageUpdateHandler } from './submit-image-update';
+import { handler as confirmImageUpdateHandler } from './confirm-image-update';
 
 /**
  * Main router handler - dispatches to appropriate operation based on route and method
@@ -56,6 +58,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Route: DELETE /api/v1/hosts/{hostId}/listings/{listingId}
     if (method === 'DELETE' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}') {
       return await deleteListingHandler(event);
+    }
+
+    // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/image-update
+    if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/image-update') {
+      return await submitImageUpdateHandler(event);
+    }
+
+    // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/image-update/confirm
+    if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/image-update/confirm') {
+      return await confirmImageUpdateHandler(event);
     }
 
     // Unknown route

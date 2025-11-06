@@ -271,6 +271,7 @@ export interface ListingImage {
   
   // Status
   status: ImageUploadStatus;
+  pendingApproval?: boolean;       // True for images awaiting admin approval (image update requests)
   
   // Processed images (WebP)
   processedAt?: string;            // When image processing completed

@@ -132,7 +132,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // Determine which types to query
     const requestTypes = typeFilter 
       ? [typeFilter] 
-      : ['LIVE_ID_CHECK', 'PROPERTY_VIDEO_VERIFICATION', 'ADDRESS_VERIFICATION'];
+      : ['LIVE_ID_CHECK', 'PROPERTY_VIDEO_VERIFICATION', 'ADDRESS_VERIFICATION', 'LISTING_IMAGE_UPDATE'];
 
     // Query each request type from GSI2
     const queryPromises = requestTypes.map(requestType => {

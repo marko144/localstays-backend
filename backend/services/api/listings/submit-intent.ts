@@ -181,15 +181,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const s3Key = `lstimg_${img.imageId}.${getFileExtension(img.contentType)}`;
       
       // Create placeholder image record (status: PENDING_UPLOAD)
-      await docClient.send(
-        new PutCommand({
-          TableName: TABLE_NAME,
-          Item: {
-            pk: `HOST#${hostId}`,
-            sk: `LISTING_IMAGE#${listingId}#${img.imageId}`,
-            
-            listingId,
-            imageId: img.imageId,
+        await docClient.send(
+          new PutCommand({
+            TableName: TABLE_NAME,
+            Item: {
+              pk: `LISTING#${listingId}`,
+              sk: `IMAGE#${img.imageId}`,
+              
+              listingId,
+              imageId: img.imageId,
             hostId,
             
             s3Key, // Root location with prefix: lstimg_{imageId}.jpg

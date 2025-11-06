@@ -640,6 +640,14 @@ export class ApiLambdaStack extends cdk.Stack {
       ],
     }));
 
+    // Grant email permissions (for sending confirmation emails)
+    emailTemplatesTable.grantReadData(this.hostListingsHandlerLambda);
+    this.hostListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
+
     // ========================================
     // REQUEST LAMBDA FUNCTIONS
     // ========================================
@@ -1011,6 +1019,34 @@ export class ApiLambdaStack extends cdk.Stack {
         requestValidatorOptions: {
           validateRequestBody: true,
           validateRequestParameters: true,
+        },
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/image-update
+    const imageUpdateResource = listingIdParam.addResource('image-update');
+    imageUpdateResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/image-update/confirm
+    const confirmImageUpdateResource = imageUpdateResource.addResource('confirm');
+    confirmImageUpdateResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
         },
       }
     );

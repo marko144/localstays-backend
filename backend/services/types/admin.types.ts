@@ -5,7 +5,7 @@
  */
 
 import { Host } from './host.types';
-import { ListingMetadata } from './listing.types';
+import { ListingMetadata, ListingImage } from './listing.types';
 import { Request } from './request.types';
 
 // ============================================================================
@@ -187,6 +187,8 @@ export interface RequestSummary {
 export interface AdminRequestDetails extends Request {
   hostName: string;                // Formatted host name
   s3DownloadUrl: string;           // Pre-signed URL for video download
+  imagesToAddDetails?: Array<ListingImage & { url: string; thumbnailUrl: string }>;  // For LISTING_IMAGE_UPDATE
+  imagesToDeleteDetails?: Array<ListingImage & { url: string; thumbnailUrl: string }>; // For LISTING_IMAGE_UPDATE
 }
 
 /**

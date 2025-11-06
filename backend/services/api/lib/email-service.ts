@@ -513,3 +513,59 @@ export async function sendAddressVerificationRejectedEmail(
   );
 }
 
+// ============================================================================
+// LISTING IMAGE UPDATE EMAILS
+// ============================================================================
+
+/**
+ * Send listing image update submitted confirmation email
+ */
+export async function sendListingImageUpdateSubmittedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_IMAGE_UPDATE_SUBMITTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName }
+  );
+}
+
+/**
+ * Send listing image update approved email
+ */
+export async function sendListingImageUpdateApprovedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_IMAGE_UPDATE_APPROVED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName }
+  );
+}
+
+/**
+ * Send listing image update rejected email
+ */
+export async function sendListingImageUpdateRejectedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string,
+  reason: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'LISTING_IMAGE_UPDATE_REJECTED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName, reason }
+  );
+}
+

@@ -55,10 +55,43 @@ async function getHostName(hostId: string): Promise<string> {
 }
 
 /**
+ * Get listing name by ID
+ */
+async function getListingName(listingId: string): Promise<string> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: 'DocumentStatusIndex',
+        KeyConditionExpression: 'gsi3pk = :gsi3pk',
+        ExpressionAttributeValues: {
+          ':gsi3pk': `LISTING#${listingId}`,
+        },
+        Limit: 1,
+      })
+    );
+
+    if (result.Items && result.Items[0]) {
+      return result.Items[0].listingName || 'Unnamed Listing';
+    }
+    return 'Unknown Listing';
+  } catch (error) {
+    console.error(`Failed to fetch listing ${listingId}:`, error);
+    return 'Unknown Listing';
+  }
+}
+
+/**
  * Convert Request to RequestSummary
  */
 async function toRequestSummary(request: Request): Promise<RequestSummary> {
   const hostName = await getHostName(request.hostId);
+  
+  // Fetch listing name for listing-level requests
+  let listingName: string | undefined;
+  if (request.listingId) {
+    listingName = await getListingName(request.listingId);
+  }
 
   return {
     requestId: request.requestId,
@@ -68,6 +101,8 @@ async function toRequestSummary(request: Request): Promise<RequestSummary> {
     hostName,
     createdAt: request.createdAt,
     uploadedAt: request.uploadedAt,
+    listingId: request.listingId,
+    listingName,
   };
 }
 
@@ -92,8 +127,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     // 3. Query GSI2 for all request types with status = RECEIVED
     // Note: GSI2 for requests uses pattern: gsi2pk = "REQUEST#<type>", gsi2sk = "STATUS#<status>#<createdAt>"
-    // We need to query multiple request types: LIVE_ID_CHECK, PROPERTY_VIDEO_VERIFICATION, ADDRESS_VERIFICATION
-    const requestTypes = ['LIVE_ID_CHECK', 'PROPERTY_VIDEO_VERIFICATION', 'ADDRESS_VERIFICATION'];
+    // We need to query multiple request types: LIVE_ID_CHECK, PROPERTY_VIDEO_VERIFICATION, ADDRESS_VERIFICATION, LISTING_IMAGE_UPDATE
+    const requestTypes = ['LIVE_ID_CHECK', 'PROPERTY_VIDEO_VERIFICATION', 'ADDRESS_VERIFICATION', 'LISTING_IMAGE_UPDATE'];
     
     const queryPromises = requestTypes.map(requestType =>
       docClient.send(
