@@ -3,7 +3,7 @@
  * 
  * GET /api/v1/admin/listings/pending-review?page=<page>
  * 
- * Returns paginated list of listings awaiting approval (status = IN_REVIEW).
+ * Returns paginated list of listings awaiting approval (status = IN_REVIEW or REVIEWING).
  * Sorted by oldest submitted first (FIFO queue).
  * Permission required: ADMIN_LISTING_VIEW_ALL
  */
@@ -93,7 +93,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
 
     // 3. Query GSI2 for listings with status = IN_REVIEW
-    const result = await docClient.send(
+    const inReviewResult = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         IndexName: 'StatusIndex',
@@ -106,28 +106,46 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       })
     );
 
-    const listings = (result.Items || []) as ListingMetadata[];
+    // 4. Query GSI2 for listings with status = REVIEWING
+    const reviewingResult = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: 'StatusIndex',
+        KeyConditionExpression: 'gsi2pk = :gsi2pk',
+        FilterExpression: 'isDeleted = :isDeleted',
+        ExpressionAttributeValues: {
+          ':gsi2pk': 'LISTING_STATUS#REVIEWING',
+          ':isDeleted': false,
+        },
+      })
+    );
 
-    console.log(`Found ${listings.length} listings pending review`);
+    // 5. Merge results
+    const listings = [
+      ...(inReviewResult.Items || []),
+      ...(reviewingResult.Items || []),
+    ] as ListingMetadata[];
 
-    // 4. Convert to summary format (includes fetching host names)
+    console.log(`Found ${listings.length} listings pending review (${inReviewResult.Items?.length || 0} IN_REVIEW, ${reviewingResult.Items?.length || 0} REVIEWING)`);
+
+    // 6. Convert to summary format (includes fetching host names)
     const listingSummaries = await Promise.all(
       listings.map(listing => toListingSummary(listing))
     );
 
-    // 5. Sort by submittedAt (oldest first - FIFO queue)
+    // 7. Sort by submittedAt (oldest first - FIFO queue)
     listingSummaries.sort((a, b) => {
       const aDate = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
       const bDate = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
       return aDate - bDate; // Oldest first
     });
 
-    // 6. Paginate
+    // 8. Paginate
     const resultData = paginateArray(listingSummaries, page, limit);
 
     console.log(`✅ Returning ${resultData.items.length} listings (page ${page}, total ${resultData.pagination.total})`);
 
-    // 7. Return response
+    // 9. Return response
     return {
       statusCode: 200,
       headers: {

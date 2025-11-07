@@ -208,26 +208,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
     });
 
-    // Update image records: PENDING_UPLOAD → PENDING_SCAN
-    // (Image processor will move PENDING_SCAN → READY after optimization)
-    for (const img of images) {
-      transactItems.push({
-        Update: {
-          TableName: TABLE_NAME,
-          Key: {
-            pk: `LISTING#${listingId}`,
-            sk: `IMAGE#${img.imageId}`,
-          },
-          UpdateExpression: 'SET #status = :status',
-          ExpressionAttributeNames: {
-            '#status': 'status',
-          },
-          ExpressionAttributeValues: {
-            ':status': 'PENDING_SCAN',
-          },
-        },
-      });
-    }
+    // Image status transitions are handled by the image processor
+    // No need to update image statuses here - they will transition:
+    // PENDING_UPLOAD → PENDING_SCAN → READY as GuardDuty scans and processes them
 
     // Update document records
     for (const doc of documents) {
