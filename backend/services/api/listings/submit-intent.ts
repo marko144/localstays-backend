@@ -525,6 +525,7 @@ function normalizeAddress(address: any): any {
   const addressParts = [
     address.streetNumber,
     address.street,
+    address.apartmentNumber,
     address.city,
     address.state,
     address.postalCode,
@@ -548,6 +549,9 @@ function normalizeAddress(address: any): any {
   };
 
   // Only include optional fields if they have values
+  if (address.apartmentNumber) {
+    normalized.apartmentNumber = address.apartmentNumber;
+  }
   if (address.municipality) {
     normalized.municipality = address.municipality;
   }

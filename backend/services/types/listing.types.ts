@@ -149,6 +149,7 @@ export interface ListingMetadata {
     fullAddress: string;
     street: string;
     streetNumber: string;
+    apartmentNumber?: string;
     city: string;
     municipality?: string;
     postalCode: string;
@@ -589,12 +590,29 @@ export interface UpdateListingRequest {
 /**
  * Update Listing Metadata Request (for submitted/approved/rejected listings)
  * Allows partial updates - only send fields you want to update
+ * Note: address can only be updated if listing status is REJECTED
  */
 export interface UpdateListingMetadataRequest {
   updates: {
     listingName?: string;
     propertyType?: PropertyType;
     description?: string;
+    address?: {
+      fullAddress: string;
+      street: string;
+      streetNumber: string;
+      apartmentNumber?: string;
+      city: string;
+      municipality?: string;
+      postalCode: string;
+      country: string;
+      countryCode: string;
+      coordinates: {
+        latitude: number;
+        longitude: number;
+      };
+      mapboxPlaceId?: string;
+    };
     capacity?: {
       beds: number;
       sleeps: number;

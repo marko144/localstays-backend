@@ -136,7 +136,63 @@ Updates are **NOT allowed** for:
 
 ---
 
-### 4. Capacity
+### 4. Address
+
+**⚠️ IMPORTANT:** Address can **ONLY** be updated if the listing status is `REJECTED`. Attempting to update the address for listings in any other status will result in an error.
+
+```typescript
+{
+  "updates": {
+    "address"?: {
+      "fullAddress": string,
+      "street": string,
+      "streetNumber": string,
+      "apartmentNumber"?: string,   // Optional
+      "city": string,
+      "municipality"?: string,      // Optional
+      "postalCode": string,
+      "country": string,
+      "countryCode": string,        // 2-letter ISO code (e.g., "RS", "US")
+      "coordinates": {
+        "latitude": number,         // -90 to 90
+        "longitude": number         // -180 to 180
+      },
+      "mapboxPlaceId"?: string      // Optional
+    }
+  }
+}
+```
+
+**Example:**
+
+```json
+{
+  "updates": {
+    "address": {
+      "fullAddress": "123 Main Street, Apt 4B, Belgrade, Serbia",
+      "street": "Main Street",
+      "streetNumber": "123",
+      "apartmentNumber": "4B",
+      "city": "Belgrade",
+      "municipality": "Stari Grad",
+      "postalCode": "11000",
+      "country": "Serbia",
+      "countryCode": "RS",
+      "coordinates": {
+        "latitude": 44.8176,
+        "longitude": 20.4633
+      },
+      "mapboxPlaceId": "place.123456"
+    }
+  }
+}
+```
+
+**Note:** All address fields except `apartmentNumber`, `municipality` and `mapboxPlaceId` are required when updating the address.
+
+---
+
+### 5. Capacity
 
 ```typescript
 {
@@ -166,7 +222,7 @@ Updates are **NOT allowed** for:
 
 ---
 
-### 5. Pricing
+### 6. Pricing
 
 ```typescript
 {
@@ -196,7 +252,7 @@ Updates are **NOT allowed** for:
 
 ---
 
-### 6. Pets Policy
+### 7. Pets Policy
 
 ```typescript
 {
@@ -240,7 +296,7 @@ Pets not allowed:
 
 ---
 
-### 7. Check-in/Check-out
+### 8. Check-in/Check-out
 
 ```typescript
 {
@@ -274,7 +330,7 @@ Pets not allowed:
 
 ---
 
-### 8. Parking
+### 9. Parking
 
 ```typescript
 {
@@ -304,7 +360,7 @@ Pets not allowed:
 
 ---
 
-### 9. Smoking Policy
+### 10. Smoking Policy
 
 ```typescript
 {
@@ -326,7 +382,7 @@ Pets not allowed:
 
 ---
 
-### 10. Cancellation Policy
+### 11. Cancellation Policy
 
 ```typescript
 {
@@ -370,7 +426,7 @@ Custom policy:
 
 ---
 
-### 11. Amenities
+### 12. Amenities
 
 ```typescript
 {
@@ -432,7 +488,7 @@ When updating amenities, send the **complete list** of amenities you want. The b
 
 ---
 
-### 12. Document Reference Number
+### 13. Document Reference Number
 
 ```typescript
 {
@@ -527,6 +583,22 @@ Listing cannot be edited in its current status.
 
 ---
 
+### 400 Bad Request - Address Update Not Allowed
+
+Attempted to update address for a listing that is not in REJECTED status.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ADDRESS_UPDATE_NOT_ALLOWED",
+    "message": "Address can only be updated for listings in REJECTED status"
+  }
+}
+```
+
+---
+
 ### 400 Bad Request - Validation Error
 
 Invalid data provided.
@@ -547,6 +619,13 @@ Invalid data provided.
 - `"Listing name must not exceed 100 characters"`
 - `"Invalid property type: {value}"`
 - `"Description must not exceed 2000 characters"`
+- `"Address must include valid coordinates (latitude and longitude)"`
+- `"Address must include street"`
+- `"Address must include city"`
+- `"Address must include country"`
+- `"Address must include countryCode"`
+- `"Latitude must be between -90 and 90"`
+- `"Longitude must be between -180 and 180"`
 - `"When updating capacity, both beds and sleeps are required"`
 - `"Beds must be between 1 and 50"`
 - `"Sleeps must be between 1 and 100"`

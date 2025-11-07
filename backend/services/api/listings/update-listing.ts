@@ -140,6 +140,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       );
     }
 
+    // 6a. Special validation for address updates - only allowed for REJECTED listings
+    if (updates.address !== undefined && listing.status !== 'REJECTED') {
+      return response.badRequest(
+        'Address can only be updated for listings in REJECTED status',
+        'ADDRESS_UPDATE_NOT_ALLOWED'
+      );
+    }
+
     // 7. Validate all provided fields
     const validationError = await validateUpdates(updates);
     if (validationError) {
@@ -184,6 +192,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       expressionAttributeNames['#description'] = 'description';
       expressionAttributeValues[':description'] = updates.description;
       updatedFields.push('description');
+    }
+
+    // address (only for REJECTED listings - already validated above)
+    if (updates.address !== undefined) {
+      const normalizedAddress = normalizeAddress(updates.address);
+      updateExpressionParts.push('#address = :address');
+      expressionAttributeNames['#address'] = 'address';
+      expressionAttributeValues[':address'] = normalizedAddress;
+      updatedFields.push('address');
     }
 
     // capacity
@@ -398,6 +415,33 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
   }
 
+  // address
+  if (updates.address !== undefined) {
+    if (!updates.address.coordinates || 
+        typeof updates.address.coordinates.latitude !== 'number' || 
+        typeof updates.address.coordinates.longitude !== 'number') {
+      return 'Address must include valid coordinates (latitude and longitude)';
+    }
+    if (!updates.address.street || typeof updates.address.street !== 'string') {
+      return 'Address must include street';
+    }
+    if (!updates.address.city || typeof updates.address.city !== 'string') {
+      return 'Address must include city';
+    }
+    if (!updates.address.country || typeof updates.address.country !== 'string') {
+      return 'Address must include country';
+    }
+    if (!updates.address.countryCode || typeof updates.address.countryCode !== 'string') {
+      return 'Address must include countryCode';
+    }
+    if (updates.address.coordinates.latitude < -90 || updates.address.coordinates.latitude > 90) {
+      return 'Latitude must be between -90 and 90';
+    }
+    if (updates.address.coordinates.longitude < -180 || updates.address.coordinates.longitude > 180) {
+      return 'Longitude must be between -180 and 180';
+    }
+  }
+
   // capacity
   if (updates.capacity !== undefined) {
     if (!updates.capacity.beds || !updates.capacity.sleeps) {
@@ -578,6 +622,57 @@ async function fetchAmenityTranslations(
   }
 
   return amenities;
+}
+
+/**
+ * Normalize address data from frontend to match our schema
+ * Constructs fullAddress from provided fields if not already present
+ * Removes undefined values to avoid DynamoDB errors
+ */
+function normalizeAddress(address: UpdateListingMetadataRequest['updates']['address']): any {
+  if (!address) {
+    return null;
+  }
+
+  // Construct full address string if not provided
+  const addressParts = [
+    address.streetNumber,
+    address.street,
+    address.apartmentNumber,
+    address.city,
+    address.municipality,
+    address.postalCode,
+    address.country,
+  ].filter(Boolean);
+
+  const fullAddress = address.fullAddress || addressParts.join(', ');
+
+  const normalized: any = {
+    fullAddress,
+    street: address.street || '',
+    streetNumber: address.streetNumber || '',
+    city: address.city || '',
+    postalCode: address.postalCode || '',
+    country: address.country || '',
+    countryCode: address.countryCode,
+    coordinates: {
+      latitude: address.coordinates.latitude,
+      longitude: address.coordinates.longitude,
+    },
+  };
+
+  // Only include optional fields if they have values (not undefined)
+  if (address.apartmentNumber !== undefined) {
+    normalized.apartmentNumber = address.apartmentNumber;
+  }
+  if (address.municipality !== undefined) {
+    normalized.municipality = address.municipality;
+  }
+  if (address.mapboxPlaceId !== undefined) {
+    normalized.mapboxPlaceId = address.mapboxPlaceId;
+  }
+
+  return normalized;
 }
 
 

@@ -75,7 +75,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         businessName: host.hostType === 'BUSINESS' ? (host.legalName || host.displayName) : undefined,
         address: {
           addressLine1: listing.address.street + ' ' + listing.address.streetNumber,
-          addressLine2: undefined,
+          addressLine2: listing.address.apartmentNumber ? `Apartment ${listing.address.apartmentNumber}` : undefined,
           locality: listing.address.city,
           administrativeArea: listing.address.municipality,
           postalCode: listing.address.postalCode,
