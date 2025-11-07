@@ -586,6 +586,56 @@ export interface UpdateListingRequest {
   amenities?: AmenityKey[];
 }
 
+/**
+ * Update Listing Metadata Request (for submitted/approved/rejected listings)
+ * Allows partial updates - only send fields you want to update
+ */
+export interface UpdateListingMetadataRequest {
+  updates: {
+    listingName?: string;
+    propertyType?: PropertyType;
+    description?: string;
+    capacity?: {
+      beds: number;
+      sleeps: number;
+    };
+    pricing?: {
+      pricePerNight: number;
+      currency: string;
+    };
+    pets?: {
+      allowed: boolean;
+      policy?: string;
+    };
+    checkIn?: {
+      type: CheckInType;
+      description?: string;
+      checkInFrom: string;
+      checkOutBy: string;
+    };
+    parking?: {
+      type: ParkingType;
+      description?: string;
+    };
+    smokingAllowed?: boolean;
+    cancellationPolicy?: {
+      type: CancellationPolicyType;
+      customText?: string;
+    };
+    amenities?: AmenityKey[];
+    rightToListDocumentNumber?: string;
+  };
+}
+
+/**
+ * Update Listing Metadata Response
+ */
+export interface UpdateListingMetadataResponse {
+  listingId: string;
+  updatedFields: string[];
+  message: string;
+}
+
 // ============================================================================
 // METADATA API TYPES
 // ============================================================================
