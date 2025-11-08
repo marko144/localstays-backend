@@ -1065,6 +1065,17 @@ export class ApiLambdaStack extends cdk.Stack {
       }
     );
 
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/resubmit
+    const resubmitListingResource = listingIdParam.addResource('resubmit');
+    resubmitListingResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
     const listingRequestsResource = listingIdParam.addResource('requests');
     listingRequestsResource.addMethod(
