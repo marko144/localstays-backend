@@ -28,7 +28,7 @@ const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME!;
 
-const MAX_IMAGES_PER_LISTING = 15;
+// const MAX_IMAGES_PER_LISTING = 15; // Reserved for future validation
 const UPLOAD_URL_EXPIRY_SECONDS = 600; // 10 minutes
 const SUBMISSION_TOKEN_EXPIRY_SECONDS = 1800; // 30 minutes
 

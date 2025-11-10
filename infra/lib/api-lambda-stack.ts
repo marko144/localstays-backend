@@ -188,28 +188,12 @@ export class ApiLambdaStack extends cdk.Stack {
     });
 
     // ECR Repository for image processor Lambda container
-    const imageProcessorRepository = new ecr.Repository(this, 'ImageProcessorRepo', {
-      repositoryName: `${stage}-localstays-image-processor`,
-      
-      // Automatically delete old images (keep only 3 latest)
-      lifecycleRules: [
-        {
-          description: 'Keep only last 3 images',
-          maxImageCount: 3,
-          rulePriority: 1,
-        },
-      ],
-      
-      // Encryption at rest
-      encryption: ecr.RepositoryEncryption.AES_256,
-      
-      // Image scanning disabled to save costs ($0.10 per scan)
-      imageScanOnPush: false,
-      
-      removalPolicy: stage === 'prod' 
-        ? cdk.RemovalPolicy.RETAIN 
-        : cdk.RemovalPolicy.DESTROY,
-    });
+    // Reference existing repository (created manually or in previous deployment)
+    const imageProcessorRepository = ecr.Repository.fromRepositoryName(
+      this,
+      'ImageProcessorRepo',
+      `${stage}-localstays-image-processor`
+    );
 
     // EventBridge Rule: GuardDuty Scan Results → SQS
     const guardDutyRule = new events.Rule(this, 'GuardDutyScanComplete', {

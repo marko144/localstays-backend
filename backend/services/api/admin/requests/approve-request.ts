@@ -10,7 +10,7 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand, QueryCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand, QueryCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Request } from '../../../types/request.types';

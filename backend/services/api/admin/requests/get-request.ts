@@ -126,9 +126,7 @@ async function fetchImageDetails(listingId: string, imageIds: string[]): Promise
 
     // Generate pre-signed URLs for original and WebP versions
     const url = await generateDownloadUrl(image.s3Key);
-    const thumbnailUrl = image.webpS3Key 
-      ? await generateDownloadUrl(image.webpS3Key)
-      : url;
+    const thumbnailUrl = image.webpUrls?.thumbnail || url;
 
     console.log(`Generated URLs for image ${imageId}`);
 

@@ -11,7 +11,7 @@
  * - POST   /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-code
  */
 
-import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult, Context, Callback } from 'aws-lambda';
+import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import * as response from '../lib/response';
 
 // Import individual handlers
@@ -38,9 +38,7 @@ import { handler as getListingRequestsHandler } from '../hosts/get-listing-reque
  * - POST   /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-code → submit verification code
  */
 export const handler: APIGatewayProxyHandler = async (
-  event: APIGatewayProxyEvent,
-  context: Context,
-  callback: Callback<APIGatewayProxyResult>
+  event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   const method = event.httpMethod;
   const resource = event.resource;
@@ -54,42 +52,42 @@ export const handler: APIGatewayProxyHandler = async (
   try {
     // Route: GET /api/v1/hosts/{hostId}/requests
     if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/requests') {
-      return (await listRequestsHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await listRequestsHandler(event);
     }
 
     // Route: GET /api/v1/hosts/{hostId}/requests/{requestId}
     if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/requests/{requestId}') {
-      return (await getRequestHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await getRequestHandler(event);
     }
 
     // Route: POST /api/v1/hosts/{hostId}/requests/{requestId}/submit-intent
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/requests/{requestId}/submit-intent') {
-      return (await submitIntentHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await submitIntentHandler(event);
     }
 
     // Route: POST /api/v1/hosts/{hostId}/requests/{requestId}/confirm-submission
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/requests/{requestId}/confirm-submission') {
-      return (await confirmSubmissionHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await confirmSubmissionHandler(event);
     }
 
     // Route: GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
     if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/requests') {
-      return (await getListingRequestsHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await getListingRequestsHandler(event);
     }
 
     // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-video-intent
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-video-intent') {
-      return (await submitVideoIntentHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await submitVideoIntentHandler(event);
     }
 
     // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/confirm-video
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/confirm-video') {
-      return (await confirmVideoHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await confirmVideoHandler(event);
     }
 
     // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-code
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/requests/{requestId}/submit-code') {
-      return (await submitVerificationCodeHandler(event, context, callback)) as APIGatewayProxyResult;
+      return await submitVerificationCodeHandler(event);
     }
 
     // Unknown route

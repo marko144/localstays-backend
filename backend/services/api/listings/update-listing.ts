@@ -29,7 +29,6 @@ import {
   CheckInType,
   ParkingType,
   CancellationPolicyType,
-  AmenityKey,
   ListingMetadata,
   BilingualEnum,
   AmenityCategory,
