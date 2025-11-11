@@ -470,9 +470,14 @@ async function fetchEnumTranslation(
  * Fetch amenity translations with categories
  */
 async function fetchAmenityTranslations(
-  amenityKeys: string[]
+  amenityKeys: string[] | undefined
 ): Promise<Array<BilingualEnum & { category: AmenityCategory }>> {
   const amenities: Array<BilingualEnum & { category: AmenityCategory }> = [];
+
+  // Handle case where amenities are not provided
+  if (!amenityKeys || amenityKeys.length === 0) {
+    return amenities;
+  }
 
   for (const key of amenityKeys) {
     const result = await docClient.send(

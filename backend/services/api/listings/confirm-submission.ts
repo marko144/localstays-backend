@@ -166,8 +166,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // - GuardDuty may have already moved files to quarantine or final destination
     // - Race condition: verification processor may have processed some files already
     // - DynamoDB record existence is sufficient proof of upload intent
-    if (body.uploadedDocuments && body.uploadedDocuments.length > 0) {
-      const uploadedDocTypes = new Set(body.uploadedDocuments);
+    
+    // Handle case where no documents were uploaded (both are optional)
+    const uploadedDocuments = body.uploadedDocuments || [];
+    
+    if (uploadedDocuments.length > 0) {
+      const uploadedDocTypes = new Set(uploadedDocuments);
       const missingDocs: string[] = [];
 
       for (const doc of documents) {
@@ -181,6 +185,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
       
       console.log(`All ${documents.length} document records verified in DynamoDB`);
+    } else {
+      console.log('No documents uploaded (documents are optional)');
     }
 
     // 11. Update all records in a transaction

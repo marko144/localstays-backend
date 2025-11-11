@@ -759,19 +759,20 @@ npx ts-node backend/services/seed/seed-verification-templates.ts
 ### Step 13: Create Admin User (2 minutes)
 
 ```bash
-# Update seed script with staging environment
-sed -i '' 's/ENV="dev1"/ENV="staging"/g' scripts/seed-admin-user.sh
-
-# Run seed script
-./scripts/seed-admin-user.sh
+# Run the admin user seed script
+AWS_REGION=eu-north-1 \
+TABLE_NAME=localstays-staging \
+USER_POOL_ID=<YOUR_USER_POOL_ID> \
+npx ts-node backend/services/seed/seed-admin-user.ts
 ```
 
 **What This Does:**
 
-1. Creates admin user in Cognito
-2. Adds user to ADMIN group
-3. Creates admin host record in DynamoDB
-4. Sets up initial permissions
+1. Fetches ADMIN role permissions from DynamoDB (15 permissions)
+2. Creates admin user in Cognito with verified email
+3. Adds user to ADMIN group
+4. Creates user record in DynamoDB with full permission set
+5. Sets permanent password
 
 **Expected Output:**
 
@@ -781,8 +782,9 @@ sed -i '' 's/ENV="dev1"/ENV="staging"/g' scripts/seed-admin-user.sh
 🔑 Login credentials:
    Email: marko+admin@velocci.me
    Password: Password1*
-   Environment: staging
-   User Pool ID: eu-north-1_XXXXXXX
+   User Sub: 80dcf9bc-3081-70ce-f698-2f04685939a4
+   Role: ADMIN
+   Permissions: 15 permissions
 ```
 
 **Verification:**
@@ -799,7 +801,36 @@ aws cognito-idp admin-list-groups-for-user \
   --user-pool-id ${USER_POOL_ID} \
   --username marko+admin@velocci.me \
   --region eu-north-1
+
+# Verify user has all 15 permissions in DynamoDB
+aws dynamodb query \
+  --table-name localstays-staging \
+  --key-condition-expression "pk = :pk AND sk = :sk" \
+  --expression-attribute-values '{":pk":{"S":"USER#<USER_SUB>"},":sk":{"S":"PROFILE"}}' \
+  --region eu-north-1 | jq '.Items[0].permissions.L | map(.S)'
 ```
+
+**⚠️ IMPORTANT: Permission Verification**
+
+The admin user MUST have these 15 permissions:
+
+- `ADMIN_HOST_VIEW_ALL`
+- `ADMIN_HOST_SEARCH`
+- `ADMIN_HOST_SUSPEND`
+- `ADMIN_HOST_REINSTATE`
+- `ADMIN_KYC_VIEW_ALL`
+- `ADMIN_KYC_APPROVE`
+- `ADMIN_KYC_REJECT`
+- `ADMIN_LISTING_VIEW_ALL`
+- `ADMIN_LISTING_REVIEW` ← **Critical for setting listings to REVIEWING status**
+- `ADMIN_LISTING_APPROVE`
+- `ADMIN_LISTING_REJECT`
+- `ADMIN_LISTING_SUSPEND`
+- `ADMIN_REQUEST_VIEW_ALL`
+- `ADMIN_REQUEST_APPROVE`
+- `ADMIN_REQUEST_REJECT`
+
+If any permissions are missing, the admin user will get 403 errors when trying to perform those actions.
 
 ---
 
