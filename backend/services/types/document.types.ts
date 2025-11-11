@@ -111,15 +111,15 @@ export const DOCUMENT_REQUIREMENTS: Record<string, DocumentRequirements> = {
       anyOf: [
         ['PASSPORT', 'ID_CARD', 'DRIVERS_LICENSE'],  // At least one government ID
       ],
-      all: ['PROOF_OF_ADDRESS'],
     },
+    optional: ['PROOF_OF_ADDRESS'],
   },
   BUSINESS: {
     required: {
       anyOf: [
         ['PASSPORT', 'ID_CARD', 'DRIVERS_LICENSE'],  // At least one ID for authorized person
       ],
-      all: ['BUSINESS_REGISTRATION', 'PROOF_OF_ADDRESS'],
+      all: ['BUSINESS_REGISTRATION'],
     },
     conditional: [
       {

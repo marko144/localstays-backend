@@ -570,11 +570,10 @@ function getRequiredDocumentsDisplay(hostType: string, vatRegistered: boolean): 
   
   if (hostType === 'INDIVIDUAL') {
     docs.push('Government-issued ID (Passport, ID Card, or Driver\'s License)');
-    docs.push('Proof of Address');
+    docs.push('Proof of Address (optional)');
   } else if (hostType === 'BUSINESS') {
     docs.push('Government-issued ID of authorized person');
     docs.push('Business Registration');
-    docs.push('Proof of Address');
     if (vatRegistered) {
       docs.push('VAT Certificate');
     }
