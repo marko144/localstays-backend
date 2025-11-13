@@ -422,4 +422,3 @@ If you have questions about token handling, contact the backend team or check th
 
 - [AWS Amplify Auth](https://docs.amplify.aws/lib/auth/getting-started/q/platform/js/)
 - [Token Refresh](https://docs.amplify.aws/lib/auth/manageusers/q/platform/js/#retrieve-current-session)
-
