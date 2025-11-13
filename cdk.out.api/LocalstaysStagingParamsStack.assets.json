@@ -1,0 +1,21 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "4eef348e6d1a11459a96cfe8c8f2354cf75724e3a1a83218e9a04227ccf05f3d": {
+      "displayName": "localstays-staging-params Template",
+      "source": {
+        "path": "LocalstaysStagingParamsStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-d56060b1": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "4eef348e6d1a11459a96cfe8c8f2354cf75724e3a1a83218e9a04227ccf05f3d.json",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

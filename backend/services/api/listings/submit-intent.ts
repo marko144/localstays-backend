@@ -205,6 +205,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             status: 'PENDING_UPLOAD',
             
             uploadedAt: now,
+            updatedAt: now, // For CloudFront cache versioning
             isDeleted: false,
           },
         })

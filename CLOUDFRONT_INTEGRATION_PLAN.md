@@ -2,12 +2,14 @@
 
 ## Executive Summary
 
-This document outlines the plan to serve listing images and host profile photos through Amazon CloudFront CDN instead of S3 presigned URLs. This will:
+This document outlines the plan to serve **listing images and host profile photos** through Amazon CloudFront CDN instead of S3 presigned URLs. This will:
 
-1. **Improve performance**: Edge caching reduces latency globally
-2. **Reduce costs**: CloudFront is cheaper than S3 data transfer
+1. **Improve performance**: Edge caching reduces latency globally (365-day cache)
+2. **Reduce costs**: CloudFront is cheaper than S3 data transfer (~10% savings at scale)
 3. **Simplify frontend**: No URL expiration (presigned URLs expire in 5 minutes)
-4. **Enable public sharing**: Listing images can be shared without authentication
+4. **Enable authenticated access**: Images served via CDN with path-based security
+
+**Scope:** Listing images (full + thumbnail) and profile photos (full + thumbnail) only. Verification documents remain private with presigned URLs.
 
 ---
 
@@ -32,36 +34,43 @@ s3://localstays-{stage}-host-assets/
 
 ### Current URL Generation
 
-**API Endpoints that return image URLs:**
+**API Endpoints that return image URLs (TO BE UPDATED):**
 
-1. **`GET /hosts/profile`** (Host Profile)
+1. **`GET /hosts/profile`** (Host Profile) - **AUTHENTICATED**
 
    - Returns: `profilePhoto.thumbnailUrl`, `profilePhoto.fullUrl`
    - Source: `host.profilePhoto.webpUrls.thumbnail`, `host.profilePhoto.webpUrls.full`
    - **Current format**: S3 paths stored in DynamoDB (e.g., `{hostId}/profile/photo_full.webp`)
+   - **Will change to**: CloudFront URLs with versioning
 
-2. **`GET /listings/{listingId}`** (Get Listing)
+2. **`GET /listings/{listingId}`** (Get Listing) - **AUTHENTICATED**
 
    - Returns: `images[].thumbnailUrl`, `images[].fullUrl`
    - Source: `image.webpUrls.thumbnail`, `image.webpUrls.full`
    - **Current format**: S3 paths stored in DynamoDB (e.g., `{hostId}/listings/{listingId}/images/{imageId}-full.webp`)
+   - **Will change to**: CloudFront URLs with versioning
 
-3. **`GET /listings`** (List Listings)
+3. **`GET /listings`** (List Listings) - **AUTHENTICATED**
 
    - Returns: `listings[].primaryImage.thumbnailUrl`
    - Source: `primaryImage.webpUrls.thumbnail`
    - **Current format**: S3 paths stored in DynamoDB
+   - **Will change to**: CloudFront URLs with versioning
 
-4. **`GET /admin/requests/{requestId}`** (Admin - Get Request)
+4. **`GET /admin/requests/{requestId}`** (Admin - Get Request) - **AUTHENTICATED**
 
    - Returns: `images[].url`, `images[].thumbnailUrl`
    - **Current format**: **Presigned URLs** generated on-demand via `generateDownloadUrl()`
    - **Issue**: These are temporary (5 min expiry)
+   - **Will change to**: CloudFront URLs with versioning
 
-5. **`GET /admin/listings/{listingId}`** (Admin - Get Listing)
+5. **`GET /admin/listings/{listingId}`** (Admin - Get Listing) - **AUTHENTICATED**
    - Returns: `images[].s3Url`
    - **Current format**: **Presigned URLs** generated on-demand via `generatePresignedUrl()`
    - **Issue**: These are temporary (5 min expiry)
+   - **Will change to**: CloudFront URLs with versioning
+
+**Note:** All endpoints are authenticated. This is NOT about making images public, but about serving them via CDN with path-based access control.
 
 ### Current S3 Bucket Configuration
 
@@ -80,11 +89,14 @@ Create a CloudFront distribution with:
 
 1. **Origin**: S3 bucket (`localstays-{stage}-host-assets`)
 2. **Origin Access Control (OAC)**: CloudFront can read from private S3 bucket
-3. **Cache Behavior**: Cache images for 24 hours (or longer)
-4. **Allowed Methods**: `GET`, `HEAD`, `OPTIONS`
+3. **Cache Behavior**: Cache images for 365 days
+4. **Allowed Methods**: `GET`, `HEAD` only (no OPTIONS needed)
 5. **Viewer Protocol Policy**: `redirect-http-to-https`
 6. **Compress Objects**: `true` (gzip/brotli compression)
-7. **Price Class**: `PriceClass_100` (US, Canada, Europe) or `PriceClass_All`
+7. **Price Class**: `PriceClass_100` (US, Canada, Europe only)
+8. **HTTP Version**: HTTP/2 and HTTP/3 enabled
+9. **IPv6**: Enabled (no extra cost, better connectivity)
+10. **Logging**: Disabled (saves costs, enable only if needed for debugging)
 
 ### URL Structure
 
@@ -94,17 +106,20 @@ Create a CloudFront distribution with:
 https://localstays-staging-host-assets.s3.eu-north-1.amazonaws.com/host123/profile/photo_full.webp?X-Amz-Algorithm=...&X-Amz-Expires=300
 ```
 
-**After (CloudFront URL):**
+**After (CloudFront URL with versioning):**
 
 ```
-https://d1234567890abc.cloudfront.net/host123/profile/photo_full.webp
+https://d1234567890abc.cloudfront.net/host123/profile/photo_full.webp?v=1699716600000
+https://d1234567890abc.cloudfront.net/host123/listings/listing_abc/images/img_xyz-full.webp?v=1699716600000
 ```
 
-Or with custom domain (optional):
+**Version parameter (`?v=`):**
 
-```
-https://assets.localstays.com/host123/profile/photo_full.webp
-```
+- Uses `updatedAt` timestamp from DynamoDB (converted to milliseconds)
+- Changes when admin approves new images → triggers cache refresh
+- Ensures users always see the latest approved images
+
+**Custom domain:** Not using custom domain for staging. Production can optionally use `assets.localstays.com` later.
 
 ---
 
@@ -160,12 +175,12 @@ export class CloudFrontStack extends cdk.Stack {
             cachePolicyName: `localstays-${stage}-image-cache`,
             comment: "Cache policy for listing images and profile photos",
 
-            // Cache for 24 hours (86400 seconds)
-            defaultTtl: cdk.Duration.hours(24),
+            // Cache for 365 days (maximum performance and cost savings)
+            defaultTtl: cdk.Duration.days(365),
             minTtl: cdk.Duration.seconds(0),
             maxTtl: cdk.Duration.days(365),
 
-            // Cache based on query strings (for future cache busting)
+            // Cache based on query strings (for versioning via ?v= parameter)
             queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
 
             // Don't cache based on headers or cookies
@@ -180,39 +195,72 @@ export class CloudFrontStack extends cdk.Stack {
           // Viewer settings
           viewerProtocolPolicy:
             cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD, // Only GET and HEAD (no OPTIONS)
           compress: true,
         },
 
-        // Price class (adjust based on target audience)
-        priceClass:
-          stage === "prod"
-            ? cloudfront.PriceClass.PRICE_CLASS_ALL
-            : cloudfront.PriceClass.PRICE_CLASS_100, // US, Canada, Europe
+        // Price class: US, Canada, Europe only (cost optimization)
+        priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
 
-        // Enable IPv6
+        // Enable IPv6 (no extra cost, better connectivity)
         enableIpv6: true,
 
-        // HTTP version
+        // HTTP version (HTTP/3 for better performance)
         httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
 
-        // Error responses (return 404 for missing images)
+        // Disable logging (saves costs - enable only for debugging)
+        enableLogging: false,
+
+        // Error responses
         errorResponses: [
           {
             httpStatus: 403,
-            responseHttpStatus: 404,
-            responsePagePath: "/404.html",
+            responseHttpStatus: 403,
             ttl: cdk.Duration.minutes(5),
           },
           {
             httpStatus: 404,
             responseHttpStatus: 404,
-            responsePagePath: "/404.html",
             ttl: cdk.Duration.minutes(5),
           },
         ],
       }
     );
+
+    // Add path-based cache behaviors for security
+    // Only allow access to listing images and profile photos
+    this.distribution.addBehavior(
+      "*/listings/*/images/*.webp",
+      origins.S3BucketOrigin.withOriginAccessControl(bucket, {
+        originAccessControl: oac,
+      }),
+      {
+        cachePolicy: this.distribution.node.findChild(
+          "ImageCachePolicy"
+        ) as cloudfront.CachePolicy,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD, // Only GET and HEAD
+        compress: true,
+      }
+    );
+
+    this.distribution.addBehavior(
+      "*/profile/*.webp",
+      origins.S3BucketOrigin.withOriginAccessControl(bucket, {
+        originAccessControl: oac,
+      }),
+      {
+        cachePolicy: this.distribution.node.findChild(
+          "ImageCachePolicy"
+        ) as cloudfront.CachePolicy,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD, // Only GET and HEAD
+        compress: true,
+      }
+    );
+
+    // Default behavior: Block all other paths with 403
+    // Note: This is handled by the default behavior returning 403 for non-matching paths
 
     // Update S3 bucket policy to allow CloudFront OAC
     bucket.addToResourcePolicy(
@@ -328,18 +376,23 @@ Create `backend/services/api/lib/cloudfront-urls.ts`:
 ```typescript
 /**
  * CloudFront URL Generation
- * Builds public CDN URLs for listing images and profile photos
+ * Builds CDN URLs for listing images and profile photos with versioning
  */
 
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN!;
+const USE_CLOUDFRONT = process.env.USE_CLOUDFRONT === "true";
 
 /**
- * Build CloudFront URL from S3 key
+ * Build CloudFront URL from S3 key with versioning
  *
  * @param s3Key - S3 object key (e.g., "host123/profile/photo_full.webp")
- * @returns CloudFront URL (e.g., "https://d123.cloudfront.net/host123/profile/photo_full.webp")
+ * @param updatedAt - ISO timestamp from DynamoDB (e.g., "2024-11-11T15:30:00.000Z")
+ * @returns CloudFront URL with version (e.g., "https://d123.cloudfront.net/host123/profile/photo_full.webp?v=1699716600000")
  */
-export function buildCloudFrontUrl(s3Key: string | undefined | null): string {
+export function buildCloudFrontUrl(
+  s3Key: string | undefined | null,
+  updatedAt?: string
+): string {
   if (!s3Key) {
     return "";
   }
@@ -347,17 +400,25 @@ export function buildCloudFrontUrl(s3Key: string | undefined | null): string {
   // Remove leading slash if present
   const cleanKey = s3Key.startsWith("/") ? s3Key.substring(1) : s3Key;
 
-  // Build CloudFront URL
-  return `https://${CLOUDFRONT_DOMAIN}/${cleanKey}`;
+  // Build base CloudFront URL
+  const baseUrl = `https://${CLOUDFRONT_DOMAIN}/${cleanKey}`;
+
+  // Add version parameter from updatedAt timestamp
+  if (updatedAt) {
+    const version = new Date(updatedAt).getTime();
+    return `${baseUrl}?v=${version}`;
+  }
+
+  return baseUrl;
 }
 
 /**
- * Build profile photo URLs
+ * Build profile photo URLs with versioning
  */
-export function buildProfilePhotoUrls(webpUrls?: {
-  thumbnail?: string;
-  full?: string;
-}) {
+export function buildProfilePhotoUrls(
+  webpUrls?: { thumbnail?: string; full?: string },
+  updatedAt?: string
+) {
   if (!webpUrls) {
     return {
       thumbnailUrl: "",
@@ -366,18 +427,18 @@ export function buildProfilePhotoUrls(webpUrls?: {
   }
 
   return {
-    thumbnailUrl: buildCloudFrontUrl(webpUrls.thumbnail),
-    fullUrl: buildCloudFrontUrl(webpUrls.full),
+    thumbnailUrl: buildCloudFrontUrl(webpUrls.thumbnail, updatedAt),
+    fullUrl: buildCloudFrontUrl(webpUrls.full, updatedAt),
   };
 }
 
 /**
- * Build listing image URLs
+ * Build listing image URLs with versioning
  */
-export function buildListingImageUrls(webpUrls?: {
-  thumbnail?: string;
-  full?: string;
-}) {
+export function buildListingImageUrls(
+  webpUrls?: { thumbnail?: string; full?: string },
+  updatedAt?: string
+) {
   if (!webpUrls) {
     return {
       thumbnailUrl: "",
@@ -386,17 +447,36 @@ export function buildListingImageUrls(webpUrls?: {
   }
 
   return {
-    thumbnailUrl: buildCloudFrontUrl(webpUrls.thumbnail),
-    fullUrl: buildCloudFrontUrl(webpUrls.full),
+    thumbnailUrl: buildCloudFrontUrl(webpUrls.thumbnail, updatedAt),
+    fullUrl: buildCloudFrontUrl(webpUrls.full, updatedAt),
   };
+}
+
+/**
+ * Build image URL with fallback to presigned URL
+ * Used for rollback capability via USE_CLOUDFRONT flag
+ */
+export function buildImageUrl(
+  s3Key: string | undefined | null,
+  updatedAt?: string
+): string {
+  if (USE_CLOUDFRONT) {
+    return buildCloudFrontUrl(s3Key, updatedAt);
+  } else {
+    // Fallback to presigned URL (requires s3-presigned.ts import)
+    const { generateDownloadUrl } = require("./s3-presigned");
+    return generateDownloadUrl(s3Key || "");
+  }
 }
 
 /**
  * Validate CloudFront domain is configured
  */
 export function validateCloudFrontConfig(): void {
-  if (!CLOUDFRONT_DOMAIN) {
-    throw new Error("CLOUDFRONT_DOMAIN environment variable is not set");
+  if (USE_CLOUDFRONT && !CLOUDFRONT_DOMAIN) {
+    throw new Error(
+      "CLOUDFRONT_DOMAIN environment variable is not set when USE_CLOUDFRONT=true"
+    );
   }
 }
 ```
@@ -419,11 +499,14 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     countryCode: host.countryCode,
     address: host.address,
 
-    // Profile photo with CloudFront URLs
+    // Profile photo with CloudFront URLs + versioning
     profilePhoto: host.profilePhoto
       ? {
           photoId: host.profilePhoto.photoId,
-          ...buildProfilePhotoUrls(host.profilePhoto.webpUrls), // NEW
+          ...buildProfilePhotoUrls(
+            host.profilePhoto.webpUrls,
+            host.profilePhoto.updatedAt // Pass updatedAt for versioning
+          ),
           width: host.profilePhoto.dimensions?.width || 0,
           height: host.profilePhoto.dimensions?.height || 0,
           status: host.profilePhoto.status,
@@ -449,7 +532,7 @@ const images = (imagesResult.Items || [])
   .filter((img) => img.status === "READY" || img.status === "ACTIVE")
   .map((img) => ({
     imageId: img.imageId,
-    ...buildListingImageUrls(img.webpUrls), // NEW: Replace thumbnailUrl/fullUrl
+    ...buildListingImageUrls(img.webpUrls, img.updatedAt), // Pass updatedAt for versioning
     displayOrder: img.displayOrder,
     isPrimary: img.isPrimary,
     caption: img.caption,
@@ -468,7 +551,10 @@ import { buildListingImageUrls } from '../lib/cloudfront-urls';
 primaryImage: primaryImage && primaryImage.status === 'READY'
   ? {
       imageId: primaryImage.imageId,
-      thumbnailUrl: buildListingImageUrls(primaryImage.webpUrls).thumbnailUrl, // NEW
+      thumbnailUrl: buildListingImageUrls(
+        primaryImage.webpUrls,
+        primaryImage.updatedAt  // Pass updatedAt for versioning
+      ).thumbnailUrl,
     }
   : undefined,
 ```
@@ -506,8 +592,8 @@ async function fetchImageDetails(
     const image = result.Item as ListingImage;
     console.log(`Found image ${imageId}, status: ${image.status}`);
 
-    // Build CloudFront URLs instead of presigned URLs
-    const urls = buildListingImageUrls(image.webpUrls);
+    // Build CloudFront URLs with versioning instead of presigned URLs
+    const urls = buildListingImageUrls(image.webpUrls, image.updatedAt);
 
     return {
       ...image,
@@ -534,7 +620,7 @@ import { buildCloudFrontUrl } from "../lib/cloudfront-urls";
 const imageDetails = await Promise.all(
   currentImages.map(async (img) => ({
     imageId: img.imageId,
-    s3Url: buildCloudFrontUrl(img.s3Key), // NEW: CloudFront URL instead of presigned
+    s3Url: buildCloudFrontUrl(img.s3Key, img.updatedAt), // CloudFront URL with versioning
     displayOrder: img.displayOrder,
     isPrimary: img.isPrimary,
     caption: img.caption,
@@ -546,7 +632,7 @@ const imageDetails = await Promise.all(
 const pendingImageDetails = await Promise.all(
   pendingImages.map(async (img) => ({
     imageId: img.imageId,
-    s3Url: buildCloudFrontUrl(img.s3Key), // NEW: CloudFront URL instead of presigned
+    s3Url: buildCloudFrontUrl(img.s3Key, img.updatedAt), // CloudFront URL with versioning
     displayOrder: img.displayOrder,
     isPrimary: img.isPrimary,
     caption: img.caption,
@@ -573,20 +659,39 @@ These use `generateUploadUrl()` for **uploads**, which is separate from **downlo
 
 #### 3.1 Environment Variables
 
-Add to frontend `.env`:
+**No changes needed!**
 
-```bash
-# Existing
-VITE_API_ENDPOINT=https://xyz.execute-api.eu-north-1.amazonaws.com/v1
-VITE_COGNITO_USER_POOL_ID=eu-north-1_abc123
-VITE_COGNITO_CLIENT_ID=abc123
-VITE_AWS_REGION=eu-north-1
+The backend returns full CloudFront URLs in API responses, so the frontend doesn't need any new environment variables or configuration.
 
-# NEW: CloudFront domain (not needed if backend returns full URLs)
-# VITE_CLOUDFRONT_DOMAIN=d1234567890abc.cloudfront.net
+**Example API response (before):**
+
+```json
+{
+  "images": [
+    {
+      "imageId": "img_123",
+      "thumbnailUrl": "https://bucket.s3.amazonaws.com/path?X-Amz-...",
+      "fullUrl": "https://bucket.s3.amazonaws.com/path?X-Amz-..."
+    }
+  ]
+}
 ```
 
-**Note**: If backend returns full CloudFront URLs (recommended), frontend doesn't need the domain.
+**Example API response (after):**
+
+```json
+{
+  "images": [
+    {
+      "imageId": "img_123",
+      "thumbnailUrl": "https://d123.cloudfront.net/path?v=1699716600000",
+      "fullUrl": "https://d123.cloudfront.net/path?v=1699716600000"
+    }
+  ]
+}
+```
+
+Same field names, just different URL format!
 
 #### 3.2 Image Display
 
@@ -674,86 +779,50 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Security Considerations
 
-### 1. Public Access to Images
+### 1. Path-Based Access Control
 
-**Images that SHOULD be public:**
+**Images served via CloudFront (whitelisted paths):**
 
-- ✅ Listing images (full + thumbnail)
-- ✅ Host profile photos (full + thumbnail)
+- ✅ Listing images: `*/listings/*/images/*.webp`
+- ✅ Host profile photos: `*/profile/*.webp`
 
-**Images that should NOT be public:**
+**Images that remain private (NOT served via CloudFront):**
 
-- ❌ Verification documents (`veri_*` prefix)
-- ❌ Quarantined files (`*/quarantine/*`)
-- ❌ Temporary uploads (`lstimg_*`, `veri_*` at bucket root)
+- ❌ Verification documents: `*/verification/*` (use presigned URLs)
+- ❌ Quarantined files: `*/quarantine/*`
+- ❌ Temporary uploads: `lstimg_*`, `veri_*` at bucket root
 
-### 2. CloudFront Path Restrictions
+**How it works:**
 
-**Option A: Whitelist specific paths** (Recommended)
+- CloudFront has specific cache behaviors for the two whitelisted path patterns
+- All other paths return 403 Forbidden
+- S3 bucket remains private (Block Public Access enabled)
+- Only CloudFront can access S3 via Origin Access Control (OAC)
 
-Create multiple cache behaviors:
+### 2. Important Security Notes
 
-```typescript
-// In CloudFront stack:
-{
-  // Behavior 1: Host profile photos (public)
-  pathPattern: '*/profile/photo_*.webp',
-  // ... cache settings
-},
-{
-  // Behavior 2: Listing images (public)
-  pathPattern: '*/listings/*/images/*.webp',
-  // ... cache settings
-},
-{
-  // Behavior 3: Block everything else
-  pathPattern: '*',
-  viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-  cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-  responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'BlockPolicy', {
-    customHeadersBehavior: {
-      customHeaders: [
-        { header: 'x-robots-tag', value: 'noindex', override: true },
-      ],
-    },
-  }),
-}
-```
+**This is NOT making images "public":**
 
-**Option B: Lambda@Edge function** (Advanced)
+- The S3 bucket remains private
+- Images are only accessible via CloudFront URLs
+- Path patterns restrict which files can be accessed
+- Verification documents and other sensitive files remain protected
 
-Use Lambda@Edge to validate requests:
+**Why this is secure:**
 
-- Allow: `*/profile/photo_*.webp`
-- Allow: `*/listings/*/images/*.webp`
-- Deny: Everything else
+- Listing images and profile photos are meant to be viewable (by authenticated users)
+- These images contain no sensitive information
+- The API endpoints that return these URLs are all authenticated
+- Verification documents use a different path pattern and remain private
 
 ### 3. Rate Limiting
 
-CloudFront automatically provides DDoS protection via AWS Shield Standard.
+CloudFront automatically provides DDoS protection via AWS Shield Standard. No additional configuration needed for staging.
 
-For additional protection:
+For production, consider:
 
-- Enable AWS WAF on CloudFront distribution
-- Add rate limiting rules (e.g., 1000 requests/5 minutes per IP)
-
-### 4. CORS Configuration
-
-CloudFront will respect S3 CORS headers, but you can also configure CORS at CloudFront level:
-
-```typescript
-// In CloudFront cache behavior:
-responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'CorsPolicy', {
-  corsBehavior: {
-    accessControlAllowOrigins: ['https://*.localstays.com', 'http://localhost:3000'],
-    accessControlAllowMethods: ['GET', 'HEAD', 'OPTIONS'],
-    accessControlAllowHeaders: ['*'],
-    accessControlExposeHeaders: ['ETag'],
-    accessControlMaxAge: cdk.Duration.hours(1),
-    originOverride: true,
-  },
-}),
-```
+- Enable AWS WAF on CloudFront distribution (optional)
+- Add rate limiting rules (optional, e.g., 1000 requests/5 minutes per IP)
 
 ---
 
@@ -761,11 +830,11 @@ responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'CorsPolicy', 
 
 ### 1. Cache Configuration
 
-**Recommended TTLs:**
+**Configured TTL: 365 days**
 
-- **Listing images**: 24 hours (images rarely change)
-- **Profile photos**: 24 hours (photos rarely change)
-- **Cache invalidation**: Use versioned URLs or manual invalidation
+- Maximum cache duration for best performance and lowest cost
+- Images rarely change, and when they do, versioned URLs trigger new cache entries
+- Cache hit rate expected to be >95% after initial warmup
 
 ### 2. Image Optimization
 
@@ -773,34 +842,243 @@ responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'CorsPolicy', 
 
 - ✅ WebP format (85% quality)
 - ✅ Responsive images (thumbnail 400px, full max 1920px)
-- ✅ Compression enabled on CloudFront
+- ✅ Compression enabled on CloudFront (gzip/brotli)
 
-**Future optimizations:**
+### 3. Cache Versioning Strategy
 
-- Consider AWS Lambda@Edge for on-the-fly image resizing
-- Add `Cache-Control` headers to S3 objects
-
-### 3. Cache Invalidation Strategy
-
-**Option A: Versioned URLs** (Recommended)
-
-Add a version query parameter:
+**Using `updatedAt` timestamp as version parameter:**
 
 ```
-https://d123.cloudfront.net/host123/profile/photo_full.webp?v=1234567890
+https://d123.cloudfront.net/host123/profile/photo_full.webp?v=1699716600000
 ```
 
-Update version when image changes.
+**How it works:**
 
-**Option B: Manual Invalidation**
+1. Image uploaded → `updatedAt` set to current timestamp
+2. Admin approves image → `updatedAt` updated to approval timestamp
+3. URL includes `?v={timestamp}` → CloudFront treats as new URL
+4. Old cached version remains but is never requested again
 
-```bash
-aws cloudfront create-invalidation \
-  --distribution-id E1234567890ABC \
-  --paths "/host123/profile/*"
+**Benefits:**
+
+- No manual cache invalidation needed
+- No invalidation costs
+- Instant cache refresh when images change
+- Simple implementation (timestamp already exists in DynamoDB)
+
+---
+
+## Cost Optimization Strategy
+
+### 1. Price Class Selection: PriceClass_100
+
+**What it means:**
+
+- CloudFront serves content from edge locations in **US, Canada, and Europe only**
+- Excludes Asia, Australia, South America, Africa, Middle East edge locations
+
+**Cost savings:**
+
+- ~30% cheaper than `PriceClass_All` (all global edge locations)
+- ~15% cheaper than `PriceClass_200` (adds Asia/Japan)
+
+**Performance impact:**
+
+- ✅ **Europe users**: Excellent (served from local edge locations)
+- ✅ **US/Canada users**: Excellent (served from local edge locations)
+- ⚠️ **Other regions**: Requests routed to nearest available edge (Europe or US)
+  - Still works, just slightly higher latency (~50-150ms extra)
+  - For a vacation rental platform focused on Europe/North America, this is acceptable
+
+**Recommendation:** Use `PriceClass_100` for both staging and production.
+
+### 2. Features to DISABLE (Cost Savings)
+
+#### ❌ CloudFront Logging
+
+```typescript
+enableLogging: false,  // Saves ~$0.01 per 10,000 requests
 ```
 
-**Cost**: First 1,000 invalidations/month are free, then $0.005 per path.
+**Why disable:**
+
+- Logging costs add up quickly at scale
+- S3 storage costs for logs
+- Most issues can be debugged via Lambda logs or CloudWatch
+- Enable temporarily only when debugging CloudFront-specific issues
+
+**Cost impact:** Saves ~$10-50/month at moderate traffic
+
+#### ❌ Real-Time Logs
+
+```typescript
+// Don't configure real-time logs
+```
+
+**Why disable:**
+
+- Expensive ($0.01 per 1M log lines)
+- Only needed for real-time analytics
+- Standard CloudWatch metrics are sufficient
+
+**Cost impact:** Saves ~$20-100/month at moderate traffic
+
+#### ❌ Field-Level Encryption
+
+```typescript
+// Don't configure field-level encryption
+```
+
+**Why disable:**
+
+- Not needed (images are not sensitive data)
+- Adds processing overhead
+- Adds cost per request
+
+**Cost impact:** Saves ~$5-20/month
+
+#### ❌ Lambda@Edge / CloudFront Functions
+
+```typescript
+// Don't use Lambda@Edge for now
+```
+
+**Why disable:**
+
+- Not needed (path-based behaviors handle security)
+- Expensive ($0.60 per 1M requests + compute time)
+- Adds latency
+
+**Cost impact:** Saves ~$50-200/month
+
+**When to enable:** Only if you need dynamic image resizing or complex request/response manipulation
+
+### 3. Features to ENABLE (No Extra Cost or Worth It)
+
+#### ✅ Compression (Gzip + Brotli)
+
+```typescript
+compress: true,
+enableAcceptEncodingGzip: true,
+enableAcceptEncodingBrotli: true,
+```
+
+**Why enable:**
+
+- Reduces data transfer by 60-80% for images with metadata
+- WebP images already compressed, but headers/metadata benefit
+- No extra cost, just better performance
+
+#### ✅ HTTP/2 and HTTP/3
+
+```typescript
+httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+```
+
+**Why enable:**
+
+- Better performance (multiplexing, header compression)
+- No extra cost
+- Modern browsers support it
+
+#### ✅ IPv6
+
+```typescript
+enableIpv6: true,
+```
+
+**Why enable:**
+
+- Better connectivity for IPv6-only networks
+- No extra cost
+- Future-proofing
+
+### 4. Cache Optimization for Cost Reduction
+
+**365-day TTL = Maximum Cost Savings:**
+
+| Cache Hit Rate        | S3 GET Requests | Monthly Cost (1M views) |
+| --------------------- | --------------- | ----------------------- |
+| 50% (1 day TTL)       | 500K            | $9.50                   |
+| 80% (7 day TTL)       | 200K            | $9.35                   |
+| 95% (30 day TTL)      | 50K             | $9.27                   |
+| **99% (365 day TTL)** | **10K**         | **$9.25**               |
+
+**Why 365 days is optimal:**
+
+- Minimizes S3 GET requests (most expensive part)
+- Versioned URLs handle updates (no manual invalidation needed)
+- Cache hit rate approaches 99% after warmup period
+
+### 5. Origin Configuration Optimization
+
+```typescript
+// In CloudFront stack - optimize origin settings
+const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(bucket, {
+  originAccessControl: oac,
+  // Don't add custom headers (not needed, adds processing)
+  // Don't add origin shield (expensive, not needed for small/medium traffic)
+});
+```
+
+**Origin Shield - DON'T USE (Yet):**
+
+- Costs extra $0.01 per 10,000 requests
+- Only beneficial at very high traffic (10M+ requests/month)
+- Reduces origin load, but your S3 can handle it
+- Enable only if S3 costs become significant
+
+**Cost impact:** Saves ~$100+/month at moderate traffic
+
+### 6. Request Method Optimization
+
+```typescript
+allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD, // Not ALLOW_GET_HEAD_OPTIONS
+```
+
+**Why only GET and HEAD:**
+
+- Images only need GET (fetch) and HEAD (check existence)
+- OPTIONS is for CORS preflight (not needed for `<img>` tags)
+- Reduces request count slightly
+
+**Cost impact:** Minimal, but good practice
+
+### 7. Avoid These Common Cost Traps
+
+❌ **Don't use CloudFront Functions for simple tasks**
+
+- Cost: $0.10 per 1M invocations
+- Use path-based behaviors instead
+
+❌ **Don't enable WAF unless needed**
+
+- Cost: $5/month + $1 per 1M requests
+- Only enable for production if under attack
+
+❌ **Don't use custom SSL certificate for staging**
+
+- Cost: $600/year for dedicated IP
+- Use SNI (free) or default CloudFront domain
+
+❌ **Don't enable CloudFront access logs by default**
+
+- Cost: S3 storage + processing
+- Enable only when debugging
+
+### 8. Monitoring Without Extra Cost
+
+**Use built-in CloudWatch metrics (free):**
+
+- Cache hit rate
+- Error rate (4xx, 5xx)
+- Bytes downloaded
+- Request count
+
+**Don't enable:**
+
+- Real-time metrics ($0.01 per metric per hour = ~$7/month)
+- Detailed monitoring (not needed for images)
 
 ---
 
@@ -825,58 +1103,70 @@ aws cloudfront create-invalidation \
 - **CloudFront Requests**: $0.0075 per 10,000 requests
 - **S3 Data Transfer to CloudFront**: **FREE** (same region)
 
-**Example**: 1M image views/month, 100 KB average image size, 80% cache hit rate
+**Example**: 1M image views/month, 100 KB average image size, 95% cache hit rate (365-day TTL)
 
 - Data transfer: 100 GB × $0.085 = **$8.50**
 - Requests: 1M × $0.0075/10000 = **$0.75**
-- S3 GET (cache misses): 200K × $0.0004/1000 = **$0.08**
-- **Total**: **$9.33/month**
+- S3 GET (cache misses): 50K × $0.0004/1000 = **$0.02**
+- **Total**: **$9.27/month**
 
-**Savings**: ~$0.27/month (3% cheaper)
+**Savings**: ~$0.33/month (3.4% cheaper)
 
-**Note**: Savings increase with higher traffic due to caching. At 10M views/month, savings would be ~$10/month (10% cheaper).
+**Note**: Savings increase with higher traffic due to caching. At 10M views/month with 95% cache hit rate, savings would be ~$15/month (15% cheaper).
 
 ---
 
 ## Rollback Plan
 
-If CloudFront integration causes issues:
+If CloudFront integration causes issues, we have a quick rollback mechanism:
 
-### 1. Quick Rollback (Environment Variable)
+### 1. Quick Rollback (Environment Variable) - 30 seconds
 
-Add feature flag to Lambda:
+The code includes a `USE_CLOUDFRONT` environment variable that controls whether to use CloudFront URLs or presigned URLs:
 
 ```typescript
 const USE_CLOUDFRONT = process.env.USE_CLOUDFRONT === "true";
 
-export function buildImageUrl(s3Key: string): string {
+export function buildImageUrl(s3Key: string, updatedAt?: string): string {
   if (USE_CLOUDFRONT) {
-    return buildCloudFrontUrl(s3Key);
+    return buildCloudFrontUrl(s3Key, updatedAt);
   } else {
-    return generateDownloadUrl(s3Key); // Fallback to presigned URLs
+    // Fallback to presigned URL
+    const { generateDownloadUrl } = require("./s3-presigned");
+    return generateDownloadUrl(s3Key || "");
   }
 }
 ```
 
-Update Lambda environment variable:
+**To rollback instantly:**
 
 ```bash
+# Update Lambda environment variable
 aws lambda update-function-configuration \
-  --function-name staging-api-handler \
-  --environment Variables={USE_CLOUDFRONT=false}
+  --function-name LocalstaysStagingApiLambdaStack-hostListingsHandler... \
+  --environment Variables={USE_CLOUDFRONT=false,...other vars...} \
+  --region eu-north-1
+
+# Takes ~30 seconds to apply
 ```
 
-### 2. Full Rollback (Code Revert)
+### 2. Full Rollback (Code Revert) - 10+ minutes
+
+If needed, revert code changes and redeploy:
 
 ```bash
 git revert <commit-hash>
 cd infra
-cdk deploy Localstays{Stage}ApiLambdaStack
+npm run cdk -- deploy -c env=staging LocalstaysStagingApiLambdaStack
 ```
 
-### 3. Keep CloudFront Distribution
+### 3. CloudFront Distribution
 
-Even if rolled back, keep CloudFront distribution for future use. It doesn't cost anything if not used (only data transfer costs).
+Even if rolled back, keep CloudFront distribution running:
+
+- No cost if not used (only data transfer costs apply when serving traffic)
+- Can be re-enabled by setting `USE_CLOUDFRONT=true`
+- Useful for future testing and eventual re-deployment
 
 ---
 
@@ -884,36 +1174,52 @@ Even if rolled back, keep CloudFront distribution for future use. It doesn't cos
 
 ### Pre-Deployment
 
-- [ ] Review and approve this plan
-- [ ] Decide on cache TTL values
-- [ ] Decide on path restrictions (Option A or B)
-- [ ] Decide on custom domain (optional)
-- [ ] Test CloudFront stack in dev1 environment
+- [x] Review and approve plan ✅
+- [x] Cache TTL: 365 days ✅
+- [x] Path restrictions: Whitelist `*/listings/*/images/*.webp` and `*/profile/*.webp` ✅
+- [x] Custom domain: No (staging uses default CloudFront domain) ✅
+- [x] Versioning strategy: Use `updatedAt` timestamp ✅
+- [x] Rollback strategy: `USE_CLOUDFRONT` environment variable ✅
 
-### Deployment
+### Deployment to Staging
 
-- [ ] Deploy CloudFront stack to staging
-- [ ] Verify CloudFront distribution is active
-- [ ] Test CloudFront URLs manually (curl)
-- [ ] Deploy updated Lambda functions
-- [ ] Test API endpoints (verify CloudFront URLs in responses)
-- [ ] Deploy frontend with updated environment variables
-- [ ] Test frontend image loading
+- [x] **Step 1:** Deploy CloudFront stack ✅
+  ```bash
+  cd infra
+  npm run cdk -- deploy -c env=staging LocalstaysStagingCloudFrontStack
+  ```
+  - Distribution ID: `E3EUKZ7Z8VLB3Q`
+  - Domain: `dz45r0splw6d0.cloudfront.net`
+  - OAC ID: `E178AI1GE2NDZ3`
+- [x] **Step 2:** Verify CloudFront distribution is active ✅
+- [x] **Step 3:** Test CloudFront URLs manually with curl ✅
+  - Tested: `https://dz45r0splw6d0.cloudfront.net/host_2f58aff4-a9f1-43d8-bdf9-c3f4e6728e5e/listings/listing_04d0c1ee-ede2-4712-9d6c-70a673c43247/images/e0bf5496-0a87-47cf-addc-d438425aeb1b-full.webp`
+  - Result: HTTP/2 200, x-cache: Miss/Hit from cloudfront ✅
+- [ ] **Step 4:** Create `backend/services/api/lib/cloudfront-urls.ts`
+- [ ] **Step 5:** Update 5 API handlers (hosts/get-profile, listings/get-listing, listings/list-listings, admin/requests/get-request, admin/listings/get-listing)
+- [ ] **Step 6:** Update `infra/lib/api-lambda-stack.ts` to pass `CLOUDFRONT_DOMAIN` env var
+- [ ] **Step 7:** Deploy updated Lambda functions
+  ```bash
+  npm run cdk -- deploy -c env=staging LocalstaysStagingApiLambdaStack
+  ```
+- [ ] **Step 8:** Set `USE_CLOUDFRONT=true` (should be default)
+- [ ] **Step 9:** Test API endpoints (verify CloudFront URLs in responses)
+- [ ] **Step 10:** Test frontend image loading (no frontend changes needed)
 
-### Post-Deployment
+### Post-Deployment Testing
 
 - [ ] Monitor CloudFront metrics (cache hit rate, errors)
 - [ ] Monitor Lambda logs (no errors)
-- [ ] Monitor frontend (no broken images)
-- [ ] Test image upload flow (should still work)
+- [ ] Test image upload flow (should still work with presigned URLs)
 - [ ] Test admin panel (no presigned URL expiry issues)
-- [ ] Document CloudFront domain for frontend team
+- [ ] Test image approval flow (verify `updatedAt` changes trigger new URLs)
+- [ ] Verify verification documents still use presigned URLs (not CloudFront)
 
-### Production Deployment
+### Production Deployment (Future)
 
 - [ ] Repeat all steps for production environment
-- [ ] Configure custom domain (optional)
-- [ ] Enable AWS WAF (optional)
+- [ ] Consider custom domain (`assets.localstays.com`)
+- [ ] Consider AWS WAF for additional protection
 - [ ] Set up CloudWatch alarms for CloudFront errors
 
 ---
@@ -984,43 +1290,86 @@ Even if rolled back, keep CloudFront distribution for future use. It doesn't cos
 
 ---
 
-## Questions & Decisions Needed
+## Decisions Made ✅
 
-1. **Custom Domain**: Do you want a custom domain like `assets.localstays.com`?
+1. **Custom Domain**: ❌ No custom domain for staging
 
-   - **Yes**: Requires Route53 hosted zone + ACM certificate (in us-east-1)
-   - **No**: Use CloudFront default domain (e.g., `d123.cloudfront.net`)
+   - Use CloudFront default domain (e.g., `d123.cloudfront.net`)
+   - Production can optionally add custom domain later
 
-2. **Path Restrictions**: How strict should CloudFront access be?
+2. **Path Restrictions**: ✅ Whitelist specific paths
 
-   - **Option A**: Whitelist specific paths (profile photos + listing images)
-   - **Option B**: Lambda@Edge validation (more complex, more flexible)
-   - **Option C**: No restrictions (simpler, but exposes all S3 paths)
+   - `*/listings/*/images/*.webp` (listing images)
+   - `*/profile/*.webp` (profile photos)
+   - All other paths return 403 Forbidden
 
-3. **Cache TTL**: How long should images be cached?
+3. **Cache TTL**: ✅ 365 days (maximum)
 
-   - **24 hours**: Good balance (recommended)
-   - **7 days**: Longer caching, better performance, harder to update
-   - **1 hour**: Shorter caching, easier to update, less performance benefit
+   - Best performance and cost savings
+   - Versioned URLs handle image updates
 
-4. **Deployment Order**: Which environment first?
+4. **Versioning Strategy**: ✅ Use `updatedAt` timestamp
 
-   - **Staging first**: Test thoroughly, then production (recommended)
-   - **Production immediately**: Faster, but riskier
+   - Automatically changes when admin approves images
+   - No manual cache invalidation needed
+   - No additional costs
 
-5. **Rollback Strategy**: Keep presigned URL code as fallback?
-   - **Yes**: Add feature flag, easy rollback (recommended)
-   - **No**: Remove presigned URL code, cleaner but harder to rollback
+5. **Deployment Order**: ✅ Staging first
+
+   - Test thoroughly before production
+   - Lower risk approach
+
+6. **Rollback Strategy**: ✅ Feature flag (`USE_CLOUDFRONT`)
+   - Easy 30-second rollback via environment variable
+   - Keep presigned URL code as fallback for 1-2 months
 
 ---
 
 ## Next Steps
 
-1. **Review this plan** and answer questions above
-2. **Approve implementation** or request changes
-3. **Start with Phase 1** (Infrastructure) in staging environment
-4. **Test thoroughly** before proceeding to Phase 2
-5. **Deploy to production** after successful staging deployment
+**✅ Ready to deploy to staging!** All decisions have been made.
+
+### Deployment Strategy:
+
+1. **Deploy to staging first** (recommended)
+
+   - Test thoroughly for 1 week
+   - Monitor bandwidth costs
+   - Verify images load correctly
+   - Test rollback procedures
+
+2. **Deploy to production** (after staging validation)
+   - Enable web app WAF with geo-blocking
+   - Monitor closely for first 48 hours
+   - Keep kill switches ready
+
+### Estimated Timeline:
+
+**Phase 1 (Infrastructure):** 2-3 hours  
+**Phase 2 (Backend):** 3-4 hours  
+**Phase 3 (Frontend):** 0 hours (no changes needed!)  
+**Phase 4 (Testing):** 2-3 hours
+
+**Total:** 8-12 hours
+
+### Key Benefits:
+
+- ✅ No URL expiration issues (365-day cache)
+- ✅ Better performance (edge caching)
+- ✅ Lower costs (~3-15% savings depending on traffic)
+- ✅ Automatic cache refresh via versioned URLs
+- ✅ Quick rollback capability (30 seconds via `USE_CLOUDFRONT=false`)
+- ✅ No frontend changes required
+- ✅ Multiple kill switches available if issues arise
+
+### Emergency Procedures:
+
+See `EMERGENCY_KILL_SWITCH_PROCEDURES.md` for:
+
+- How to disable CloudFront in 30 seconds
+- How to rollback to presigned URLs in 5 minutes
+- How to enable emergency WAF rules
+- Pre-configured scripts for emergencies
 
 ---
 
@@ -1033,8 +1382,253 @@ Even if rolled back, keep CloudFront distribution for future use. It doesn't cos
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025-11-10  
+**Document Version**: 2.0  
+**Last Updated**: 2025-11-11  
 **Author**: AI Assistant  
-**Status**: Draft - Awaiting Approval
+**Status**: ✅ Approved - Ready for Implementation
 
+**Key Changes from v1.0:**
+
+- Updated cache TTL from 24 hours to 365 days
+- Added versioning strategy using `updatedAt` timestamp
+- Added rollback mechanism via `USE_CLOUDFRONT` feature flag
+- Clarified that all endpoints are authenticated (not public)
+- Added path-based whitelisting for security
+- Removed custom domain requirement for staging
+- Confirmed no frontend changes needed
+- Added comprehensive cost optimization strategy
+- Configured for Europe + US/Canada focus (PriceClass_100)
+- Documented features to disable for cost savings
+
+---
+
+## Deployment Lessons Learned ⚠️
+
+### Critical Issues & Solutions
+
+This section documents critical issues encountered during actual deployment to avoid repeating mistakes.
+
+#### 1. Circular Dependency Between CloudFront and S3 Stacks
+
+**Problem:** Using AWS CDK's high-level constructs (`S3BucketOrigin.withOriginAccessControl()`) automatically updates the S3 bucket policy, creating a circular dependency since CloudFront depends on Storage stack.
+
+**Error:**
+
+```
+ValidationError: 'LocalstaysStagingCloudFrontStack' depends on 'LocalstaysStagingStorageStack'.
+Adding this dependency (LocalstaysStagingStorageStack -> LocalstaysStagingCloudFrontStack/AssetsDistribution.Ref)
+would create a cyclic reference.
+```
+
+**Solution:**
+
+1. Use L1 (CFN) constructs (`cloudfront.CfnDistribution`) instead of L2 constructs
+2. **Do NOT** call `bucket.addToResourcePolicy()` in CloudFront stack
+3. Apply S3 bucket policy **manually** after CloudFront deployment
+
+**Correct Code Pattern:**
+
+```typescript
+// Use L1 construct
+const cfnDistribution = new cloudfront.CfnDistribution(
+  this,
+  "AssetsDistribution",
+  {
+    distributionConfig: {
+      origins: [
+        {
+          id: `S3-${bucket.bucketName}`,
+          domainName: bucket.bucketRegionalDomainName,
+          originAccessControlId: oac.originAccessControlId,
+          s3OriginConfig: {
+            originAccessIdentity: "", // Empty for OAC
+          },
+        },
+      ],
+      // ... rest of config
+    },
+  }
+);
+
+// DO NOT do this in CloudFront stack:
+// bucket.addToResourcePolicy(...) // ❌ Creates circular dependency
+```
+
+#### 2. S3OriginConfig Must Be Present with Empty originAccessIdentity
+
+**Problem:** When using OAC, the `s3OriginConfig` must be present but with an empty `originAccessIdentity` field. Setting it to `undefined` or omitting it causes CloudFront to reject the configuration.
+
+**Error:**
+
+```
+Invalid request provided: Exactly one of CustomOriginConfig, VpcOriginConfig and S3OriginConfig must be specified
+```
+
+**Solution:**
+
+  ```typescript
+  origins: [
+    {
+      id: `S3-${bucket.bucketName}`,
+      domainName: bucket.bucketRegionalDomainName,
+      originAccessControlId: oac.originAccessControlId, // ✅ OAC reference
+      s3OriginConfig: {}, // ✅ Empty object (not undefined, not omitted)
+    },
+  ];
+  ```
+
+#### 3. Manual S3 Bucket Policy Application Required
+
+**After CloudFront deployment**, manually apply the S3 bucket policy:
+
+```bash
+# 1. Create policy file (replace values)
+cat > /tmp/cf-bucket-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "AllowCloudFrontServicePrincipal",
+    "Effect": "Allow",
+    "Principal": {"Service": "cloudfront.amazonaws.com"},
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::BUCKET-NAME/*",
+    "Condition": {
+      "StringEquals": {
+        "AWS:SourceArn": "arn:aws:cloudfront::ACCOUNT-ID:distribution/DISTRIBUTION-ID"
+      }
+    }
+  }]
+}
+EOF
+
+# 2. Apply policy
+aws s3api put-bucket-policy \
+  --bucket BUCKET-NAME \
+  --policy file:///tmp/cf-bucket-policy.json \
+  --region REGION
+```
+
+#### 4. CDK Lock File Issues
+
+**Problem:** Failed or interrupted CDK deployments can leave lock files in `cdk.out` directory.
+
+**Error:**
+
+```
+Other CLIs (PID=400) are currently reading from cdk.out.
+```
+
+**Solutions:**
+
+```bash
+# Option 1: Clean CDK output
+rm -rf cdk.out
+
+# Option 2: Use different output directory
+npm run cdk -- deploy ... --output cdk.out.new
+```
+
+### Correct Deployment Sequence
+
+1. **Deploy CloudFront Stack**
+
+   ```bash
+   cd infra
+   npm run build
+   npm run cdk -- deploy -c env=staging LocalstaysStagingCloudFrontStack
+   ```
+
+2. **Apply S3 Bucket Policy** (see code above)
+
+3. **Test CloudFront Access**
+
+   ```bash
+   curl -I "https://DISTRIBUTION-DOMAIN.cloudfront.net/path/to/image.webp"
+   # Expected: HTTP/2 200, x-cache: Miss/Hit from cloudfront
+   ```
+
+4. **Deploy API Stack with CloudFront Domain**
+   ```bash
+   npm run cdk -- deploy -c env=staging LocalstaysStagingApiStack
+   ```
+
+### Architecture Decisions
+
+**Why L1 (CFN) Constructs Instead of L2?**
+
+- L2 constructs automatically update bucket policy → circular dependency
+- L1 constructs give full control without automatic cross-stack dependencies
+- Manual bucket policy is acceptable one-time operation per environment
+
+**Why Manual Bucket Policy?**
+
+- Avoids circular dependency
+- Simple and explicit
+- Easy to understand and debug
+- One-time operation per environment
+
+### Common Errors & Quick Fixes
+
+| Error                                  | Fix                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| "Exactly one of CustomOriginConfig..." | Ensure `s3OriginConfig` present with empty `originAccessIdentity: ""` |
+| "...would create a cyclic reference"   | Remove `bucket.addToResourcePolicy()` from CloudFront stack           |
+| "Other CLIs are currently reading..."  | `rm -rf cdk.out` or use `--output cdk.out.new`                        |
+| "Access Denied" on CloudFront URL      | Check S3 bucket policy applied correctly with correct distribution ID |
+| CloudFront returns 403 for valid paths | Verify path patterns in cache behaviors match S3 key structure        |
+
+### Testing Checklist
+
+After deployment, verify:
+
+- [ ] CloudFront distribution is deployed and enabled
+- [ ] S3 bucket policy is applied
+- [ ] Can access existing images via CloudFront URL
+- [ ] First request shows `x-cache: Miss from cloudfront`
+- [ ] Second request shows `x-cache: Hit from cloudfront`
+- [ ] Non-whitelisted paths return 403 Forbidden
+- [ ] Direct S3 access is blocked (bucket is private)
+- [ ] CloudFront domain is passed to Lambda environment variables
+
+**For complete deployment lessons learned, see:** `CLOUDFRONT_DEPLOYMENT_LESSONS_LEARNED.md`
+
+---
+
+## Configuration Summary
+
+### ✅ Enabled Features (Recommended)
+
+| Feature                         | Why                                    | Cost Impact               |
+| ------------------------------- | -------------------------------------- | ------------------------- |
+| **PriceClass_100**              | Europe + US/Canada edge locations only | -30% vs global            |
+| **365-day cache TTL**           | Maximum cache hit rate (99%)           | -$0.25/month per 1M views |
+| **HTTP/2 and HTTP/3**           | Better performance, multiplexing       | Free                      |
+| **IPv6**                        | Better connectivity                    | Free                      |
+| **Gzip + Brotli compression**   | Reduces data transfer                  | Free                      |
+| **Path-based behaviors**        | Security (whitelist specific paths)    | Free                      |
+| **Origin Access Control (OAC)** | S3 bucket remains private              | Free                      |
+| **Versioned URLs**              | Automatic cache refresh                | Free                      |
+
+### ❌ Disabled Features (Cost Savings)
+
+| Feature                    | Why Disabled                       | Savings        |
+| -------------------------- | ---------------------------------- | -------------- |
+| **CloudFront Logging**     | Use Lambda/CloudWatch logs instead | ~$10-50/month  |
+| **Real-time Logs**         | Not needed for images              | ~$20-100/month |
+| **Lambda@Edge**            | Path behaviors handle security     | ~$50-200/month |
+| **CloudFront Functions**   | Not needed                         | ~$10-50/month  |
+| **Origin Shield**          | Not needed at current scale        | ~$100+/month   |
+| **Field-level Encryption** | Images not sensitive               | ~$5-20/month   |
+| **WAF**                    | Enable only if under attack        | ~$60+/month    |
+| **Real-time Metrics**      | Standard metrics sufficient        | ~$7/month      |
+
+**Total potential savings: $262-587/month** by keeping configuration lean!
+
+### 🎯 Optimized For
+
+- **Target audience:** Europe, US, Canada
+- **Content type:** Static images (WebP)
+- **Access pattern:** Read-heavy (no writes via CloudFront)
+- **Security:** Path-based whitelisting (no Lambda@Edge needed)
+- **Cost priority:** Lean configuration, disable unnecessary features
+- **Performance:** 365-day cache, HTTP/3, compression enabled

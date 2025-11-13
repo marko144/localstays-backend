@@ -10,6 +10,7 @@ import { CognitoStack } from '../lib/cognito-stack';
 import { AuthTriggerStack } from '../lib/auth-trigger-stack';
 import { ApiGatewayStack } from '../lib/api-gateway-stack';
 import { ApiLambdaStack } from '../lib/api-lambda-stack';
+import { CloudFrontStack } from '../lib/cloudfront-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -145,9 +146,21 @@ authTriggerStack.addDependency(storageStack);
 authTriggerStack.addDependency(kmsStack);
 authTriggerStack.addDependency(cognitoStack);
 
-// Phase 3: API Layer Stack (Combined Gateway + Lambdas to avoid circular dependency)
+// Phase 3: CloudFront CDN (depends on Storage)
 
-// Stack 8: API (Gateway + Lambda Functions)
+// Stack 8: CloudFront Distribution
+const cloudFrontStack = new CloudFrontStack(app, `${stackPrefix}CloudFrontStack`, {
+  env,
+  description: `CloudFront CDN for serving listing images and profile photos (${stage})`,
+  stackName: `localstays-${stage}-cloudfront`,
+  stage,
+  bucket: storageStack.bucket,
+});
+cloudFrontStack.addDependency(storageStack);
+
+// Phase 4: API Layer Stack (Combined Gateway + Lambdas to avoid circular dependency)
+
+// Stack 9: API (Gateway + Lambda Functions)
 const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   env,
   description: `REST API Gateway and Lambda functions for host profile submission (${stage})`,
@@ -159,12 +172,14 @@ const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   bucket: storageStack.bucket,
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
+  cloudFrontDomain: cloudFrontStack.distributionDomainName,
 });
 apiStack.addDependency(cognitoStack);
 apiStack.addDependency(dataStack);
 apiStack.addDependency(emailTemplateStack);
 apiStack.addDependency(storageStack);
 apiStack.addDependency(paramsStack);
+apiStack.addDependency(cloudFrontStack);
 
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
@@ -175,7 +190,8 @@ console.log(`   4. ${storageStack.stackName} (S3)`);
 console.log(`   5. ${kmsStack.stackName} (KMS)`);
 console.log(`   6. ${cognitoStack.stackName} (Cognito User Pool)`);
 console.log(`   7. ${authTriggerStack.stackName} (Lambda Triggers)`);
-console.log(`   8. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
+console.log(`   8. ${cloudFrontStack.stackName} (CloudFront CDN)`);
+console.log(`   9. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

@@ -287,6 +287,7 @@ export interface ListingImage {
   
   // Metadata
   uploadedAt: string;
+  updatedAt: string;               // For CloudFront cache versioning
   isDeleted: boolean;
   deletedAt?: string;
 }

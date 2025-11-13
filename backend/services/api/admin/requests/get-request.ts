@@ -17,6 +17,7 @@ import { Request } from '../../../types/request.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { AdminRequestDetails } from '../../../types/admin.types';
 import { ListingImage } from '../../../types/listing.types';
+import { buildListingImageUrls } from '../../lib/cloudfront-urls';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -124,16 +125,16 @@ async function fetchImageDetails(listingId: string, imageIds: string[]): Promise
     const image = result.Item as ListingImage;
     console.log(`Found image ${imageId}, s3Key: ${image.s3Key}, status: ${image.status}`);
 
-    // Generate pre-signed URLs for original and WebP versions
-    const url = await generateDownloadUrl(image.s3Key);
-    const thumbnailUrl = image.webpUrls?.thumbnail || url;
+    // Generate URLs using CloudFront or presigned URLs
+    const urls = buildListingImageUrls(image.webpUrls, image.updatedAt);
+    const fallbackUrl = await generateDownloadUrl(image.s3Key);
 
     console.log(`Generated URLs for image ${imageId}`);
 
     return {
       ...image,
-      url,
-      thumbnailUrl,
+      url: urls.fullUrl || fallbackUrl,
+      thumbnailUrl: urls.thumbnailUrl || fallbackUrl,
     };
   });
 

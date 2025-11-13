@@ -4,6 +4,7 @@ import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { ListListingsResponse } from '../../types/listing.types';
+import { buildListingImageUrls } from '../lib/cloudfront-urls';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -110,7 +111,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           primaryImage: primaryImage && primaryImage.status === 'READY'
             ? {
                 imageId: primaryImage.imageId,
-                thumbnailUrl: primaryImage.webpUrls?.thumbnail || primaryImage.s3Url || '', // Fallback for legacy
+                thumbnailUrl: buildListingImageUrls(primaryImage.webpUrls, primaryImage.updatedAt).thumbnailUrl || primaryImage.s3Url || '', // Fallback for legacy
               }
             : undefined,
           createdAt: listing.createdAt,

@@ -1,0 +1,351 @@
+{
+ "Description": "S3 storage for host documents and listing images (staging)",
+ "Resources": {
+  "HostAssetsBucket5D31AD44": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "localstays-staging-host-assets",
+    "CorsConfiguration": {
+     "CorsRules": [
+      {
+       "AllowedHeaders": [
+        "*"
+       ],
+       "AllowedMethods": [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE"
+       ],
+       "AllowedOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://192.168.4.58:3000",
+        "https://*.localstays.com"
+       ],
+       "ExposedHeaders": [
+        "ETag"
+       ],
+       "MaxAge": 3000
+      }
+     ]
+    },
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "Id": "DeleteOldVersions",
+       "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+       },
+       "Status": "Enabled"
+      },
+      {
+       "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+       },
+       "Id": "AbortIncompleteMultipartUpload",
+       "Status": "Enabled"
+      },
+      {
+       "ExpirationInDays": 7,
+       "Id": "CleanupUnconfirmedDocuments",
+       "Prefix": "veri_profile-doc_",
+       "Status": "Enabled"
+      },
+      {
+       "ExpirationInDays": 7,
+       "Id": "CleanupUnconfirmedPhotos",
+       "Prefix": "lstimg_",
+       "Status": "Enabled"
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     },
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ],
+    "VersioningConfiguration": {
+     "Status": "Enabled"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/HostAssetsBucket/Resource"
+   }
+  },
+  "HostAssetsBucketPolicy14C1E14C": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "HostAssetsBucket5D31AD44"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:DeleteObject*",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:PutBucketPolicy"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "HostAssetsBucket5D31AD44",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "HostAssetsBucket5D31AD44",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/HostAssetsBucket/Policy/Resource"
+   }
+  },
+  "HostAssetsBucketAutoDeleteObjectsCustomResource3160D3BF": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "HostAssetsBucket5D31AD44"
+    }
+   },
+   "DependsOn": [
+    "HostAssetsBucketPolicy14C1E14C"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/HostAssetsBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "HostAssetsBucket5D31AD44"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+    "aws:asset:property": "Code"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VOWw6CMBA8i/9lxZr4LxxAggcwWFayPFrS3WIM4e6WYEL8mlcmMxq0TiE9VG9OTN0lPT1hvktlOhWtB59hzoLpUFT+sj+2QeF6Mp/d3vSi8sDihhLZBW9wzXf+FxXeTVSjzypGdWVGibsN2Wbt3IKMQRZlXY3Q8nHSGk6XeLRlosQHKzQglBt+ARIVQuPFAAAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingStorageStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "BucketName": {
+   "Description": "S3 bucket for host assets",
+   "Value": {
+    "Ref": "HostAssetsBucket5D31AD44"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingBucketName"
+   }
+  },
+  "BucketArn": {
+   "Description": "ARN of the host assets bucket",
+   "Value": {
+    "Fn::GetAtt": [
+     "HostAssetsBucket5D31AD44",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingBucketArn"
+   }
+  },
+  "ExportsOutputFnGetAttHostAssetsBucket5D31AD44ArnFFAF3CDB": {
+   "Value": {
+    "Fn::GetAtt": [
+     "HostAssetsBucket5D31AD44",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "localstays-staging-storage:ExportsOutputFnGetAttHostAssetsBucket5D31AD44ArnFFAF3CDB"
+   }
+  },
+  "ExportsOutputRefHostAssetsBucket5D31AD448717E0DD": {
+   "Value": {
+    "Ref": "HostAssetsBucket5D31AD44"
+   },
+   "Export": {
+    "Name": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+   }
+  },
+  "ExportsOutputFnGetAttHostAssetsBucket5D31AD44RegionalDomainName8CED2753": {
+   "Value": {
+    "Fn::GetAtt": [
+     "HostAssetsBucket5D31AD44",
+     "RegionalDomainName"
+    ]
+   },
+   "Export": {
+    "Name": "localstays-staging-storage:ExportsOutputFnGetAttHostAssetsBucket5D31AD44RegionalDomainName8CED2753"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

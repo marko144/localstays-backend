@@ -1,0 +1,157 @@
+{
+ "Description": "KMS keys for encryption (staging)",
+ "Resources": {
+  "CognitoCustomSenderKey3C14CF73": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "KMS key for Cognito Custom Email Sender encryption (staging)",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": "arn:aws:iam::041608526793:root"
+       },
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "kms:CreateGrant",
+        "kms:Decrypt"
+       ],
+       "Condition": {
+        "StringEquals": {
+         "kms:ViaService": "cognito-idp.eu-north-1.amazonaws.com"
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cognito-idp.amazonaws.com"
+       },
+       "Resource": "*",
+       "Sid": "Allow Cognito to use the key"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingKmsStack/CognitoCustomSenderKey/Resource"
+   }
+  },
+  "CognitoCustomSenderKeyAlias6ED4C48F": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/localstays/staging/cognito-custom-sender",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "CognitoCustomSenderKey3C14CF73",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingKmsStack/CognitoCustomSenderKey/Alias/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/zPSMzIy0DNQTCwv1k1OydbNyUzSqw4uSUzO1gEKxWfnFutVe6dW6jin5YEox5zMxGIQB8yoBbH8S0sKSktqdfLyU1L1sor1y4yM9AzNgEZmFWdm6haV5pVk5qbqBUFoAAWbw0hvAAAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingKmsStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "CognitoKmsKeyId": {
+   "Description": "KMS key ID for Cognito Custom Email Sender",
+   "Value": {
+    "Ref": "CognitoCustomSenderKey3C14CF73"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingCognitoKmsKeyId"
+   }
+  },
+  "CognitoKmsKeyArn": {
+   "Description": "KMS key ARN for Cognito Custom Email Sender",
+   "Value": {
+    "Fn::GetAtt": [
+     "CognitoCustomSenderKey3C14CF73",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingCognitoKmsKeyArn"
+   }
+  },
+  "ExportsOutputFnGetAttCognitoCustomSenderKey3C14CF73Arn139EA1AE": {
+   "Value": {
+    "Fn::GetAtt": [
+     "CognitoCustomSenderKey3C14CF73",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "localstays-staging-kms:ExportsOutputFnGetAttCognitoCustomSenderKey3C14CF73Arn139EA1AE"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

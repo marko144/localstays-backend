@@ -34,6 +34,8 @@ export interface ApiLambdaStackProps extends cdk.StackProps {
   emailTemplatesTable: dynamodb.Table;
   /** SSM parameter name for SendGrid API key */
   sendGridParamName: string;
+  /** CloudFront distribution domain name (optional) */
+  cloudFrontDomain?: string;
 }
 
 /**
@@ -129,6 +131,46 @@ export class ApiLambdaStack extends cdk.Stack {
       },
       
       cloudWatchRole: true,
+    });
+
+    // Add Gateway Responses for CORS on errors (especially 401 from authorizer)
+    // This ensures CORS headers are returned even when the authorizer fails
+    this.api.addGatewayResponse('Unauthorized', {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      statusCode: '401',
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    });
+
+    this.api.addGatewayResponse('AccessDenied', {
+      type: apigateway.ResponseType.ACCESS_DENIED,
+      statusCode: '403',
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    });
+
+    this.api.addGatewayResponse('Default4XX', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    });
+
+    this.api.addGatewayResponse('Default5XX', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
     });
 
     // Create Cognito authorizer
@@ -520,6 +562,8 @@ export class ApiLambdaStack extends cdk.Stack {
       SENDGRID_PARAM: sendGridParamName,
       FROM_EMAIL: 'marko@localstays.me', // Same verified SendGrid sender as auth emails
       STAGE: stage,
+      CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
+      USE_CLOUDFRONT: props.cloudFrontDomain ? 'true' : 'false',
       // AWS_REGION is automatically set by Lambda runtime
     };
 

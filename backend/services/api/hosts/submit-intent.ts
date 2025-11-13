@@ -541,6 +541,7 @@ async function createProfilePhotoRecord(hostId: string, photo: ProfilePhotoInten
         expiresAt: expiresAtTimestamp, // TTL: Auto-delete after 24h if not confirmed
         
         uploadedAt: now,
+        updatedAt: now, // For CloudFront cache versioning
         isDeleted: false,
       },
     })

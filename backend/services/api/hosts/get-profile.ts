@@ -11,6 +11,7 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { Host } from '../../types/host.types';
 import { Document } from '../../types/document.types';
+import { buildProfilePhotoUrls } from '../lib/cloudfront-urls';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -113,8 +114,7 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     // Profile photo (optional)
     profilePhoto: host.profilePhoto ? {
       photoId: host.profilePhoto.photoId,
-      thumbnailUrl: host.profilePhoto.webpUrls?.thumbnail || '',
-      fullUrl: host.profilePhoto.webpUrls?.full || '',
+      ...buildProfilePhotoUrls(host.profilePhoto.webpUrls, host.profilePhoto.updatedAt),
       width: host.profilePhoto.dimensions?.width || 0,
       height: host.profilePhoto.dimensions?.height || 0,
       status: host.profilePhoto.status,

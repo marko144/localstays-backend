@@ -4,6 +4,7 @@ import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-d
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { GetListingResponse } from '../../types/listing.types';
+import { buildListingImageUrls } from '../lib/cloudfront-urls';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -80,16 +81,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const images = (imagesResult.Items || [])
       .filter((img) => img.status === 'READY' || img.status === 'ACTIVE') // READY = new processed images, ACTIVE = legacy images
-      .map((img) => ({
-        imageId: img.imageId,
-        thumbnailUrl: img.webpUrls?.thumbnail || img.s3Url || '', // Fallback for legacy images
-        fullUrl: img.webpUrls?.full || img.s3Url || '', // Fallback for legacy images
-        displayOrder: img.displayOrder,
-        isPrimary: img.isPrimary,
-        caption: img.caption,
-        width: img.dimensions?.width || img.width || 0,
-        height: img.dimensions?.height || img.height || 0,
-      }))
+      .map((img) => {
+        const urls = buildListingImageUrls(img.webpUrls, img.updatedAt);
+        return {
+          imageId: img.imageId,
+          thumbnailUrl: urls.thumbnailUrl || img.s3Url || '', // Fallback for legacy images
+          fullUrl: urls.fullUrl || img.s3Url || '', // Fallback for legacy images
+          displayOrder: img.displayOrder,
+          isPrimary: img.isPrimary,
+          caption: img.caption,
+          width: img.dimensions?.width || img.width || 0,
+          height: img.dimensions?.height || img.height || 0,
+        };
+      })
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
     // 4. Fetch amenities

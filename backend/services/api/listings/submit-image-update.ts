@@ -261,6 +261,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
               pendingApproval: true, // Key flag: prevents image from appearing in public queries
               
               uploadedAt: now,
+              updatedAt: now, // For CloudFront cache versioning
               isDeleted: false,
             },
           })

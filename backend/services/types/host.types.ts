@@ -85,6 +85,7 @@ export interface ProfilePhoto {
   fileSize: number;
   status: 'PENDING_UPLOAD' | 'PENDING_SCAN' | 'READY' | 'QUARANTINED';
   uploadedAt: string;
+  updatedAt: string; // For CloudFront cache versioning
   isDeleted: boolean;
 }
 

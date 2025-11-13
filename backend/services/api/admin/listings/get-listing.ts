@@ -16,6 +16,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { ListingMetadata, ListingImage, ListingAmenities, ListingVerificationDocument } from '../../../types/listing.types';
 import { AdminListingDetails } from '../../../types/admin.types';
+import { buildCloudFrontUrl } from '../../lib/cloudfront-urls';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -156,34 +157,56 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const currentImages = images.filter(img => !img.pendingApproval);
     const pendingImages = images.filter(img => img.pendingApproval);
 
-    // Generate pre-signed URLs for current images
+    // Generate URLs for current images (CloudFront or presigned)
     const imageDetails = await Promise.all(
-      currentImages.map(async (img) => ({
-        imageId: img.imageId,
-        s3Url: await generatePresignedUrl(img.s3Key),
-        displayOrder: img.displayOrder,
-        isPrimary: img.isPrimary,
-        caption: img.caption,
-        contentType: img.contentType,
-        pendingApproval: false,
-      }))
+      currentImages.map(async (img) => {
+        // Use WebP URLs if available, otherwise fall back to original s3Key
+        const fullUrl = img.webpUrls?.full 
+          ? buildCloudFrontUrl(img.webpUrls.full, img.updatedAt) 
+          : await generatePresignedUrl(img.s3Key);
+        const thumbnailUrl = img.webpUrls?.thumbnail
+          ? buildCloudFrontUrl(img.webpUrls.thumbnail, img.updatedAt)
+          : fullUrl; // Fallback to full URL if no thumbnail
+        
+        return {
+          imageId: img.imageId,
+          s3Url: fullUrl, // Keep field name for backward compatibility
+          thumbnailUrl: thumbnailUrl,
+          displayOrder: img.displayOrder,
+          isPrimary: img.isPrimary,
+          caption: img.caption,
+          contentType: img.contentType,
+          pendingApproval: false,
+        };
+      })
     );
 
     // Sort by display order
     imageDetails.sort((a, b) => a.displayOrder - b.displayOrder);
 
-    // Generate pre-signed URLs for pending images (if any)
+    // Generate URLs for pending images (CloudFront or presigned)
     const pendingImageDetails = await Promise.all(
-      pendingImages.map(async (img) => ({
-        imageId: img.imageId,
-        s3Url: await generatePresignedUrl(img.s3Key),
-        displayOrder: img.displayOrder,
-        isPrimary: img.isPrimary,
-        caption: img.caption,
-        contentType: img.contentType,
-        pendingApproval: true,
-        status: img.status,
-      }))
+      pendingImages.map(async (img) => {
+        // Use WebP URLs if available, otherwise fall back to original s3Key
+        const fullUrl = img.webpUrls?.full 
+          ? buildCloudFrontUrl(img.webpUrls.full, img.updatedAt) 
+          : await generatePresignedUrl(img.s3Key);
+        const thumbnailUrl = img.webpUrls?.thumbnail
+          ? buildCloudFrontUrl(img.webpUrls.thumbnail, img.updatedAt)
+          : fullUrl; // Fallback to full URL if no thumbnail
+        
+        return {
+          imageId: img.imageId,
+          s3Url: fullUrl, // Keep field name for backward compatibility
+          thumbnailUrl: thumbnailUrl,
+          displayOrder: img.displayOrder,
+          isPrimary: img.isPrimary,
+          caption: img.caption,
+          contentType: img.contentType,
+          pendingApproval: true,
+          status: img.status,
+        };
+      })
     );
 
     pendingImageDetails.sort((a, b) => a.displayOrder - b.displayOrder);
@@ -268,12 +291,22 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           );
           
           if (imgResult.Item && !imgResult.Item.isDeleted) {
+            const img = imgResult.Item;
+            // Use WebP URLs if available, otherwise fall back to original s3Key
+            const fullUrl = img.webpUrls?.full 
+              ? buildCloudFrontUrl(img.webpUrls.full, img.updatedAt) 
+              : await generatePresignedUrl(img.s3Key);
+            const thumbnailUrl = img.webpUrls?.thumbnail
+              ? buildCloudFrontUrl(img.webpUrls.thumbnail, img.updatedAt)
+              : fullUrl;
+            
             imagesToDeleteDetails.push({
-              imageId: imgResult.Item.imageId,
-              s3Url: await generatePresignedUrl(imgResult.Item.s3Key),
-              displayOrder: imgResult.Item.displayOrder,
-              isPrimary: imgResult.Item.isPrimary,
-              caption: imgResult.Item.caption,
+              imageId: img.imageId,
+              s3Url: fullUrl,
+              thumbnailUrl: thumbnailUrl,
+              displayOrder: img.displayOrder,
+              isPrimary: img.isPrimary,
+              caption: img.caption,
             });
           }
         }
