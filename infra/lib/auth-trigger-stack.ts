@@ -30,6 +30,8 @@ export interface AuthTriggerStackProps extends cdk.StackProps {
   bucketArn: string;
   /** Environment stage (dev, dev1, staging, prod) */
   stage: string;
+  /** Frontend URL for verification and password reset links */
+  frontendUrl: string;
 }
 
 /**
@@ -45,7 +47,7 @@ export class AuthTriggerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
     super(scope, id, props);
 
-    const { userPoolId, userPoolArn, kmsKey, tableName, tableArn, sendGridParamName, bucketName, bucketArn, stage } = props;
+    const { userPoolId, userPoolArn, kmsKey, tableName, tableArn, sendGridParamName, bucketName, bucketArn, stage, frontendUrl } = props;
 
     // Custom Email Sender Lambda
     this.customEmailSenderLambda = new nodejs.NodejsFunction(
@@ -65,8 +67,8 @@ export class AuthTriggerStack extends cdk.Stack {
         // Environment variables
         environment: {
           TABLE_NAME: tableName,
-          VERIFY_URL_BASE: 'http://localhost:3000/en/verify',
-          RESET_PASSWORD_URL_BASE: 'http://localhost:3000/en/reset-password',
+          VERIFY_URL_BASE: `${frontendUrl}/en/verify`,
+          RESET_PASSWORD_URL_BASE: `${frontendUrl}/en/reset-password`,
           SENDGRID_PARAM: sendGridParamName,
           FROM_EMAIL: 'marko@localstays.me',
           KMS_KEY_ARN: kmsKey.keyArn,

@@ -22,6 +22,8 @@ const TABLE_NAME = process.env.TABLE_NAME!;
  * - Listing metadata (basic info)
  * - Primary image
  * - No amenities or documents
+ * 
+ * Fixed: Filter booleans in code instead of DynamoDB FilterExpression
  */
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   console.log('List listings request:', {
@@ -72,27 +74,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 4. For each listing, fetch primary image
     const listingsWithImages = await Promise.all(
       listings.map(async (listing) => {
-        // Fetch primary image
+        // Fetch primary image - filter status only in DynamoDB, rest in code
         const imagesResult = await docClient.send(
           new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-            FilterExpression: 'isPrimary = :isPrimary AND #status = :ready AND isDeleted = :notDeleted',
+            FilterExpression: '#status = :ready',
             ExpressionAttributeNames: {
               '#status': 'status',
             },
             ExpressionAttributeValues: {
               ':pk': `LISTING#${listing.listingId}`,
               ':sk': 'IMAGE#',
-              ':isPrimary': true,
               ':ready': 'READY',
-              ':notDeleted': false,
             },
-            Limit: 1,
           })
         );
 
-        const primaryImage = imagesResult.Items?.[0];
+        // Filter for primary and not deleted in code
+        const primaryImage = imagesResult.Items?.find(img => img.isPrimary && !img.isDeleted);
 
         return {
           listingId: listing.listingId,

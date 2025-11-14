@@ -118,6 +118,21 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI5 - PushSubscriptionIndex: Query push subscriptions by active status
+    // pk=PUSH_SUB_ACTIVE or PUSH_SUB_INACTIVE, sk=createdAt
+    this.table.addGlobalSecondaryIndex({
+      indexName: 'PushSubscriptionIndex',
+      partitionKey: {
+        name: 'gsi5pk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi5sk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ========================================
     // Database Seeding CustomResource
     // ========================================

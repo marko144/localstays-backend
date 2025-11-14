@@ -57,6 +57,7 @@ export class StorageStack extends cdk.Stack {
                 'http://127.0.0.1:5173',
                 'http://192.168.4.58:3000', // Local network access
                 'https://*.localstays.com',
+                'https://*.localstays.me',  // Amplify staging domains
               ],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],

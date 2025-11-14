@@ -36,7 +36,7 @@ if (!environments || !environments[envName]) {
 }
 
 const envConfig = environments[envName];
-const { account, region, stage } = envConfig;
+const { account, region, stage, frontendUrl } = envConfig;
 
 console.log('🚀 Deploying Localstays Backend Infrastructure');
 console.log(`📍 Environment: ${stage}`);
@@ -130,6 +130,7 @@ const authTriggerStack = new AuthTriggerStack(app, `${stackPrefix}AuthTriggerSta
   description: `Cognito authentication triggers and Lambda functions (${stage})`,
   stackName: `localstays-${stage}-auth-triggers`,
   stage,
+  frontendUrl,
   userPoolId: cognitoStack.userPool.userPoolId,
   userPoolArn: cognitoStack.userPool.userPoolArn,
   kmsKey: kmsStack.cognitoCustomSenderKey,

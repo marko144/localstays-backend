@@ -1,0 +1,1015 @@
+{
+ "Description": "Cognito authentication triggers and Lambda functions (staging)",
+ "Resources": {
+  "CustomEmailSenderLogs5732E747": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": "/aws/lambda/localstays-staging-custom-email-sender",
+    "RetentionInDays": 7,
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CustomEmailSenderLogs/Resource"
+   }
+  },
+  "CustomEmailSenderLambdaServiceRoleA213E962": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CustomEmailSenderLambda/ServiceRole/Resource"
+   }
+  },
+  "CustomEmailSenderLambdaServiceRoleDefaultPolicy77D6D2A2": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "kms:Decrypt",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::ImportValue": "localstays-staging-kms:ExportsOutputFnGetAttCognitoCustomSenderKey3C14CF73Arn139EA1AE"
+       }
+      },
+      {
+       "Action": "ssm:GetParameter",
+       "Effect": "Allow",
+       "Resource": "arn:aws:ssm:eu-north-1:041608526793:parameter/localstays/staging/sendgrid",
+       "Sid": "AllowGetSendGridApiKey"
+      },
+      {
+       "Action": [
+        "dynamodb:DeleteItem",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::ImportValue": "localstays-staging-data:ExportsOutputFnGetAttLocalstaysTable37513FEEArn4E8EFD9C"
+       },
+       "Sid": "AllowDynamoDBUserWrite"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "CustomEmailSenderLambdaServiceRoleDefaultPolicy77D6D2A2",
+    "Roles": [
+     {
+      "Ref": "CustomEmailSenderLambdaServiceRoleA213E962"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CustomEmailSenderLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "CustomEmailSenderLambdaA1C15DAA": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+     "S3Key": "b426d84d47e1dbf62cea4d0c8f2d21408e2f128d52ab8523cce3ce655186e0f6.zip"
+    },
+    "Description": "Custom Email Sender trigger for Cognito - sends verification emails via SendGrid",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Fn::ImportValue": "localstays-staging-data:ExportsOutputRefLocalstaysTable37513FEEE30323E3"
+      },
+      "VERIFY_URL_BASE": "http://localhost:3000/en/verify",
+      "RESET_PASSWORD_URL_BASE": "http://localhost:3000/en/reset-password",
+      "SENDGRID_PARAM": "/localstays/staging/sendgrid",
+      "FROM_EMAIL": "marko@localstays.me",
+      "KMS_KEY_ARN": {
+       "Fn::ImportValue": "localstays-staging-kms:ExportsOutputFnGetAttCognitoCustomSenderKey3C14CF73Arn139EA1AE"
+      },
+      "NODE_OPTIONS": "--enable-source-maps"
+     }
+    },
+    "FunctionName": "localstays-staging-custom-email-sender",
+    "Handler": "index.handler",
+    "LoggingConfig": {
+     "LogGroup": {
+      "Ref": "CustomEmailSenderLogs5732E747"
+     }
+    },
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomEmailSenderLambdaServiceRoleA213E962",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ],
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "CustomEmailSenderLambdaServiceRoleDefaultPolicy77D6D2A2",
+    "CustomEmailSenderLambdaServiceRoleA213E962"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CustomEmailSenderLambda/Resource",
+    "aws:asset:path": "asset.b426d84d47e1dbf62cea4d0c8f2d21408e2f128d52ab8523cce3ce655186e0f6",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "CustomEmailSenderLambdaCognitoInvokePermissionC7C825DA": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "CustomEmailSenderLambdaA1C15DAA",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:cognito-idp:eu-north-1:041608526793:userpool/",
+       {
+        "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CustomEmailSenderLambda/CognitoInvokePermission"
+   }
+  },
+  "PreSignUpLogsA7242E9C": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": "/aws/lambda/localstays-staging-pre-signup",
+    "RetentionInDays": 7,
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreSignUpLogs/Resource"
+   }
+  },
+  "PreSignUpLambdaServiceRoleFA160DE8": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreSignUpLambda/ServiceRole/Resource"
+   }
+  },
+  "PreSignUpLambdaServiceRoleDefaultPolicyF5A5F3AC": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "dynamodb:PutItem",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::ImportValue": "localstays-staging-data:ExportsOutputFnGetAttLocalstaysTable37513FEEArn4E8EFD9C"
+       },
+       "Sid": "AllowDynamoDBConsentWrite"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PreSignUpLambdaServiceRoleDefaultPolicyF5A5F3AC",
+    "Roles": [
+     {
+      "Ref": "PreSignUpLambdaServiceRoleFA160DE8"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreSignUpLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "PreSignUpLambda2E8F0430": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+     "S3Key": "5daf963215c2aeeabbe388be7224d2062ce6b0d68a5c68822688a098af3c7046.zip"
+    },
+    "Description": "PreSignUp trigger for Cognito - captures consent data from clientMetadata",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Fn::ImportValue": "localstays-staging-data:ExportsOutputRefLocalstaysTable37513FEEE30323E3"
+      },
+      "NODE_OPTIONS": "--enable-source-maps"
+     }
+    },
+    "FunctionName": "localstays-staging-pre-signup",
+    "Handler": "index.handler",
+    "LoggingConfig": {
+     "LogGroup": {
+      "Ref": "PreSignUpLogsA7242E9C"
+     }
+    },
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "PreSignUpLambdaServiceRoleFA160DE8",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ],
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "PreSignUpLambdaServiceRoleDefaultPolicyF5A5F3AC",
+    "PreSignUpLambdaServiceRoleFA160DE8"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreSignUpLambda/Resource",
+    "aws:asset:path": "asset.5daf963215c2aeeabbe388be7224d2062ce6b0d68a5c68822688a098af3c7046",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "PreSignUpLambdaCognitoPreSignUpInvokePermission0EAD155F": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "PreSignUpLambda2E8F0430",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:cognito-idp:eu-north-1:041608526793:userpool/",
+       {
+        "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreSignUpLambda/CognitoPreSignUpInvokePermission"
+   }
+  },
+  "PostConfirmationLogs0AE55041": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": "/aws/lambda/localstays-staging-post-confirmation",
+    "RetentionInDays": 7,
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PostConfirmationLogs/Resource"
+   }
+  },
+  "PostConfirmationLambdaServiceRole80A1DAC4": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PostConfirmationLambda/ServiceRole/Resource"
+   }
+  },
+  "PostConfirmationLambdaServiceRoleDefaultPolicy5EC3124B": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "cognito-idp:AdminAddUserToGroup",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:aws:cognito-idp:eu-north-1:041608526793:userpool/",
+          {
+           "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+          }
+         ]
+        ]
+       },
+       "Sid": "AllowAddUserToGroup"
+      },
+      {
+       "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::ImportValue": "localstays-staging-data:ExportsOutputFnGetAttLocalstaysTable37513FEEArn4E8EFD9C"
+       },
+       "Sid": "AllowDynamoDBRBACInit"
+      },
+      {
+       "Action": "s3:PutObject",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::ImportValue": "localstays-staging-storage:ExportsOutputFnGetAttHostAssetsBucket5D31AD44ArnFFAF3CDB"
+          },
+          "/*"
+         ]
+        ]
+       },
+       "Sid": "AllowS3HostFolderCreation"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PostConfirmationLambdaServiceRoleDefaultPolicy5EC3124B",
+    "Roles": [
+     {
+      "Ref": "PostConfirmationLambdaServiceRole80A1DAC4"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PostConfirmationLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "PostConfirmationLambdaC4F60401": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+     "S3Key": "ca50e235651e0aa485302c86213cd50d28abd3cb1ee129bae73e06f3fbd92c4f.zip"
+    },
+    "Description": "PostConfirmation trigger for Cognito - auto-assigns users to HOST group",
+    "Environment": {
+     "Variables": {
+      "USER_POOL_ID": {
+       "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+      },
+      "TABLE_NAME": {
+       "Fn::ImportValue": "localstays-staging-data:ExportsOutputRefLocalstaysTable37513FEEE30323E3"
+      },
+      "BUCKET_NAME": {
+       "Fn::ImportValue": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+      },
+      "NODE_OPTIONS": "--enable-source-maps"
+     }
+    },
+    "FunctionName": "localstays-staging-post-confirmation",
+    "Handler": "index.handler",
+    "LoggingConfig": {
+     "LogGroup": {
+      "Ref": "PostConfirmationLogs0AE55041"
+     }
+    },
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "PostConfirmationLambdaServiceRole80A1DAC4",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ],
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "PostConfirmationLambdaServiceRoleDefaultPolicy5EC3124B",
+    "PostConfirmationLambdaServiceRole80A1DAC4"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PostConfirmationLambda/Resource",
+    "aws:asset:path": "asset.ca50e235651e0aa485302c86213cd50d28abd3cb1ee129bae73e06f3fbd92c4f",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "PostConfirmationLambdaCognitoPostConfirmationInvokePermission9F0C3FB9": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "PostConfirmationLambdaC4F60401",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:cognito-idp:eu-north-1:041608526793:userpool/",
+       {
+        "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PostConfirmationLambda/CognitoPostConfirmationInvokePermission"
+   }
+  },
+  "PreTokenGenerationLogs999BAB0B": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": "/aws/lambda/localstays-staging-pre-token-generation",
+    "RetentionInDays": 7,
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreTokenGenerationLogs/Resource"
+   }
+  },
+  "PreTokenGenerationLambdaServiceRole9DEA7D8A": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreTokenGenerationLambda/ServiceRole/Resource"
+   }
+  },
+  "PreTokenGenerationLambdaServiceRoleDefaultPolicy2DCB51D3": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "dynamodb:GetItem",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::ImportValue": "localstays-staging-data:ExportsOutputFnGetAttLocalstaysTable37513FEEArn4E8EFD9C"
+       },
+       "Sid": "AllowDynamoDBReadForClaims"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PreTokenGenerationLambdaServiceRoleDefaultPolicy2DCB51D3",
+    "Roles": [
+     {
+      "Ref": "PreTokenGenerationLambdaServiceRole9DEA7D8A"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreTokenGenerationLambda/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "PreTokenGenerationLambda1F82A453": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+     "S3Key": "bb4d682106610037ef0badef4c2633cd75f9f113e55af1002204b7653de3faaa.zip"
+    },
+    "Description": "PreTokenGeneration trigger for Cognito - injects custom claims (role, hostId, permissions)",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Fn::ImportValue": "localstays-staging-data:ExportsOutputRefLocalstaysTable37513FEEE30323E3"
+      },
+      "NODE_OPTIONS": "--enable-source-maps"
+     }
+    },
+    "FunctionName": "localstays-staging-pre-token-generation",
+    "Handler": "index.handler",
+    "LoggingConfig": {
+     "LogGroup": {
+      "Ref": "PreTokenGenerationLogs999BAB0B"
+     }
+    },
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "PreTokenGenerationLambdaServiceRole9DEA7D8A",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ],
+    "Timeout": 5
+   },
+   "DependsOn": [
+    "PreTokenGenerationLambdaServiceRoleDefaultPolicy2DCB51D3",
+    "PreTokenGenerationLambdaServiceRole9DEA7D8A"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreTokenGenerationLambda/Resource",
+    "aws:asset:path": "asset.bb4d682106610037ef0badef4c2633cd75f9f113e55af1002204b7653de3faaa",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "PreTokenGenerationLambdaCognitoPreTokenGenerationInvokePermission4A0B707E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "PreTokenGenerationLambda1F82A453",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:cognito-idp:eu-north-1:041608526793:userpool/",
+       {
+        "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/PreTokenGenerationLambda/CognitoPreTokenGenerationInvokePermission"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2PwWrDMBBEv6V3eeOqkHtcaC+lCe4HGFnemrVlKXilliD075HstKe3s+wMsxKkrKF+Ur9c6WGuDPUQv7zSs8irLho3MsQPN76vLlzF67f9m5MwaukH1Vk34MTwueEtWO3JWUFqgdg6g8Wz8eIM6VuR+5QEv3SKGT3DqSBraIKe0TeK8REPMRv+U4sZ14WYs0pJtMgurBrFFpB7j2THcnUO/hp8EqUcTHz4kRKej/nRiYmqNVhPC0K78w431f+9BQEAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingAuthTriggerStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "CustomEmailSenderLambdaName": {
+   "Description": "Custom Email Sender Lambda function name",
+   "Value": {
+    "Ref": "CustomEmailSenderLambdaA1C15DAA"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingCustomEmailSenderName"
+   }
+  },
+  "CustomEmailSenderLambdaArn": {
+   "Description": "Custom Email Sender Lambda function ARN",
+   "Value": {
+    "Fn::GetAtt": [
+     "CustomEmailSenderLambdaA1C15DAA",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingCustomEmailSenderArn"
+   }
+  },
+  "PreSignUpLambdaName": {
+   "Description": "PreSignUp Lambda function name",
+   "Value": {
+    "Ref": "PreSignUpLambda2E8F0430"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPreSignUpLambdaName"
+   }
+  },
+  "PreSignUpLambdaArn": {
+   "Description": "PreSignUp Lambda function ARN",
+   "Value": {
+    "Fn::GetAtt": [
+     "PreSignUpLambda2E8F0430",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPreSignUpLambdaArn"
+   }
+  },
+  "PostConfirmationLambdaName": {
+   "Description": "PostConfirmation Lambda function name",
+   "Value": {
+    "Ref": "PostConfirmationLambdaC4F60401"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPostConfirmationLambdaName"
+   }
+  },
+  "PostConfirmationLambdaArn": {
+   "Description": "PostConfirmation Lambda function ARN",
+   "Value": {
+    "Fn::GetAtt": [
+     "PostConfirmationLambdaC4F60401",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPostConfirmationLambdaArn"
+   }
+  },
+  "PreTokenGenerationLambdaName": {
+   "Description": "PreTokenGeneration Lambda function name",
+   "Value": {
+    "Ref": "PreTokenGenerationLambda1F82A453"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPreTokenGenerationLambdaName"
+   }
+  },
+  "PreTokenGenerationLambdaArn": {
+   "Description": "PreTokenGeneration Lambda function ARN",
+   "Value": {
+    "Fn::GetAtt": [
+     "PreTokenGenerationLambda1F82A453",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingPreTokenGenerationLambdaArn"
+   }
+  },
+  "AttachTriggerCommand": {
+   "Description": "AWS CLI command to attach Custom Email Sender trigger",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "aws cognito-idp update-user-pool --user-pool-id ",
+      {
+       "Fn::ImportValue": "localstays-staging-cognito:ExportsOutputRefLocalstaysUserPoolC17F6F337B48A5E7"
+      },
+      " --lambda-config \"CustomEmailSender={LambdaVersion=V1_0,LambdaArn=",
+      {
+       "Fn::GetAtt": [
+        "CustomEmailSenderLambdaA1C15DAA",
+        "Arn"
+       ]
+      },
+      "}\" --region eu-north-1"
+     ]
+    ]
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

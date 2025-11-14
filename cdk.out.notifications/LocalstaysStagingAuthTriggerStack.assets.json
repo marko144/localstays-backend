@@ -1,0 +1,81 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "b426d84d47e1dbf62cea4d0c8f2d21408e2f128d52ab8523cce3ce655186e0f6": {
+      "displayName": "CustomEmailSenderLambda/Code",
+      "source": {
+        "path": "asset.b426d84d47e1dbf62cea4d0c8f2d21408e2f128d52ab8523cce3ce655186e0f6",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-5223493b": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "b426d84d47e1dbf62cea4d0c8f2d21408e2f128d52ab8523cce3ce655186e0f6.zip",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    },
+    "5daf963215c2aeeabbe388be7224d2062ce6b0d68a5c68822688a098af3c7046": {
+      "displayName": "PreSignUpLambda/Code",
+      "source": {
+        "path": "asset.5daf963215c2aeeabbe388be7224d2062ce6b0d68a5c68822688a098af3c7046",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-01de8bc0": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "5daf963215c2aeeabbe388be7224d2062ce6b0d68a5c68822688a098af3c7046.zip",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    },
+    "ca50e235651e0aa485302c86213cd50d28abd3cb1ee129bae73e06f3fbd92c4f": {
+      "displayName": "PostConfirmationLambda/Code",
+      "source": {
+        "path": "asset.ca50e235651e0aa485302c86213cd50d28abd3cb1ee129bae73e06f3fbd92c4f",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-646cd7ea": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "ca50e235651e0aa485302c86213cd50d28abd3cb1ee129bae73e06f3fbd92c4f.zip",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    },
+    "bb4d682106610037ef0badef4c2633cd75f9f113e55af1002204b7653de3faaa": {
+      "displayName": "PreTokenGenerationLambda/Code",
+      "source": {
+        "path": "asset.bb4d682106610037ef0badef4c2633cd75f9f113e55af1002204b7653de3faaa",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-8801f5a9": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "bb4d682106610037ef0badef4c2633cd75f9f113e55af1002204b7653de3faaa.zip",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    },
+    "4115253fcd184a69b39bb3f671f498ff70679df2289f6f7994165761eb532409": {
+      "displayName": "localstays-staging-auth-triggers Template",
+      "source": {
+        "path": "LocalstaysStagingAuthTriggerStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-72a65a87": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "4115253fcd184a69b39bb3f671f498ff70679df2289f6f7994165761eb532409.json",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

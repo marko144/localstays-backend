@@ -1,0 +1,21 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "7692452b91cba39163422384f9da9863bd0fe55aa5719253b051c5aa7cc99192": {
+      "displayName": "localstays-staging-kms Template",
+      "source": {
+        "path": "LocalstaysStagingKmsStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-76fad300": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "7692452b91cba39163422384f9da9863bd0fe55aa5719253b051c5aa7cc99192.json",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

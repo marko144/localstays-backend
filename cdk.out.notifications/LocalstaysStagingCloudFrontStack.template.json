@@ -1,0 +1,274 @@
+{
+ "Description": "CloudFront CDN for serving listing images and profile photos (staging)",
+ "Resources": {
+  "OAC5B452445": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "localstaysstagingcloudfrontOACB342D559",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "no-override",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingCloudFrontStack/OAC/Resource"
+   }
+  },
+  "ImageCachePolicy3A3980AA": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "Comment": "Cache policy for listing images and profile photos",
+     "DefaultTTL": 31536000,
+     "MaxTTL": 31536000,
+     "MinTTL": 0,
+     "Name": "localstays-staging-image-cache",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "all"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingCloudFrontStack/ImageCachePolicy/Resource"
+   }
+  },
+  "AssetsDistribution": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "CacheBehaviors": [
+      {
+       "AllowedMethods": [
+        "GET",
+        "HEAD"
+       ],
+       "CachePolicyId": {
+        "Ref": "ImageCachePolicy3A3980AA"
+       },
+       "CachedMethods": [
+        "GET",
+        "HEAD"
+       ],
+       "Compress": true,
+       "PathPattern": "*/listings/*/images/*.webp",
+       "TargetOriginId": {
+        "Fn::Join": [
+         "",
+         [
+          "S3-",
+          {
+           "Fn::ImportValue": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+          }
+         ]
+        ]
+       },
+       "ViewerProtocolPolicy": "redirect-to-https"
+      },
+      {
+       "AllowedMethods": [
+        "GET",
+        "HEAD"
+       ],
+       "CachePolicyId": {
+        "Ref": "ImageCachePolicy3A3980AA"
+       },
+       "CachedMethods": [
+        "GET",
+        "HEAD"
+       ],
+       "Compress": true,
+       "PathPattern": "*/profile/*.webp",
+       "TargetOriginId": {
+        "Fn::Join": [
+         "",
+         [
+          "S3-",
+          {
+           "Fn::ImportValue": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+          }
+         ]
+        ]
+       },
+       "ViewerProtocolPolicy": "redirect-to-https"
+      }
+     ],
+     "Comment": "Localstays staging - Host Assets CDN",
+     "DefaultCacheBehavior": {
+      "AllowedMethods": [
+       "GET",
+       "HEAD"
+      ],
+      "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+      "CachedMethods": [
+       "GET",
+       "HEAD"
+      ],
+      "Compress": false,
+      "TargetOriginId": {
+       "Fn::Join": [
+        "",
+        [
+         "S3-",
+         {
+          "Fn::ImportValue": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+         }
+        ]
+       ]
+      },
+      "ViewerProtocolPolicy": "redirect-to-https"
+     },
+     "Enabled": true,
+     "HttpVersion": "http2and3",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::ImportValue": "localstays-staging-storage:ExportsOutputFnGetAttHostAssetsBucket5D31AD44RegionalDomainName8CED2753"
+       },
+       "Id": {
+        "Fn::Join": [
+         "",
+         [
+          "S3-",
+          {
+           "Fn::ImportValue": "localstays-staging-storage:ExportsOutputRefHostAssetsBucket5D31AD448717E0DD"
+          }
+         ]
+        ]
+       },
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "OAC5B452445",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {}
+      }
+     ],
+     "PriceClass": "PriceClass_100"
+    },
+    "Tags": [
+     {
+      "Key": "CostCenter",
+      "Value": "Engineering"
+     },
+     {
+      "Key": "Environment",
+      "Value": "staging"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "CDK"
+     },
+     {
+      "Key": "Project",
+      "Value": "Localstays"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingCloudFrontStack/AssetsDistribution"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/23OQQrCMBAF0LO4T2KN4F7qXtEDSDpJddo4I8lEEendjboTV8N/fD5jjbWNaWbunjX4UUfszPMgDkZV6QiRi+8Tk1RdbhOekNYAIee2WuKo2p7+soNz2HFEeLwrP3GDWRJ2RZBp+kwUuRaZFLEPZsjzm7Vmsap/DRlRp0KCl2D23/sCsdjU67QAAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "LocalstaysStagingCloudFrontStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "DistributionId": {
+   "Description": "CloudFront distribution ID",
+   "Value": {
+    "Ref": "AssetsDistribution"
+   },
+   "Export": {
+    "Name": "LocalstaysStagingDistributionId"
+   }
+  },
+  "DistributionDomainName": {
+   "Description": "CloudFront distribution domain name",
+   "Value": {
+    "Fn::GetAtt": [
+     "AssetsDistribution",
+     "DomainName"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingDistributionDomain"
+   }
+  },
+  "OACId": {
+   "Description": "Origin Access Control ID",
+   "Value": {
+    "Fn::GetAtt": [
+     "OAC5B452445",
+     "Id"
+    ]
+   },
+   "Export": {
+    "Name": "LocalstaysStagingOACId"
+   }
+  },
+  "ExportsOutputFnGetAttAssetsDistributionDomainName4363950D": {
+   "Value": {
+    "Fn::GetAtt": [
+     "AssetsDistribution",
+     "DomainName"
+    ]
+   },
+   "Export": {
+    "Name": "localstays-staging-cloudfront:ExportsOutputFnGetAttAssetsDistributionDomainName4363950D"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

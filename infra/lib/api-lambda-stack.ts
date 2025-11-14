@@ -67,6 +67,12 @@ export class ApiLambdaStack extends cdk.Stack {
   // Admin Requests Lambda (Consolidated)
   public readonly adminRequestsHandlerLambda: nodejs.NodejsFunction;
 
+  // Notification Lambdas
+  public readonly subscribeNotificationLambda: nodejs.NodejsFunction;
+  public readonly unsubscribeNotificationLambda: nodejs.NodejsFunction;
+  public readonly listSubscriptionsLambda: nodejs.NodejsFunction;
+  public readonly sendNotificationLambda: nodejs.NodejsFunction;
+
   // Host Verification Lambdas (now consolidated into hostRequestsHandlerLambda)
 
   // Image Processing Lambda (Container)
@@ -808,6 +814,79 @@ export class ApiLambdaStack extends cdk.Stack {
     }));
 
     // ========================================
+    // NOTIFICATION LAMBDAS
+    // ========================================
+
+    // Subscribe to push notifications
+    this.subscribeNotificationLambda = new nodejs.NodejsFunction(this, 'SubscribeNotificationLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-subscribe-notification`,
+      entry: 'backend/services/api/notifications/subscribe.ts',
+      handler: 'handler',
+      description: 'Subscribe to push notifications',
+      environment: {
+        ...commonEnvironment,
+        STAGE: stage,
+      },
+    });
+
+    // Unsubscribe from push notifications
+    this.unsubscribeNotificationLambda = new nodejs.NodejsFunction(this, 'UnsubscribeNotificationLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-unsubscribe-notification`,
+      entry: 'backend/services/api/notifications/unsubscribe.ts',
+      handler: 'handler',
+      description: 'Unsubscribe from push notifications',
+      environment: {
+        ...commonEnvironment,
+        STAGE: stage,
+      },
+    });
+
+    // List user's push subscriptions
+    this.listSubscriptionsLambda = new nodejs.NodejsFunction(this, 'ListSubscriptionsLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-list-subscriptions`,
+      entry: 'backend/services/api/notifications/list-subscriptions.ts',
+      handler: 'handler',
+      description: 'List push subscriptions for authenticated user',
+      environment: {
+        ...commonEnvironment,
+        STAGE: stage,
+      },
+    });
+
+    // Send push notification (admin only)
+    this.sendNotificationLambda = new nodejs.NodejsFunction(this, 'SendNotificationLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-send-notification`,
+      entry: 'backend/services/api/admin/notifications/send-notification.ts',
+      handler: 'handler',
+      description: 'Send push notifications (admin only)',
+      environment: {
+        ...commonEnvironment,
+        STAGE: stage,
+      },
+    });
+
+    // Grant DynamoDB permissions for notification lambdas
+    table.grantReadWriteData(this.subscribeNotificationLambda);
+    table.grantReadWriteData(this.unsubscribeNotificationLambda);
+    table.grantReadData(this.listSubscriptionsLambda);
+    table.grantReadData(this.sendNotificationLambda);
+
+    // Grant SSM parameter access for VAPID keys
+    const vapidParamPrefix = `/localstays/${stage}/vapid/*`;
+    const vapidPolicyStatement = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/*`],
+    });
+
+    this.subscribeNotificationLambda.addToRolePolicy(vapidPolicyStatement);
+    this.sendNotificationLambda.addToRolePolicy(vapidPolicyStatement);
+
+    // ========================================
     // API Gateway Integrations
     // ========================================
 
@@ -1512,6 +1591,57 @@ export class ApiLambdaStack extends cdk.Stack {
     adminRejectRequestResource.addMethod(
       'PUT',
       new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // NOTIFICATION API ROUTES
+    // ========================================
+
+    const notificationsResource = v1.addResource('notifications');
+
+    // POST /api/v1/notifications/subscribe
+    const subscribeResource = notificationsResource.addResource('subscribe');
+    subscribeResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.subscribeNotificationLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // DELETE /api/v1/notifications/subscribe/{subscriptionId}
+    const subscriptionIdParam = subscribeResource.addResource('{subscriptionId}');
+    subscriptionIdParam.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(this.unsubscribeNotificationLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/notifications/subscriptions
+    const subscriptionsResource = notificationsResource.addResource('subscriptions');
+    subscriptionsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.listSubscriptionsLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/notifications/send (admin only)
+    const adminNotificationsResource = adminResource.addResource('notifications');
+    const adminSendNotificationResource = adminNotificationsResource.addResource('send');
+    adminSendNotificationResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.sendNotificationLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

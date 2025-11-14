@@ -1,0 +1,21 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "d8f6a65f48d6312462e1fed711c1fb56241a00271076a09805d625e391a223a1": {
+      "displayName": "localstays-staging-cognito Template",
+      "source": {
+        "path": "LocalstaysStagingCognitoStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "041608526793-eu-north-1-dc9fa2ca": {
+          "bucketName": "cdk-hnb659fds-assets-041608526793-eu-north-1",
+          "objectKey": "d8f6a65f48d6312462e1fed711c1fb56241a00271076a09805d625e391a223a1.json",
+          "region": "eu-north-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::041608526793:role/cdk-hnb659fds-file-publishing-role-041608526793-eu-north-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

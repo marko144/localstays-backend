@@ -11,6 +11,7 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { executeTransaction } from '../lib/transaction';
 import { sendProfileSubmissionEmail, sendLiveIdCheckRequestEmail } from '../lib/email-service';
+import { sendNotificationToUser } from '../lib/notification-utils';
 import { SubmissionToken } from '../../types/submission.types';
 import { Document } from '../../types/document.types';
 import { randomUUID } from 'crypto';
@@ -519,6 +520,39 @@ async function createLiveIdCheckRequest(hostId: string): Promise<void> {
     );
     
     console.log(`✅ Live ID check request email sent to ${hostRecord.email}`);
+
+    // 6. Send push notification
+    try {
+      const isEnglish = hostRecord.preferredLanguage === 'en';
+      
+      await sendNotificationToUser(hostRecord.ownerUserSub, {
+        title: isEnglish 
+          ? 'ID Verification Required' 
+          : 'Potrebna verifikacija identiteta',
+        body: isEnglish
+          ? 'Please complete your live ID verification to continue'
+          : 'Molimo vas da završite verifikaciju identiteta uživo',
+        icon: '/icon-192x192.png',
+        badge: '/badge-72x72.png',
+        data: {
+          type: 'live_id_check_request',
+          requestId: requestId,
+          hostId: hostId,
+          url: `/verification/live-id/${requestId}`,
+        },
+        tag: `live-id-${requestId}`, // Prevents duplicate notifications
+        requireInteraction: true, // Important action - don't auto-dismiss
+      });
+      
+      console.log(`✅ Push notification sent for Live ID check request: ${requestId}`);
+    } catch (notificationError: any) {
+      // Log error but don't fail - email was already sent
+      console.error('Failed to send push notification (non-fatal):', {
+        error: notificationError.message,
+        requestId,
+        hostId,
+      });
+    }
   }
 }
 

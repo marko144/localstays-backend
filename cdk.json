@@ -73,22 +73,26 @@
       "dev": {
         "account": "041608526793",
         "region": "eu-north-1",
-        "stage": "dev"
+        "stage": "dev",
+        "frontendUrl": "http://localhost:3000"
       },
       "dev1": {
         "account": "041608526793",
         "region": "eu-north-1",
-        "stage": "dev1"
+        "stage": "dev1",
+        "frontendUrl": "http://localhost:3000"
       },
       "staging": {
         "account": "041608526793",
         "region": "eu-north-1",
-        "stage": "staging"
+        "stage": "staging",
+        "frontendUrl": "https://staging.portal.localstays.me"
       },
       "prod": {
         "account": "TBD",
         "region": "eu-central-1",
-        "stage": "prod"
+        "stage": "prod",
+        "frontendUrl": "https://portal.localstays.me"
       }
     }
   }
