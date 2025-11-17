@@ -15,7 +15,7 @@ const ssmClient = new SSMClient({});
 
 const EMAIL_TEMPLATES_TABLE = process.env.EMAIL_TEMPLATES_TABLE!;
 const SENDGRID_PARAM = process.env.SENDGRID_PARAM!;
-const FROM_EMAIL = process.env.FROM_EMAIL!;
+const FROM_EMAIL = process.env.FROM_EMAIL || 'marko@localstays.me';
 
 // Module-scoped cache for SendGrid API key
 let sendGridApiKey: string | null = null;

@@ -36,6 +36,8 @@ export interface ApiLambdaStackProps extends cdk.StackProps {
   sendGridParamName: string;
   /** CloudFront distribution domain name (optional) */
   cloudFrontDomain?: string;
+  /** Frontend URL for deep links in notifications */
+  frontendUrl: string;
 }
 
 /**
@@ -82,7 +84,7 @@ export class ApiLambdaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
 
-    const { stage, userPoolId, userPoolArn, table, bucket, emailTemplatesTable, sendGridParamName } = props;
+    const { stage, userPoolId, userPoolArn, table, bucket, emailTemplatesTable, sendGridParamName, frontendUrl } = props;
 
     // ========================================
     // API Gateway Setup
@@ -567,6 +569,7 @@ export class ApiLambdaStack extends cdk.Stack {
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
       FROM_EMAIL: 'marko@localstays.me', // Same verified SendGrid sender as auth emails
+      FRONTEND_URL: frontendUrl, // For deep links in notifications
       STAGE: stage,
       CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
       USE_CLOUDFRONT: props.cloudFrontDomain ? 'true' : 'false',
@@ -768,6 +771,17 @@ export class ApiLambdaStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
 
+    // Grant SSM parameter access for VAPID keys (push notifications)
+    this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/publicKey`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/privateKey`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/subject`,
+      ],
+    }));
+
     // ========================================
     // ADMIN REQUEST LAMBDA (Consolidated)
     // ========================================
@@ -811,6 +825,12 @@ export class ApiLambdaStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
+    }));
+    // Grant SSM access for VAPID keys (for push notifications)
+    this.adminRequestsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/*`],
     }));
 
     // ========================================

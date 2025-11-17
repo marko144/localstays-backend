@@ -167,6 +167,7 @@ const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   description: `REST API Gateway and Lambda functions for host profile submission (${stage})`,
   stackName: `localstays-${stage}-api`,
   stage,
+  frontendUrl,
   userPoolId: cognitoStack.userPool.userPoolId,
   userPoolArn: cognitoStack.userPool.userPoolArn,
   table: dataStack.table,

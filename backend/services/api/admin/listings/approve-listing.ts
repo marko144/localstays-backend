@@ -16,6 +16,7 @@ import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { ListingMetadata } from '../../../types/listing.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendListingApprovedEmail } from '../../lib/email-service';
+import { sendTemplatedNotification } from '../../lib/notification-template-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -158,9 +159,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Listing ${listingId} approved successfully`);
 
-    // 6. Send approval email
+    // 6. Send approval email and push notification
     try {
-      // Fetch host details for email
+      // Fetch host details for email and notification
       const hostResult = await docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
@@ -178,6 +179,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ? `${host.forename} ${host.surname}`
           : host.legalName || host.displayName || host.businessName || 'Host';
           
+        // Send email notification
         await sendListingApprovedEmail(
           host.email,
           host.preferredLanguage || 'sr',
@@ -185,6 +187,25 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           listing.listingName
         );
         console.log(`📧 Approval email sent to ${host.email}`);
+
+        // Send push notification using template
+        if (host.ownerUserSub) {
+          try {
+            const pushResult = await sendTemplatedNotification(
+              host.ownerUserSub,
+              'LISTING_APPROVED',
+              host.preferredLanguage || 'sr',
+              {
+                listingName: listing.listingName,
+                listingId: listingId,
+              }
+            );
+            console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+          } catch (pushError) {
+            console.error('Failed to send push notification:', pushError);
+            // Don't fail the request if push notification fails
+          }
+        }
       }
     } catch (emailError) {
       console.error('Failed to send approval email:', emailError);

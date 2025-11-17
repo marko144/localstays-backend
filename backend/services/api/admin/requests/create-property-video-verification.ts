@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { getAuthContext, assertIsAdmin } from '../../lib/auth';
 import * as response from '../../lib/response';
 import { sendVideoVerificationRequestEmail } from '../../lib/email-service';
+import { sendTemplatedNotification } from '../../lib/notification-template-service';
 import { Request } from '../../../types/request.types';
 import { ListingMetadata } from '../../../types/listing.types';
 
@@ -32,6 +33,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     method: event.httpMethod,
     pathParameters: event.pathParameters,
   });
+  console.log('Lambda version check: force update');
 
   try {
     // 1. Extract authentication context
@@ -118,7 +120,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Property video verification request created: ${requestId}`);
 
-    // 8. Send email notification to host
+    // 8. Send email and push notification to host
     try {
       const hostName = host.hostType === 'INDIVIDUAL'
         ? `${host.forename} ${host.surname}`
@@ -126,6 +128,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const language = host.preferredLanguage === 'sr' || host.preferredLanguage === 'sr-RS' ? 'sr' : 'en';
       const listingAddress = `${listing.address.street} ${listing.address.streetNumber}, ${listing.address.city}`;
 
+      // Send email notification
       await sendVideoVerificationRequestEmail(
         host.email,
         language,
@@ -134,6 +137,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       );
 
       console.log(`✅ Email notification sent to ${host.email}`);
+
+      // Send push notification
+      if (host.ownerUserSub) {
+        try {
+          const pushResult = await sendTemplatedNotification(
+            host.ownerUserSub,
+            'VIDEO_VERIFICATION_REQUESTED',
+            language,
+            {
+              listingName: listing.listingName,
+              listingId: listingId,
+            }
+          );
+          console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+        } catch (pushError) {
+          console.error('Failed to send push notification (non-fatal):', pushError);
+          // Don't fail the request if push notification fails
+        }
+      }
     } catch (emailError: any) {
       // Log error but don't fail the request - request is already created
       console.error('Failed to send email notification (non-fatal):', {

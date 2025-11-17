@@ -195,8 +195,68 @@ export interface VapidConfig {
   subject: string;                      // mailto:notifications@localstays.com
 }
 
+// ============================================================================
+// NOTIFICATION TEMPLATES (DynamoDB)
+// ============================================================================
 
+/**
+ * Notification template stored in DynamoDB
+ * Similar to email templates but for push notifications
+ */
+export interface NotificationTemplate {
+  // Primary Keys
+  pk: string;                           // NOTIFICATION_TEMPLATE#{templateName}
+  sk: string;                           // LANG#{language}
+  
+  // Template Identification
+  templateName: string;                 // e.g., "LISTING_APPROVED", "HOST_APPROVED"
+  language: string;                     // ISO 639-1 code (sr, en)
+  
+  // Notification Content (supports {{variable}} placeholders)
+  title: string;                        // Notification title
+  body: string;                         // Notification body text
+  
+  // Notification Display Options
+  icon?: string;                        // Icon URL (e.g., "/icon-192x192.png")
+  badge?: string;                       // Badge URL (e.g., "/badge-72x72.png")
+  image?: string;                       // Large image URL
+  
+  // Notification Behavior
+  actionUrlPath?: string;               // Deep link path (e.g., "/listings/{{listingId}}")
+  requireInteraction?: boolean;         // Don't auto-dismiss
+  silent?: boolean;                     // No sound/vibration
+  tag?: string;                         // Notification tag for grouping
+  
+  // Metadata
+  createdAt: string;                    // ISO timestamp
+  updatedAt: string;                    // ISO timestamp
+  createdBy?: string;                   // Admin user who created it
+  notes?: string;                       // Admin notes about the template
+}
 
+/**
+ * Template name enum for type safety
+ */
+export type NotificationTemplateName = 
+  | 'LISTING_APPROVED'
+  | 'LISTING_REJECTED'
+  | 'HOST_APPROVED'
+  | 'HOST_REJECTED'
+  | 'REQUEST_UPDATE_NEEDED'
+  | 'VIDEO_VERIFICATION_REQUESTED'
+  | 'BOOKING_RECEIVED'
+  | 'REVIEW_RECEIVED';
 
-
+/**
+ * Variables that can be used in notification templates
+ */
+export interface NotificationTemplateVariables {
+  [key: string]: string;
+  // Common variables:
+  // - listingName
+  // - listingId
+  // - hostName
+  // - reason
+  // - requestType
+}
 

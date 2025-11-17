@@ -1,154 +1,220 @@
 /**
+ * Subscribe to Push Notifications
+ * 
  * POST /api/v1/notifications/subscribe
  * 
- * Subscribe to push notifications
- * User provides their browser's PushSubscription object
+ * Allows authenticated users to subscribe to push notifications.
+ * Stores the push subscription in DynamoDB for later use.
  */
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
-import type { SubscribeRequest, SubscribeResponse, PushSubscription } from '../../types/notification.types';
-import { generateSubscriptionId, parseDeviceType, parsePlatform } from '../lib/notification-utils';
+import { requireAuth } from '../lib/auth-middleware';
+import * as response from '../lib/response';
+import { v4 as uuidv4 } from 'uuid';
 
-const dynamoClient = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(dynamoClient);
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
 
+interface SubscribeRequest {
+  subscription: PushSubscriptionJSON;
+  deviceInfo?: {
+    type?: 'desktop' | 'mobile' | 'tablet';
+    platform?: string;
+    browser?: string;
+  };
+}
+
+interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
 /**
- * Lambda handler
+ * Main handler
  */
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  console.log('Subscribe to notifications:', JSON.stringify(event, null, 2));
+  console.log('Subscribe to push notifications:', {
+    path: event.path,
+    method: event.httpMethod,
+  });
 
   try {
-    // Get user from JWT (added by authorizer)
-    const userId = event.requestContext.authorizer?.claims?.sub;
-    if (!userId) {
-      return {
-        statusCode: 401,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ success: false, message: 'Unauthorized' }),
-      };
+    // 1. Authenticate user
+    const authResult = requireAuth(event);
+    if ('error' in authResult) {
+      return authResult.error;
     }
 
-    // Parse request body
-    const body: SubscribeRequest = JSON.parse(event.body || '{}');
+    const { user } = authResult;
 
-    // Validate subscription object
-    if (!body.subscription?.endpoint || !body.subscription?.keys?.p256dh || !body.subscription?.keys?.auth) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          success: false, 
-          message: 'Invalid subscription object. Required: endpoint, keys.p256dh, keys.auth' 
-        }),
-      };
+    // 2. Parse request body
+    if (!event.body) {
+      return response.badRequest('Request body is required');
     }
 
-    // Check if this endpoint already exists for this user
-    const existingSubscriptions = await docClient.send(new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-      FilterExpression: 'endpoint = :endpoint',
-      ExpressionAttributeValues: {
-        ':pk': `USER#${userId}`,
-        ':sk': 'PUSH_SUB#',
-        ':endpoint': body.subscription.endpoint,
-      },
-    }));
+    const body = JSON.parse(event.body) as SubscribeRequest;
 
-    // If subscription already exists, reactivate it
-    if (existingSubscriptions.Items && existingSubscriptions.Items.length > 0) {
-      const existing = existingSubscriptions.Items[0] as PushSubscription;
+    if (!body.subscription) {
+      return response.badRequest('subscription is required');
+    }
+
+    const { subscription, deviceInfo } = body;
+
+    // 3. Validate subscription object
+    if (!subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+      return response.badRequest('Invalid subscription format');
+    }
+
+    // 4. Check if this subscription already exists for this user
+    const existingSubscription = await findExistingSubscription(user.sub, subscription.endpoint);
+    
+    if (existingSubscription) {
+      console.log('Subscription already exists:', existingSubscription.subscriptionId);
       
-      console.log(`Subscription already exists for endpoint: ${existing.subscriptionId}`);
-      
-      // If it's inactive or deleted, we could reactivate it here
-      // For now, just return the existing subscription ID
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          success: true,
-          subscriptionId: existing.subscriptionId,
-          message: 'Subscription already exists',
-        } as SubscribeResponse),
-      };
+      // Update lastUsedAt timestamp
+      await docClient.send(
+        new PutCommand({
+          TableName: TABLE_NAME,
+          Item: {
+            ...existingSubscription,
+            lastUsedAt: new Date().toISOString(),
+            isActive: true,
+          },
+        })
+      );
+
+      return response.success({
+        subscriptionId: existingSubscription.subscriptionId,
+        message: 'Subscription already exists and has been updated',
+      });
     }
 
-    // Parse device info
-    const userAgent = event.headers['User-Agent'] || event.headers['user-agent'] || 'Unknown';
-    const deviceType = body.deviceType || parseDeviceType(userAgent);
-    const platform = parsePlatform(userAgent);
-
-    // Create new subscription
+    // 5. Create new subscription record
+    const subscriptionId = `sub_${uuidv4()}`;
     const now = new Date().toISOString();
-    const oneYearFromNow = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60);
-    const subscriptionId = generateSubscriptionId();
 
-    const subscription: PushSubscription = {
-      pk: `USER#${userId}`,
+    const subscriptionRecord = {
+      pk: `USER#${user.sub}`,
       sk: `PUSH_SUB#${subscriptionId}`,
+      entityType: 'PUSH_SUBSCRIPTION',
       subscriptionId,
-      userId,
-      endpoint: body.subscription.endpoint,
+      userId: user.sub,
+      endpoint: subscription.endpoint,
       keys: {
-        p256dh: body.subscription.keys.p256dh,
-        auth: body.subscription.keys.auth,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
       },
-      expirationTime: body.subscription.expirationTime || null,
-      deviceType,
-      userAgent,
-      platform,
+      deviceType: deviceInfo?.type || detectDeviceType(event.headers),
+      platform: deviceInfo?.platform || event.headers['User-Agent'] || 'unknown',
+      browser: deviceInfo?.browser || detectBrowser(event.headers),
       isActive: true,
-      lastUsedAt: now,
+      isDeleted: false,
       failureCount: 0,
-      lastFailureAt: null,
-      lastFailureReason: null,
+      createdAt: now,
+      lastUsedAt: now,
+      // GSI5 attributes for querying active subscriptions
       gsi5pk: 'PUSH_SUB_ACTIVE',
       gsi5sk: now,
-      isDeleted: false,
-      deletedAt: null,
-      createdAt: now,
-      updatedAt: now,
-      expiresAt: oneYearFromNow,
     };
 
-    await docClient.send(new PutCommand({
-      TableName: TABLE_NAME,
-      Item: subscription,
-    }));
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE_NAME,
+        Item: subscriptionRecord,
+      })
+    );
 
-    console.log(`Created push subscription: ${subscriptionId} for user ${userId}`);
+    console.log('✅ Push subscription created:', {
+      subscriptionId,
+      userSub: user.sub,
+      deviceType: subscriptionRecord.deviceType,
+    });
 
-    return {
-      statusCode: 201,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        subscriptionId,
-        message: 'Successfully subscribed to push notifications',
-      } as SubscribeResponse),
-    };
+    return response.success({
+      subscriptionId,
+      message: 'Successfully subscribed to push notifications',
+    });
 
-  } catch (error) {
-    console.error('Error subscribing to notifications:', error);
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        success: false, 
-        message: 'Internal server error' 
-      }),
-    };
+  } catch (error: any) {
+    console.error('Error subscribing to push notifications:', error);
+    return response.internalError('Failed to subscribe to push notifications', error);
   }
 }
 
+/**
+ * Find existing subscription by endpoint
+ */
+async function findExistingSubscription(
+  userSub: string,
+  endpoint: string
+): Promise<any | null> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `USER#${userSub}`,
+          ':sk': 'PUSH_SUB#',
+        },
+      })
+    );
 
+    if (!result.Items || result.Items.length === 0) {
+      return null;
+    }
 
+    // Find subscription with matching endpoint
+    const existing = result.Items.find((item) => item.endpoint === endpoint);
+    return existing || null;
+  } catch (error) {
+    console.error('Error finding existing subscription:', error);
+    return null;
+  }
+}
 
+/**
+ * Detect device type from User-Agent
+ */
+function detectDeviceType(headers: { [key: string]: string | undefined }): 'desktop' | 'mobile' | 'tablet' {
+  const userAgent = (headers['User-Agent'] || headers['user-agent'] || '').toLowerCase();
+  
+  if (/mobile|android|iphone|ipod|blackberry|windows phone/i.test(userAgent)) {
+    return 'mobile';
+  }
+  
+  if (/tablet|ipad/i.test(userAgent)) {
+    return 'tablet';
+  }
+  
+  return 'desktop';
+}
 
-
+/**
+ * Detect browser from User-Agent
+ */
+function detectBrowser(headers: { [key: string]: string | undefined }): string {
+  const userAgent = headers['User-Agent'] || headers['user-agent'] || '';
+  
+  if (/chrome/i.test(userAgent) && !/edge|edg/i.test(userAgent)) {
+    return 'Chrome';
+  }
+  if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) {
+    return 'Safari';
+  }
+  if (/firefox/i.test(userAgent)) {
+    return 'Firefox';
+  }
+  if (/edge|edg/i.test(userAgent)) {
+    return 'Edge';
+  }
+  
+  return 'Unknown';
+}

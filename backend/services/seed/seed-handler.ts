@@ -27,13 +27,14 @@ export async function handler(event: CustomResourceEvent) {
   try {
     // Seed on both Create and Update (allows re-seeding when needed)
     if (event.RequestType === 'Create' || event.RequestType === 'Update') {
-      console.log(`${event.RequestType} detected - seeding database with roles, enums, and subscription plans...`);
+      console.log(`${event.RequestType} detected - seeding database with roles, enums, subscription plans, and notification templates...`);
       
       await seedRoles();
       await seedEnums();
       await seedSubscriptionPlans();
       await seedListingEnums();
       await seedRequestTypes();
+      await seedNotificationTemplates();
       
       console.log('✅ Database seeding completed successfully');
       
@@ -775,3 +776,29 @@ async function seedRequestTypes() {
   console.log(`✅ Request types seeded: ${requestTypes.length} records`);
 }
 
+/**
+ * Seed notification templates
+ */
+async function seedNotificationTemplates() {
+  const { notificationTemplates } = await import('./notification-templates');
+
+  console.log(`Seeding notification templates: ${notificationTemplates.length} records`);
+
+  // BatchWrite in chunks of 25 (DynamoDB limit)
+  const chunkSize = 25;
+  for (let i = 0; i < notificationTemplates.length; i += chunkSize) {
+    const chunk = notificationTemplates.slice(i, i + chunkSize);
+    
+    await docClient.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [TABLE_NAME]: chunk.map((template) => ({
+            PutRequest: { Item: template },
+          })),
+        },
+      })
+    );
+  }
+
+  console.log(`✅ Notification templates seeded: ${notificationTemplates.length} records`);
+}
