@@ -11,6 +11,7 @@ import { AuthTriggerStack } from '../lib/auth-trigger-stack';
 import { ApiGatewayStack } from '../lib/api-gateway-stack';
 import { ApiLambdaStack } from '../lib/api-lambda-stack';
 import { CloudFrontStack } from '../lib/cloudfront-stack';
+import { RateLimitStack } from '../lib/rate-limit-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -96,6 +97,14 @@ const emailTemplateStack = new EmailTemplateStack(app, `${stackPrefix}EmailTempl
   stage,
 });
 
+// Stack 3a: Rate Limit Table (Geocoding)
+const rateLimitStack = new RateLimitStack(app, `${stackPrefix}RateLimitStack`, {
+  env,
+  description: `Rate limiting DynamoDB table for Mapbox geocoding (${stage})`,
+  stackName: `localstays-${stage}-rate-limits`,
+  stage,
+});
+
 // Stack 4: S3 Storage
 const storageStack = new StorageStack(app, `${stackPrefix}StorageStack`, {
   env,
@@ -175,10 +184,14 @@ const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
+  rateLimitTable: rateLimitStack.table,
+  geocodeHourlyLimit: envConfig.geocodeHourlyLimit || 20,
+  geocodeLifetimeLimit: envConfig.geocodeLifetimeLimit || 100,
 });
 apiStack.addDependency(cognitoStack);
 apiStack.addDependency(dataStack);
 apiStack.addDependency(emailTemplateStack);
+apiStack.addDependency(rateLimitStack);
 apiStack.addDependency(storageStack);
 apiStack.addDependency(paramsStack);
 apiStack.addDependency(cloudFrontStack);
@@ -188,12 +201,13 @@ console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
 console.log(`   2. ${dataStack.stackName} (DynamoDB)`);
 console.log(`   3. ${emailTemplateStack.stackName} (Email Templates)`);
-console.log(`   4. ${storageStack.stackName} (S3)`);
-console.log(`   5. ${kmsStack.stackName} (KMS)`);
-console.log(`   6. ${cognitoStack.stackName} (Cognito User Pool)`);
-console.log(`   7. ${authTriggerStack.stackName} (Lambda Triggers)`);
-console.log(`   8. ${cloudFrontStack.stackName} (CloudFront CDN)`);
-console.log(`   9. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
+console.log(`   4. ${rateLimitStack.stackName} (Rate Limits)`);
+console.log(`   5. ${storageStack.stackName} (S3)`);
+console.log(`   6. ${kmsStack.stackName} (KMS)`);
+console.log(`   7. ${cognitoStack.stackName} (Cognito User Pool)`);
+console.log(`   8. ${authTriggerStack.stackName} (Lambda Triggers)`);
+console.log(`   9. ${cloudFrontStack.stackName} (CloudFront CDN)`);
+console.log(`  10. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

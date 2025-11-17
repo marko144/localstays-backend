@@ -38,6 +38,12 @@ export interface ApiLambdaStackProps extends cdk.StackProps {
   cloudFrontDomain?: string;
   /** Frontend URL for deep links in notifications */
   frontendUrl: string;
+  /** Rate limit DynamoDB table (optional) */
+  rateLimitTable?: dynamodb.Table;
+  /** Hourly geocode limit per user */
+  geocodeHourlyLimit?: number;
+  /** Lifetime geocode limit per user */
+  geocodeLifetimeLimit?: number;
 }
 
 /**
@@ -75,6 +81,9 @@ export class ApiLambdaStack extends cdk.Stack {
   public readonly listSubscriptionsLambda: nodejs.NodejsFunction;
   public readonly sendNotificationLambda: nodejs.NodejsFunction;
 
+  // Rate Limit Lambda (Geocoding)
+  public readonly checkAndIncrementRateLimitLambda?: nodejs.NodejsFunction;
+
   // Host Verification Lambdas (now consolidated into hostRequestsHandlerLambda)
 
   // Image Processing Lambda (Container)
@@ -84,7 +93,19 @@ export class ApiLambdaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiLambdaStackProps) {
     super(scope, id, props);
 
-    const { stage, userPoolId, userPoolArn, table, bucket, emailTemplatesTable, sendGridParamName, frontendUrl } = props;
+    const { 
+      stage, 
+      userPoolId, 
+      userPoolArn, 
+      table, 
+      bucket, 
+      emailTemplatesTable, 
+      sendGridParamName, 
+      frontendUrl,
+      rateLimitTable,
+      geocodeHourlyLimit = 20,
+      geocodeLifetimeLimit = 100,
+    } = props;
 
     // ========================================
     // API Gateway Setup
@@ -907,6 +928,31 @@ export class ApiLambdaStack extends cdk.Stack {
     this.sendNotificationLambda.addToRolePolicy(vapidPolicyStatement);
 
     // ========================================
+    // RATE LIMIT LAMBDA (GEOCODING)
+    // ========================================
+
+    if (rateLimitTable) {
+      // Check and increment rate limit (POST /api/v1/geocode/rate-limit)
+      // Atomically checks if user is under limit and increments counters if allowed
+      this.checkAndIncrementRateLimitLambda = new nodejs.NodejsFunction(this, 'CheckAndIncrementRateLimitLambda', {
+        ...commonLambdaProps,
+        functionName: `localstays-${stage}-check-increment-rate-limit`,
+        entry: 'backend/services/api/geocode/check-and-increment-rate-limit.ts',
+        handler: 'handler',
+        description: 'Check and increment geocoding rate limit atomically',
+        environment: {
+          ...commonEnvironment,
+          RATE_LIMIT_TABLE_NAME: rateLimitTable.tableName,
+          GEOCODE_HOURLY_LIMIT: geocodeHourlyLimit.toString(),
+          GEOCODE_LIFETIME_LIMIT: geocodeLifetimeLimit.toString(),
+        },
+      });
+
+      // Grant DynamoDB permissions
+      rateLimitTable.grantReadWriteData(this.checkAndIncrementRateLimitLambda);
+    }
+
+    // ========================================
     // API Gateway Integrations
     // ========================================
 
@@ -1667,6 +1713,26 @@ export class ApiLambdaStack extends cdk.Stack {
         authorizationType: apigateway.AuthorizationType.COGNITO,
       }
     );
+
+    // ========================================
+    // GEOCODING RATE LIMIT API ROUTE
+    // ========================================
+
+    if (this.checkAndIncrementRateLimitLambda) {
+      const geocodeResource = v1.addResource('geocode');
+      const rateLimitResource = geocodeResource.addResource('rate-limit');
+
+      // POST /api/v1/geocode/rate-limit
+      // Atomically checks rate limit and increments if allowed
+      rateLimitResource.addMethod(
+        'POST',
+        new apigateway.LambdaIntegration(this.checkAndIncrementRateLimitLambda, { proxy: true }),
+        {
+          authorizer: this.authorizer,
+          authorizationType: apigateway.AuthorizationType.COGNITO,
+        }
+      );
+    }
 
     // ========================================
     // Grant API Gateway Invoke Permissions

@@ -74,25 +74,33 @@
         "account": "041608526793",
         "region": "eu-north-1",
         "stage": "dev",
-        "frontendUrl": "http://localhost:3000"
+        "frontendUrl": "http://localhost:3000",
+        "geocodeHourlyLimit": 20,
+        "geocodeLifetimeLimit": 100
       },
       "dev1": {
         "account": "041608526793",
         "region": "eu-north-1",
         "stage": "dev1",
-        "frontendUrl": "http://localhost:3000"
+        "frontendUrl": "http://localhost:3000",
+        "geocodeHourlyLimit": 20,
+        "geocodeLifetimeLimit": 100
       },
       "staging": {
         "account": "041608526793",
         "region": "eu-north-1",
         "stage": "staging",
-        "frontendUrl": "https://staging.portal.localstays.me"
+        "frontendUrl": "https://staging.portal.localstays.me",
+        "geocodeHourlyLimit": 20,
+        "geocodeLifetimeLimit": 100
       },
       "prod": {
         "account": "TBD",
         "region": "eu-central-1",
         "stage": "prod",
-        "frontendUrl": "https://portal.localstays.me"
+        "frontendUrl": "https://portal.localstays.me",
+        "geocodeHourlyLimit": 50,
+        "geocodeLifetimeLimit": 500
       }
     }
   }
