@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { success, error as errorResponse } from '../lib/response';
+import { success, unauthorized, internalError, tooManyRequests } from '../lib/response';
 import type { 
   RateLimitStatus, 
   HourlyRateLimitRecord, 
@@ -34,7 +34,7 @@ export const handler = async (event: APIGatewayProxyEvent): APIGatewayProxyResul
     // Extract userId from Cognito authorizer
     const userId = event.requestContext.authorizer?.claims?.sub;
     if (!userId) {
-      return errorResponse(401, 'Unauthorized: User ID not found');
+      return unauthorized('User ID not found');
     }
 
     // Calculate current hour start timestamp
@@ -80,11 +80,15 @@ export const handler = async (event: APIGatewayProxyEvent): APIGatewayProxyResul
 
       console.log('Hourly rate limit exceeded:', { hourlyCount, lifetimeCount });
 
-      return errorResponse(429, 'Rate limit exceeded', undefined, {
-        'X-RateLimit-Hourly-Remaining': '0',
-        'X-RateLimit-Lifetime-Remaining': status.lifetimeRemaining.toString(),
-        'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
-      });
+      return {
+        ...tooManyRequests(status.message),
+        headers: {
+          ...tooManyRequests(status.message).headers,
+          'X-RateLimit-Hourly-Remaining': '0',
+          'X-RateLimit-Lifetime-Remaining': status.lifetimeRemaining.toString(),
+          'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
+        },
+      };
     }
 
     if (lifetimeCount >= LIFETIME_LIMIT) {
@@ -98,11 +102,15 @@ export const handler = async (event: APIGatewayProxyEvent): APIGatewayProxyResul
 
       console.log('Lifetime rate limit exceeded:', { hourlyCount, lifetimeCount });
 
-      return errorResponse(429, 'Rate limit exceeded', undefined, {
-        'X-RateLimit-Hourly-Remaining': status.hourlyRemaining.toString(),
-        'X-RateLimit-Lifetime-Remaining': '0',
-        'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
-      });
+      return {
+        ...tooManyRequests(status.message),
+        headers: {
+          ...tooManyRequests(status.message).headers,
+          'X-RateLimit-Hourly-Remaining': status.hourlyRemaining.toString(),
+          'X-RateLimit-Lifetime-Remaining': '0',
+          'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
+        },
+      };
     }
 
     // Limits OK - increment counters atomically
@@ -192,15 +200,24 @@ export const handler = async (event: APIGatewayProxyEvent): APIGatewayProxyResul
 
     console.log('Rate limit incremented:', { newHourlyCount, newLifetimeCount, status });
 
-    return success(response, {
-      'X-RateLimit-Hourly-Remaining': hourlyRemaining.toString(),
-      'X-RateLimit-Lifetime-Remaining': lifetimeRemaining.toString(),
-      'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
-    });
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+        'X-RateLimit-Hourly-Remaining': hourlyRemaining.toString(),
+        'X-RateLimit-Lifetime-Remaining': lifetimeRemaining.toString(),
+        'X-RateLimit-Reset': new Date(hourEnd).toISOString(),
+      },
+      body: JSON.stringify(response),
+    };
 
   } catch (err: any) {
     console.error('Failed to check and increment rate limit:', err);
-    return errorResponse(500, 'Failed to check and increment rate limit', err.message);
+    return internalError('Failed to check and increment rate limit', err);
   }
 };
 
