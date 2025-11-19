@@ -387,6 +387,15 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
 
   // Optional: mapboxMetadata validation
   if (body.mapboxMetadata) {
+    if (body.mapboxMetadata.country) {
+      if (!body.mapboxMetadata.country.mapbox_id || !body.mapboxMetadata.country.name) {
+        return 'mapboxMetadata.country must include both mapbox_id and name';
+      }
+      if (typeof body.mapboxMetadata.country.mapbox_id !== 'string' || 
+          typeof body.mapboxMetadata.country.name !== 'string') {
+        return 'mapboxMetadata.country.mapbox_id and name must be strings';
+      }
+    }
     if (body.mapboxMetadata.region) {
       if (!body.mapboxMetadata.region.mapbox_id || !body.mapboxMetadata.region.name) {
         return 'mapboxMetadata.region must include both mapbox_id and name';

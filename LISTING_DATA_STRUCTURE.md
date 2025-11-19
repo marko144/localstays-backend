@@ -112,6 +112,10 @@ interface ListingMetadata {
   // ============================================================================
 
   mapboxMetadata?: {
+    country?: {
+      mapbox_id: string; // Mapbox country identifier
+      name: string; // Country name (e.g., "Serbia")
+    };
     region?: {
       mapbox_id: string; // Mapbox region identifier
       name: string; // Region name (e.g., "Belgrade District")

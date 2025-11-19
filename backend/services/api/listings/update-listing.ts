@@ -465,6 +465,15 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
 
   // mapboxMetadata
   if (updates.mapboxMetadata !== undefined) {
+    if (updates.mapboxMetadata.country) {
+      if (!updates.mapboxMetadata.country.mapbox_id || !updates.mapboxMetadata.country.name) {
+        return 'mapboxMetadata.country must include both mapbox_id and name';
+      }
+      if (typeof updates.mapboxMetadata.country.mapbox_id !== 'string' || 
+          typeof updates.mapboxMetadata.country.name !== 'string') {
+        return 'mapboxMetadata.country.mapbox_id and name must be strings';
+      }
+    }
     if (updates.mapboxMetadata.region) {
       if (!updates.mapboxMetadata.region.mapbox_id || !updates.mapboxMetadata.region.name) {
         return 'mapboxMetadata.region must include both mapbox_id and name';

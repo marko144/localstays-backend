@@ -169,6 +169,10 @@ export interface ListingMetadata {
   
   // Mapbox Location Metadata (optional, for internal use)
   mapboxMetadata?: {
+    country?: {
+      mapbox_id: string;
+      name: string;
+    };
     region?: {
       mapbox_id: string;
       name: string;
@@ -417,6 +421,10 @@ export interface SubmitListingIntentRequest {
     mapboxPlaceId?: string;
   };
   mapboxMetadata?: {
+    country?: {
+      mapbox_id: string;
+      name: string;
+    };
     region?: {
       mapbox_id: string;
       name: string;
@@ -654,6 +662,10 @@ export interface UpdateListingMetadataRequest {
       mapboxPlaceId?: string;
     };
     mapboxMetadata?: {
+      country?: {
+        mapbox_id: string;
+        name: string;
+      };
       region?: {
         mapbox_id: string;
         name: string;

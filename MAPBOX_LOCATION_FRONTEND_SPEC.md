@@ -12,6 +12,10 @@ When creating a listing, you can **optionally** send Mapbox region and place met
 
 ```typescript
 interface MapboxMetadata {
+  country?: {
+    mapbox_id: string; // Mapbox country ID
+    name: string; // Country name (e.g., "Serbia")
+  };
   region?: {
     mapbox_id: string; // Mapbox region ID
     name: string; // Region name (e.g., "Belgrade")
@@ -46,6 +50,10 @@ POST /api/v1/hosts/{hostId}/listings/submit-intent
 
   "mapboxMetadata": {
     // ← NEW OPTIONAL FIELD
+    "country": {
+      "mapbox_id": "dXJuOm1ieHBsYzpJdlE",
+      "name": "Serbia"
+    },
     "region": {
       "mapbox_id": "dXJuOm1ieHBsYzpBZzRB",
       "name": "Belgrade"
@@ -61,8 +69,8 @@ POST /api/v1/hosts/{hostId}/listings/submit-intent
 ### Rules
 
 - **Optional**: Can be omitted entirely
-- **Partial**: Can send only `region`, only `place`, or both
-- **Required if provided**: Both `mapbox_id` and `name` must be present
+- **Partial**: Can send any combination of `country`, `region`, and/or `place`
+- **Required if provided**: Both `mapbox_id` and `name` must be present for each field
 
 ---
 
