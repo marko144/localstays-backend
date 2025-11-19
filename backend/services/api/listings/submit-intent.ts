@@ -70,14 +70,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 4. Fetch bilingual translations for enums
-    const [propertyTypeEnum, checkInTypeEnum, parkingTypeEnum, amenityEnums] = await Promise.all([
+    const [propertyTypeEnum, checkInTypeEnum, parkingTypeEnum, paymentTypeEnum, amenityEnums] = await Promise.all([
       fetchEnumTranslation('PROPERTY_TYPE', body.propertyType),
       fetchEnumTranslation('CHECKIN_TYPE', body.checkIn.type),
       fetchEnumTranslation('PARKING_TYPE', body.parking.type),
+      fetchEnumTranslation('PAYMENT_TYPE', body.paymentType),
       fetchAmenityTranslations(body.amenities),
     ]);
 
-    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum) {
+    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum) {
       return response.badRequest('Invalid enum values provided');
     }
 
@@ -110,6 +111,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           description: body.description,
           
           address: normalizedAddress,
+          mapboxMetadata: body.mapboxMetadata,  // Optional: Mapbox region/place metadata
           capacity: body.capacity,
           pricing: body.pricing,       // Optional: can be undefined
           hasPricing: false,           // Will be set to true when detailed pricing is configured
@@ -124,6 +126,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             type: parkingTypeEnum,
             description: body.parking.description,
           },
+          paymentType: paymentTypeEnum,
           smokingAllowed: body.smokingAllowed,
           cancellationPolicy: body.cancellationPolicy,
           
@@ -350,6 +353,9 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.parking || !body.parking.type) {
     return 'parking.type is required';
   }
+  if (!body.paymentType) {
+    return 'paymentType is required';
+  }
 
   // Images validation
   if (!body.images || body.images.length < MIN_IMAGES) {
@@ -376,6 +382,28 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
     const trimmed = body.rightToListDocumentNumber.trim();
     if (trimmed.length === 0 || trimmed.length > 30) {
       return 'rightToListDocumentNumber must be between 1 and 30 characters';
+    }
+  }
+
+  // Optional: mapboxMetadata validation
+  if (body.mapboxMetadata) {
+    if (body.mapboxMetadata.region) {
+      if (!body.mapboxMetadata.region.mapbox_id || !body.mapboxMetadata.region.name) {
+        return 'mapboxMetadata.region must include both mapbox_id and name';
+      }
+      if (typeof body.mapboxMetadata.region.mapbox_id !== 'string' || 
+          typeof body.mapboxMetadata.region.name !== 'string') {
+        return 'mapboxMetadata.region.mapbox_id and name must be strings';
+      }
+    }
+    if (body.mapboxMetadata.place) {
+      if (!body.mapboxMetadata.place.mapbox_id || !body.mapboxMetadata.place.name) {
+        return 'mapboxMetadata.place must include both mapbox_id and name';
+      }
+      if (typeof body.mapboxMetadata.place.mapbox_id !== 'string' || 
+          typeof body.mapboxMetadata.place.name !== 'string') {
+        return 'mapboxMetadata.place.mapbox_id and name must be strings';
+      }
     }
   }
 

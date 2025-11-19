@@ -176,7 +176,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.10.0', // Added admin request permissions + host request permissions
+        Version: '1.11.0', // Added payment types enum
       },
     });
 

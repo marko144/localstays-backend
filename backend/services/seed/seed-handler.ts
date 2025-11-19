@@ -494,6 +494,28 @@ async function seedListingEnums() {
     });
   });
 
+  // Payment Types
+  const paymentTypes = [
+    { key: 'PAY_ONLINE', en: 'Pay Online', sr: 'Plaćanje online', sortOrder: 1 },
+    { key: 'PAY_DEPOSIT_ONLINE', en: 'Pay Deposit Online', sr: 'Plaćanje depozita online', sortOrder: 2 },
+    { key: 'PAY_LATER_CASH', en: 'Pay Later (Cash)', sr: 'Plaćanje kasnije (Gotovina)', sortOrder: 3 },
+    { key: 'PAY_LATER_CARD', en: 'Pay Later (Card)', sr: 'Plaćanje kasnije (Kartica)', sortOrder: 4 },
+  ];
+
+  paymentTypes.forEach((type) => {
+    enumRecords.push({
+      pk: 'ENUM#PAYMENT_TYPE',
+      sk: `VALUE#${type.key}`,
+      enumType: 'PAYMENT_TYPE',
+      enumValue: type.key,
+      translations: { en: type.en, sr: type.sr },
+      isActive: true,
+      sortOrder: type.sortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
   // Cancellation Policy Types
   const cancellationPolicyTypes = [
     { key: 'NO_CANCELLATION', en: 'No Cancellation', sr: 'Bez otkaza', sortOrder: 1 },

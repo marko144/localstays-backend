@@ -35,6 +35,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       amenities,
       checkInTypes,
       parkingTypes,
+      paymentTypes,
       cancellationPolicyTypes,
       verificationDocTypes,
       listingStatuses,
@@ -44,6 +45,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       fetchEnumValues('AMENITY'),
       fetchEnumValues('CHECKIN_TYPE'),
       fetchEnumValues('PARKING_TYPE'),
+      fetchEnumValues('PAYMENT_TYPE'),
       fetchEnumValues('CANCELLATION_POLICY'),
       fetchEnumValues('VERIFICATION_DOC_TYPE'),
       fetchEnumValues('LISTING_STATUS'),
@@ -76,6 +78,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       })),
       
       parkingTypes: parkingTypes.map((item) => ({
+        key: item.enumValue,
+        en: item.translations.en,
+        sr: item.translations.sr,
+        sortOrder: item.sortOrder,
+      })),
+      
+      paymentTypes: paymentTypes.map((item) => ({
         key: item.enumValue,
         en: item.translations.en,
         sr: item.translations.sr,

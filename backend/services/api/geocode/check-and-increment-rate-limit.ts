@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { success, unauthorized, internalError, tooManyRequests } from '../lib/response';
+import { unauthorized, internalError, tooManyRequests } from '../lib/response';
 import type { 
   RateLimitStatus, 
   HourlyRateLimitRecord, 
@@ -27,7 +27,7 @@ const LIFETIME_LIMIT = parseInt(process.env.GEOCODE_LIFETIME_LIMIT || '100', 10)
  * 2. Eliminate race conditions
  * 3. Simplify frontend logic
  */
-export const handler = async (event: APIGatewayProxyEvent): APIGatewayProxyResult => {
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   console.log('Check and increment rate limit:', { path: event.path, method: event.httpMethod });
 
   try {

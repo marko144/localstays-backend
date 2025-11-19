@@ -28,6 +28,7 @@ import {
   PropertyType,
   CheckInType,
   ParkingType,
+  PaymentType,
   CancellationPolicyType,
   ListingMetadata,
   BilingualEnum,
@@ -46,6 +47,7 @@ const EDITABLE_STATUSES = ['IN_REVIEW', 'REJECTED', 'APPROVED', 'ONLINE', 'OFFLI
 const VALID_PROPERTY_TYPES: PropertyType[] = ['APARTMENT', 'HOUSE', 'VILLA', 'STUDIO', 'ROOM'];
 const VALID_CHECKIN_TYPES: CheckInType[] = ['SELF_CHECKIN', 'HOST_GREETING', 'LOCKBOX', 'DOORMAN'];
 const VALID_PARKING_TYPES: ParkingType[] = ['NO_PARKING', 'FREE', 'PAID'];
+const VALID_PAYMENT_TYPES: PaymentType[] = ['PAY_ONLINE', 'PAY_DEPOSIT_ONLINE', 'PAY_LATER_CASH', 'PAY_LATER_CARD'];
 const VALID_CANCELLATION_TYPES: CancellationPolicyType[] = [
   'NO_CANCELLATION',
   '24_HOURS',
@@ -202,6 +204,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('address');
     }
 
+    // mapboxMetadata
+    if (updates.mapboxMetadata !== undefined) {
+      updateExpressionParts.push('#mapboxMetadata = :mapboxMetadata');
+      expressionAttributeNames['#mapboxMetadata'] = 'mapboxMetadata';
+      expressionAttributeValues[':mapboxMetadata'] = updates.mapboxMetadata;
+      updatedFields.push('mapboxMetadata');
+    }
+
     // capacity
     if (updates.capacity !== undefined) {
       updateExpressionParts.push('#capacity = :capacity');
@@ -280,6 +290,18 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       
       expressionAttributeValues[':parking'] = parkingValue;
       updatedFields.push('parking');
+    }
+
+    // paymentType
+    if (updates.paymentType !== undefined) {
+      const paymentTypeEnum = await fetchEnumTranslation('PAYMENT_TYPE', updates.paymentType);
+      if (!paymentTypeEnum) {
+        return response.badRequest(`Invalid payment type: ${updates.paymentType}`, 'VALIDATION_ERROR');
+      }
+      updateExpressionParts.push('#paymentType = :paymentType');
+      expressionAttributeNames['#paymentType'] = 'paymentType';
+      expressionAttributeValues[':paymentType'] = paymentTypeEnum;
+      updatedFields.push('paymentType');
     }
 
     // smokingAllowed
@@ -441,6 +463,28 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
   }
 
+  // mapboxMetadata
+  if (updates.mapboxMetadata !== undefined) {
+    if (updates.mapboxMetadata.region) {
+      if (!updates.mapboxMetadata.region.mapbox_id || !updates.mapboxMetadata.region.name) {
+        return 'mapboxMetadata.region must include both mapbox_id and name';
+      }
+      if (typeof updates.mapboxMetadata.region.mapbox_id !== 'string' || 
+          typeof updates.mapboxMetadata.region.name !== 'string') {
+        return 'mapboxMetadata.region.mapbox_id and name must be strings';
+      }
+    }
+    if (updates.mapboxMetadata.place) {
+      if (!updates.mapboxMetadata.place.mapbox_id || !updates.mapboxMetadata.place.name) {
+        return 'mapboxMetadata.place must include both mapbox_id and name';
+      }
+      if (typeof updates.mapboxMetadata.place.mapbox_id !== 'string' || 
+          typeof updates.mapboxMetadata.place.name !== 'string') {
+        return 'mapboxMetadata.place.mapbox_id and name must be strings';
+      }
+    }
+  }
+
   // capacity
   if (updates.capacity !== undefined) {
     if (!updates.capacity.beds || !updates.capacity.sleeps) {
@@ -506,6 +550,13 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
     if (updates.parking.description && updates.parking.description.length > 500) {
       return 'Parking description must not exceed 500 characters';
+    }
+  }
+
+  // paymentType
+  if (updates.paymentType !== undefined) {
+    if (!VALID_PAYMENT_TYPES.includes(updates.paymentType)) {
+      return `Invalid payment type: ${updates.paymentType}`;
     }
   }
 

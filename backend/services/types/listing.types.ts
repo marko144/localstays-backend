@@ -12,6 +12,11 @@
 export type PropertyType = 'APARTMENT' | 'HOUSE' | 'VILLA' | 'STUDIO' | 'ROOM';
 export type CheckInType = 'SELF_CHECKIN' | 'HOST_GREETING' | 'LOCKBOX' | 'DOORMAN';
 export type ParkingType = 'NO_PARKING' | 'FREE' | 'PAID';
+export type PaymentType = 
+  | 'PAY_ONLINE'
+  | 'PAY_DEPOSIT_ONLINE'
+  | 'PAY_LATER_CASH'
+  | 'PAY_LATER_CARD';
 export type CancellationPolicyType = 
   | 'NO_CANCELLATION'
   | '24_HOURS'
@@ -162,6 +167,18 @@ export interface ListingMetadata {
     mapboxPlaceId?: string;
   };
   
+  // Mapbox Location Metadata (optional, for internal use)
+  mapboxMetadata?: {
+    region?: {
+      mapbox_id: string;
+      name: string;
+    };
+    place?: {
+      mapbox_id: string;
+      name: string;
+    };
+  };
+  
   // Capacity
   capacity: {
     beds: number;
@@ -196,6 +213,9 @@ export interface ListingMetadata {
     type: BilingualEnum;
     description?: string;
   };
+  
+  // Payment Type
+  paymentType: BilingualEnum;
   
   // Smoking Policy
   smokingAllowed: boolean;
@@ -396,6 +416,16 @@ export interface SubmitListingIntentRequest {
     };
     mapboxPlaceId?: string;
   };
+  mapboxMetadata?: {
+    region?: {
+      mapbox_id: string;
+      name: string;
+    };
+    place?: {
+      mapbox_id: string;
+      name: string;
+    };
+  };
   capacity: {
     beds: number;
     sleeps: number;
@@ -418,6 +448,7 @@ export interface SubmitListingIntentRequest {
     type: ParkingType;
     description?: string;
   };
+  paymentType: PaymentType;
   smokingAllowed: boolean;
   cancellationPolicy: {
     type: CancellationPolicyType;
@@ -489,6 +520,7 @@ export interface GetListingResponse {
     status: ListingStatus;
     description: string;
     address: ListingMetadata['address'];
+    mapboxMetadata?: ListingMetadata['mapboxMetadata'];
     capacity: ListingMetadata['capacity'];
     pricing?: ListingMetadata['pricing'];
     hasPricing: boolean;              // Flag indicating if detailed pricing has been configured
@@ -503,6 +535,7 @@ export interface GetListingResponse {
       type: BilingualEnum;
       description?: string;
     };
+    paymentType: BilingualEnum;
     smokingAllowed: boolean;
     cancellationPolicy: {
       type: BilingualEnum;
@@ -590,6 +623,7 @@ export interface UpdateListingRequest {
     type: ParkingType;
     description?: string;
   };
+  paymentType?: PaymentType;
   amenities?: AmenityKey[];
 }
 
@@ -619,6 +653,16 @@ export interface UpdateListingMetadataRequest {
       };
       mapboxPlaceId?: string;
     };
+    mapboxMetadata?: {
+      region?: {
+        mapbox_id: string;
+        name: string;
+      };
+      place?: {
+        mapbox_id: string;
+        name: string;
+      };
+    };
     capacity?: {
       beds: number;
       sleeps: number;
@@ -641,6 +685,7 @@ export interface UpdateListingMetadataRequest {
       type: ParkingType;
       description?: string;
     };
+    paymentType?: PaymentType;
     smokingAllowed?: boolean;
     cancellationPolicy?: {
       type: CancellationPolicyType;
@@ -669,6 +714,7 @@ export interface ListingMetadataResponse {
   amenities: Array<BilingualEnum & { category: AmenityCategory; sortOrder: number }>;
   checkInTypes: Array<BilingualEnum & { sortOrder: number }>;
   parkingTypes: Array<BilingualEnum & { sortOrder: number }>;
+  paymentTypes: Array<BilingualEnum & { sortOrder: number }>;
   cancellationPolicyTypes: Array<BilingualEnum & { sortOrder: number }>;
   verificationDocumentTypes: Array<BilingualEnum & { 
     description: BilingualText;

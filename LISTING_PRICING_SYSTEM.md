@@ -2252,10 +2252,3 @@ The Listing Pricing System provides a flexible, hierarchical pricing model that 
 - Real-time pricing matrix preview
 
 The system is designed for simplicity, maintainability, and scalability, using a full-replacement strategy and denormalized pricing matrix for fast reads.
-
-
-
-
-
-
-
