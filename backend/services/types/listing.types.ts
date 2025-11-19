@@ -168,11 +168,14 @@ export interface ListingMetadata {
     sleeps: number;
   };
   
-  // Pricing
-  pricing: {
+  // Pricing (Optional - can be set later via pricing endpoint)
+  pricing?: {
     pricePerNight: number;
     currency: string;
   };
+  
+  // Pricing Configuration Flag
+  hasPricing: boolean;              // True if detailed pricing has been configured
   
   // Pets
   pets: {
@@ -397,7 +400,7 @@ export interface SubmitListingIntentRequest {
     beds: number;
     sleeps: number;
   };
-  pricing: {
+  pricing?: {
     pricePerNight: number;
     currency: string;
   };
@@ -487,7 +490,8 @@ export interface GetListingResponse {
     description: string;
     address: ListingMetadata['address'];
     capacity: ListingMetadata['capacity'];
-    pricing: ListingMetadata['pricing'];
+    pricing?: ListingMetadata['pricing'];
+    hasPricing: boolean;              // Flag indicating if detailed pricing has been configured
     pets: ListingMetadata['pets'];
     checkIn: {
       type: BilingualEnum;
@@ -543,6 +547,7 @@ export interface ListListingsResponse {
       pricePerNight: number;
       currency: string;
     };
+    hasPricing: boolean;          // Flag indicating if detailed pricing has been configured
     address: {
       city: string;
       country: string;

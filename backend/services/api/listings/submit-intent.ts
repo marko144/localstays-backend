@@ -111,7 +111,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           
           address: normalizedAddress,
           capacity: body.capacity,
-          pricing: body.pricing,
+          pricing: body.pricing,       // Optional: can be undefined
+          hasPricing: false,           // Will be set to true when detailed pricing is configured
           pets: body.pets,
           checkIn: {
             type: checkInTypeEnum,
@@ -342,9 +343,6 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   }
   if (!body.capacity || body.capacity.beds < 1 || body.capacity.sleeps < 1) {
     return 'capacity (beds and sleeps) is required and must be > 0';
-  }
-  if (!body.pricing || body.pricing.pricePerNight <= 0) {
-    return 'pricing.pricePerNight is required and must be > 0';
   }
   if (!body.checkIn || !body.checkIn.type || !body.checkIn.checkInFrom || !body.checkIn.checkOutBy) {
     return 'checkIn details (type, checkInFrom, checkOutBy) are required';

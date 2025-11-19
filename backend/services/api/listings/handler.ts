@@ -17,6 +17,8 @@ import { handler as submitImageUpdateHandler } from './submit-image-update';
 import { handler as confirmImageUpdateHandler } from './confirm-image-update';
 import { handler as updateListingHandler } from './update-listing';
 import { handler as resubmitForReviewHandler } from './resubmit-for-review';
+import { handler as getPricingHandler } from './get-pricing';
+import { handler as setPricingHandler } from './set-pricing';
 
 /**
  * Main router handler - dispatches to appropriate operation based on route and method
@@ -80,6 +82,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Route: POST /api/v1/hosts/{hostId}/listings/{listingId}/resubmit
     if (method === 'POST' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/resubmit') {
       return await resubmitForReviewHandler(event);
+    }
+
+    // Route: GET /api/v1/hosts/{hostId}/listings/{listingId}/pricing
+    if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/pricing') {
+      return await getPricingHandler(event);
+    }
+
+    // Route: PUT /api/v1/hosts/{hostId}/listings/{listingId}/pricing
+    if (method === 'PUT' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/pricing') {
+      return await setPricingHandler(event);
     }
 
     // Unknown route

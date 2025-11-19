@@ -1249,6 +1249,29 @@ export class ApiLambdaStack extends cdk.Stack {
       }
     );
 
+    // GET /api/v1/hosts/{hostId}/listings/{listingId}/pricing
+    // PUT /api/v1/hosts/{hostId}/listings/{listingId}/pricing
+    const pricingResource = listingIdParam.addResource('pricing');
+    pricingResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    pricingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
     // GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
     const listingRequestsResource = listingIdParam.addResource('requests');
     listingRequestsResource.addMethod(

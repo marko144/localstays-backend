@@ -104,6 +104,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           },
           status: listing.status,
           pricing: listing.pricing,
+          hasPricing: listing.hasPricing || false,
           address: {
             city: listing.address.city,
             country: listing.address.country,
