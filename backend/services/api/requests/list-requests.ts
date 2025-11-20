@@ -112,9 +112,10 @@ async function getListingById(listingId: string): Promise<any> {
     new QueryCommand({
       TableName: TABLE_NAME,
       IndexName: 'DocumentStatusIndex',
-      KeyConditionExpression: 'gsi3pk = :gsi3pk',
+      KeyConditionExpression: 'gsi3pk = :gsi3pk AND begins_with(gsi3sk, :gsi3sk)',
       ExpressionAttributeValues: {
         ':gsi3pk': `LISTING#${listingId}`,
+        ':gsi3sk': 'LISTING_META#',
       },
       Limit: 1,
     })

@@ -8,10 +8,12 @@ import { StorageStack } from '../lib/storage-stack';
 import { KmsStack } from '../lib/kms-stack';
 import { CognitoStack } from '../lib/cognito-stack';
 import { AuthTriggerStack } from '../lib/auth-trigger-stack';
-import { ApiGatewayStack } from '../lib/api-gateway-stack';
-import { ApiLambdaStack } from '../lib/api-lambda-stack';
 import { CloudFrontStack } from '../lib/cloudfront-stack';
 import { RateLimitStack } from '../lib/rate-limit-stack';
+import { SharedServicesStack } from '../lib/shared-services-stack';
+import { HostApiStack } from '../lib/host-api-stack';
+import { AdminApiStack } from '../lib/admin-api-stack';
+import { PublicApiStack } from '../lib/public-api-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -60,15 +62,24 @@ const stackPrefix = `Localstays${stage.charAt(0).toUpperCase() + stage.slice(1)}
  * 1. ParamsStack - SSM Parameters
  * 2. DataStack - DynamoDB tables
  * 3. EmailTemplateStack - Email templates DynamoDB table
- * 4. StorageStack - S3 buckets
- * 5. KmsStack - KMS keys
+ * 4. RateLimitStack - Rate limiting DynamoDB table
+ * 5. StorageStack - S3 buckets
+ * 6. KmsStack - KMS keys
  * 
  * Phase 2: Authentication (Dependent Stacks)
- * 6. CognitoStack - User Pool (depends on KmsStack)
- * 7. AuthTriggerStack - Lambda triggers (depends on all Phase 1 + CognitoStack)
+ * 7. CognitoStack - User Pool (depends on KmsStack)
+ * 8. AuthTriggerStack - Lambda triggers (depends on all Phase 1 + CognitoStack)
  * 
- * Phase 3: API Layer (Dependent on Auth)
- * 8. ApiStack - REST API + Lambda handlers (depends on DataStack, EmailTemplateStack, StorageStack, CognitoStack)
+ * Phase 3: CDN (Dependent on Storage)
+ * 9. CloudFrontStack - CDN for images (depends on StorageStack)
+ * 
+ * Phase 4: Shared Services (Dependent on Phase 1-3)
+ * 10. SharedServicesStack - Image/verification processing infrastructure
+ * 
+ * Phase 5: API Layer (Dependent on Phase 4)
+ * 11. HostApiStack - Host-facing API Gateway + Lambda handlers
+ * 12. AdminApiStack - Admin dashboard API Gateway + Lambda handlers
+ * 13. PublicApiStack - Public-facing API Gateway + Lambda handlers
  */
 
 // Phase 1: Foundation Stacks
@@ -168,13 +179,27 @@ const cloudFrontStack = new CloudFrontStack(app, `${stackPrefix}CloudFrontStack`
 });
 cloudFrontStack.addDependency(storageStack);
 
-// Phase 4: API Layer Stack (Combined Gateway + Lambdas to avoid circular dependency)
+// Phase 4: Shared Services Stack
 
-// Stack 9: API (Gateway + Lambda Functions)
-const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
+// Stack 10: Shared Services (Image/Verification Processing)
+const sharedServicesStack = new SharedServicesStack(app, `${stackPrefix}SharedServicesStack`, {
   env,
-  description: `REST API Gateway and Lambda functions for host profile submission (${stage})`,
-  stackName: `localstays-${stage}-api`,
+  description: `Shared infrastructure for image and verification processing (${stage})`,
+  stackName: `localstays-${stage}-shared-services`,
+  stage,
+  table: dataStack.table,
+  bucket: storageStack.bucket,
+});
+sharedServicesStack.addDependency(dataStack);
+sharedServicesStack.addDependency(storageStack);
+
+// Phase 5: API Layer Stacks (Split by API concern)
+
+// Stack 11: Host API (Host-facing endpoints)
+const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
+  env,
+  description: `Host API Gateway and Lambda functions (${stage})`,
+  stackName: `localstays-${stage}-host-api`,
   stage,
   frontendUrl,
   userPoolId: cognitoStack.userPool.userPoolId,
@@ -184,17 +209,54 @@ const apiStack = new ApiLambdaStack(app, `${stackPrefix}ApiStack`, {
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
+});
+hostApiStack.addDependency(cognitoStack);
+hostApiStack.addDependency(dataStack);
+hostApiStack.addDependency(emailTemplateStack);
+hostApiStack.addDependency(storageStack);
+hostApiStack.addDependency(paramsStack);
+hostApiStack.addDependency(cloudFrontStack);
+hostApiStack.addDependency(sharedServicesStack);
+
+// Stack 12: Admin API (Admin dashboard endpoints)
+const adminApiStack = new AdminApiStack(app, `${stackPrefix}AdminApiStack`, {
+  env,
+  description: `Admin API Gateway and Lambda functions (${stage})`,
+  stackName: `localstays-${stage}-admin-api`,
+  stage,
+  frontendUrl,
+  userPoolId: cognitoStack.userPool.userPoolId,
+  userPoolArn: cognitoStack.userPool.userPoolArn,
+  table: dataStack.table,
+  bucket: storageStack.bucket,
+  emailTemplatesTable: emailTemplateStack.table,
+  sendGridParamName: paramsStack.sendGridParamName,
+  cloudFrontDomain: cloudFrontStack.distributionDomainName,
+});
+adminApiStack.addDependency(cognitoStack);
+adminApiStack.addDependency(dataStack);
+adminApiStack.addDependency(emailTemplateStack);
+adminApiStack.addDependency(storageStack);
+adminApiStack.addDependency(paramsStack);
+adminApiStack.addDependency(cloudFrontStack);
+adminApiStack.addDependency(sharedServicesStack);
+
+// Stack 13: Public API (Public-facing endpoints)
+const publicApiStack = new PublicApiStack(app, `${stackPrefix}PublicApiStack`, {
+  env,
+  description: `Public API Gateway and Lambda functions (${stage})`,
+  stackName: `localstays-${stage}-public-api`,
+  stage,
+  userPoolId: cognitoStack.userPool.userPoolId,
+  userPoolArn: cognitoStack.userPool.userPoolArn,
+  table: dataStack.table,
   rateLimitTable: rateLimitStack.table,
   geocodeHourlyLimit: envConfig.geocodeHourlyLimit || 20,
   geocodeLifetimeLimit: envConfig.geocodeLifetimeLimit || 100,
 });
-apiStack.addDependency(cognitoStack);
-apiStack.addDependency(dataStack);
-apiStack.addDependency(emailTemplateStack);
-apiStack.addDependency(rateLimitStack);
-apiStack.addDependency(storageStack);
-apiStack.addDependency(paramsStack);
-apiStack.addDependency(cloudFrontStack);
+publicApiStack.addDependency(cognitoStack);
+publicApiStack.addDependency(dataStack);
+publicApiStack.addDependency(rateLimitStack);
 
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
@@ -207,7 +269,10 @@ console.log(`   6. ${kmsStack.stackName} (KMS)`);
 console.log(`   7. ${cognitoStack.stackName} (Cognito User Pool)`);
 console.log(`   8. ${authTriggerStack.stackName} (Lambda Triggers)`);
 console.log(`   9. ${cloudFrontStack.stackName} (CloudFront CDN)`);
-console.log(`  10. ${apiStack.stackName} (API Gateway + Lambda Functions)`);
+console.log(`  10. ${sharedServicesStack.stackName} (Shared Services: Image/Verification Processing)`);
+console.log(`  11. ${hostApiStack.stackName} (Host API Gateway + Lambdas)`);
+console.log(`  12. ${adminApiStack.stackName} (Admin API Gateway + Lambdas)`);
+console.log(`  13. ${publicApiStack.stackName} (Public API Gateway + Lambdas)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

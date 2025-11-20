@@ -77,7 +77,9 @@ This document provides a comprehensive, step-by-step plan for deploying a comple
 │  │ - Cognito: TBD                                   │  │
 │  │ - DynamoDB: localstays-staging                   │  │
 │  │ - S3: localstays-staging-host-assets-*           │  │
-│  │ - API: TBD                                       │  │
+│  │ - Host API: TBD                                  │  │
+│  │ - Admin API: TBD                                 │  │
+│  │ - Public API: TBD                                │  │
 │  │ - Lambdas: localstays-staging-*                  │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
@@ -88,10 +90,12 @@ This document provides a comprehensive, step-by-step plan for deploying a comple
 ```
 staging/
 ├── Cognito User Pool (localstays-staging-users)
-├── DynamoDB Table (localstays-staging)
+├── DynamoDB Tables (localstays-staging, email-templates, rate-limits)
 ├── S3 Bucket (localstays-staging-host-assets-*)
-├── API Gateway (localstays-staging-api)
-├── 10+ Lambda Functions (all staging-prefixed)
+├── Host API Gateway (localstays-staging-host-api)
+├── Admin API Gateway (localstays-staging-admin-api)
+├── Public API Gateway (localstays-staging-public-api)
+├── 14 Lambda Functions (all staging-prefixed)
 ├── ECR Repository (staging-localstays-image-processor)
 ├── SQS Queues (staging-image-processing-queue, etc.)
 ├── EventBridge Rules (staging-guardduty-scan-complete)
@@ -132,19 +136,44 @@ staging/
 
 ---
 
-### Phase 3: API Layer (Dependent on Phase 2) - ~5 minutes
+### Phase 3: CDN (Dependent on Phase 2) - ~3 minutes
 
 ```
-8. ApiStack            → API Gateway + Lambda handlers
+9. CloudFrontStack     → CDN for images
 ```
 
 **Dependencies:**
 
-- Requires CognitoStack (for authorizer)
+- Requires StorageStack (for S3 origin)
+
+---
+
+### Phase 4: Shared Services (Dependent on Phase 1-3) - ~3 minutes
+
+```
+10. SharedServicesStack → Image/verification processing infrastructure
+```
+
+**Dependencies:**
+
 - Requires DataStack (for DynamoDB access)
-- Requires EmailTemplateStack (for email sending)
 - Requires StorageStack (for S3 access)
-- Requires ParamsStack (for SendGrid API key)
+
+---
+
+### Phase 5: API Layer (Dependent on Phase 4) - ~15 minutes total
+
+```
+11. HostApiStack       → Host-facing API Gateway + Lambda handlers (~5 min)
+12. AdminApiStack      → Admin dashboard API Gateway + Lambda handlers (~5 min)
+13. PublicApiStack     → Public-facing API Gateway + Lambda handlers (~2 min)
+```
+
+**Dependencies:**
+
+- **HostApiStack** requires: CognitoStack, DataStack, EmailTemplateStack, StorageStack, ParamsStack, CloudFrontStack, SharedServicesStack
+- **AdminApiStack** requires: CognitoStack, DataStack, EmailTemplateStack, StorageStack, ParamsStack, SharedServicesStack
+- **PublicApiStack** requires: CognitoStack, DataStack, RateLimitStack
 
 ---
 
@@ -571,7 +600,7 @@ Next steps:
      --region eu-north-1
 ```
 
-**⚠️ IMPORTANT:** Don't run the `update-function-code` command yet - Lambda doesn't exist until Step 10!
+**⚠️ IMPORTANT:** Don't run the `update-function-code` command yet - Lambda doesn't exist until Step 11 (SharedServicesStack deployment)!
 
 **Verification:**
 
@@ -592,12 +621,12 @@ aws ecr describe-images \
 
 ---
 
-### Step 10: Deploy Phase 3 - API Stack (5 minutes)
+### Step 10: Deploy Phase 3 - CloudFront CDN (3 minutes)
 
 ```bash
-# Deploy API Gateway + all Lambda functions
+# Deploy CloudFront distribution for images
 npx cdk deploy \
-  LocalstaysStagingApiStack \
+  LocalstaysStagingCloudFrontStack \
   -c env=staging \
   --require-approval never \
   --region eu-north-1
@@ -605,47 +634,206 @@ npx cdk deploy \
 
 **What Gets Created:**
 
-1. **API Gateway**: REST API with Cognito authorizer
-2. **10+ Lambda Functions**: All API handlers
-3. **Image Processor Lambda**: Container-based Lambda (uses ECR image from Step 9)
-4. **Verification Processor Lambda**: For document scanning
-5. **SQS Queues**: Image processing queue + DLQ
-6. **EventBridge Rules**: GuardDuty scan result routing
-7. **CloudWatch Alarms**: Monitoring for queues and Lambdas
+1. **CloudFront Distribution**: CDN for serving listing images
+2. **OAI (Origin Access Identity)**: Secure S3 access
+3. **Cache Policies**: Optimized for images
 
 **Expected Outputs (SAVE THESE):**
 
 ```
-LocalstaysStagingApiStack.ApiEndpoint = https://xxxxxxxxxx.execute-api.eu-north-1.amazonaws.com/staging/
-LocalstaysStagingApiStack.ApiId = xxxxxxxxxx
+LocalstaysStagingCloudFrontStack.DistributionDomainName = dxxxxxxxxxx.cloudfront.net
+LocalstaysStagingCloudFrontStack.DistributionId = EXXXXXXXXXX
+```
 
-LocalstaysStagingApiStack.HostProfileHandlerLambdaName = localstays-staging-host-profile-handler
-LocalstaysStagingApiStack.HostListingsHandlerLambdaName = localstays-staging-host-listings-handler
-LocalstaysStagingApiStack.AdminHostsHandlerLambdaName = localstays-staging-admin-hosts-handler
-...
+---
+
+### Step 11: Deploy Phase 4 - Shared Services Stack (3 minutes)
+
+```bash
+# Deploy shared infrastructure (image/verification processing)
+npx cdk deploy \
+  LocalstaysStagingSharedServicesStack \
+  -c env=staging \
+  --require-approval never \
+  --region eu-north-1
+```
+
+**What Gets Created:**
+
+1. **Image Processor Lambda**: Container-based Lambda (uses ECR image from Step 9)
+2. **Verification Processor Lambda**: For document scanning
+3. **SQS Queues**: Image processing queue + DLQ, verification queue + DLQ
+4. **EventBridge Rules**: GuardDuty scan result routing (2 rules)
+5. **CloudWatch Alarms**: Monitoring for queues and Lambdas (8 alarms)
+
+**Expected Outputs (SAVE THESE):**
+
+```
+LocalstaysStagingSharedServicesStack.ImageProcessingQueueUrl = https://sqs.eu-north-1...
+LocalstaysStagingSharedServicesStack.VerificationProcessingQueueUrl = https://sqs.eu-north-1...
+LocalstaysStagingSharedServicesStack.ImageProcessorLambdaName = staging-image-processor
+LocalstaysStagingSharedServicesStack.VerificationProcessorLambdaName = staging-verification-processor
 ```
 
 **Verification:**
 
 ```bash
-# Verify API Gateway exists
-aws apigateway get-rest-apis \
-  --region eu-north-1 \
-  --query 'items[?name==`localstays-staging-api`].[id,name]'
+# Verify SQS queues exist
+aws sqs list-queues --region eu-north-1 | grep staging
 
-# Verify Lambda functions
+# Verify Lambda functions exist
 aws lambda list-functions \
   --region eu-north-1 \
-  --query 'Functions[?contains(FunctionName, `staging`)].FunctionName' \
-  --output table
-
-# Test API endpoint (should return 401 Unauthorized - expected without auth)
-curl https://xxxxxxxxxx.execute-api.eu-north-1.amazonaws.com/staging/api/v1/listings/metadata
+  --query 'Functions[?contains(FunctionName, `staging`)].FunctionName'
 ```
 
 ---
 
-### Step 11: 🔴 MANUAL - Enable GuardDuty Malware Protection (5 minutes)
+### Step 12: Deploy Phase 5a - Host API Stack (5 minutes)
+
+```bash
+# Deploy Host API Gateway + Lambda functions
+npx cdk deploy \
+  LocalstaysStagingHostApiStack \
+  -c env=staging \
+  --require-approval never \
+  --region eu-north-1
+```
+
+**What Gets Created:**
+
+1. **Host API Gateway**: REST API for host-facing endpoints
+2. **Cognito Authorizer**: For host authentication
+3. **7 Lambda Functions**:
+   - `localstays-staging-host-profile-handler`
+   - `localstays-staging-get-subscription`
+   - `localstays-staging-host-listings-handler`
+   - `localstays-staging-host-requests-handler`
+   - `localstays-staging-subscribe-notification`
+   - `localstays-staging-unsubscribe-notification`
+   - `localstays-staging-list-subscriptions`
+4. **25+ API Routes**: Profile, subscription, listings, requests, notifications
+
+**Expected Outputs (SAVE THESE - CRITICAL FOR FRONTEND):**
+
+```
+LocalstaysStagingHostApiStack.HostApiEndpoint = https://xxxxx.execute-api.eu-north-1.amazonaws.com/staging/
+LocalstaysStagingHostApiStack.HostApiId = xxxxx
+LocalstaysStagingHostApiStack.HostProfileHandlerLambdaName = localstays-staging-host-profile-handler
+LocalstaysStagingHostApiStack.HostListingsHandlerLambdaName = localstays-staging-host-listings-handler
+```
+
+**Verification:**
+
+```bash
+# Verify Host API Gateway exists
+aws apigateway get-rest-apis \
+  --region eu-north-1 \
+  --query 'items[?name==`localstays-staging-host-api`].[id,name]'
+
+# Test Host API endpoint (should return 401 Unauthorized - expected without auth)
+curl https://xxxxx.execute-api.eu-north-1.amazonaws.com/staging/api/v1/listings/metadata
+```
+
+---
+
+### Step 13: Deploy Phase 5b - Admin API Stack (5 minutes)
+
+```bash
+# Deploy Admin API Gateway + Lambda functions
+npx cdk deploy \
+  LocalstaysStagingAdminApiStack \
+  -c env=staging \
+  --require-approval never \
+  --region eu-north-1
+```
+
+**What Gets Created:**
+
+1. **Admin API Gateway**: REST API for admin dashboard
+2. **Cognito Authorizer**: For admin authentication
+3. **4 Lambda Functions**:
+   - `localstays-staging-admin-hosts-handler`
+   - `localstays-staging-admin-listings-handler`
+   - `localstays-staging-admin-requests-handler`
+   - `localstays-staging-send-notification`
+4. **20+ API Routes**: Host management, listing review, request approval
+
+**Expected Outputs (SAVE THESE - CRITICAL FOR ADMIN DASHBOARD):**
+
+```
+LocalstaysStagingAdminApiStack.AdminApiEndpoint = https://yyyyy.execute-api.eu-north-1.amazonaws.com/staging/
+LocalstaysStagingAdminApiStack.AdminApiId = yyyyy
+LocalstaysStagingAdminApiStack.AdminHostsHandlerLambdaName = localstays-staging-admin-hosts-handler
+LocalstaysStagingAdminApiStack.AdminListingsHandlerLambdaName = localstays-staging-admin-listings-handler
+```
+
+**Verification:**
+
+```bash
+# Verify Admin API Gateway exists
+aws apigateway get-rest-apis \
+  --region eu-north-1 \
+  --query 'items[?name==`localstays-staging-admin-api`].[id,name]'
+
+# Test Admin API endpoint (should return 401 Unauthorized)
+curl https://yyyyy.execute-api.eu-north-1.amazonaws.com/staging/api/v1/admin/hosts
+```
+
+---
+
+### Step 14: Deploy Phase 5c - Public API Stack (2 minutes)
+
+```bash
+# Deploy Public API Gateway + Lambda functions
+npx cdk deploy \
+  LocalstaysStagingPublicApiStack \
+  -c env=staging \
+  --require-approval never \
+  --region eu-north-1
+```
+
+**What Gets Created:**
+
+1. **Public API Gateway**: REST API for public/unauthenticated endpoints
+2. **Cognito Authorizer**: For authenticated public calls
+3. **1 Lambda Function**:
+   - `localstays-staging-check-increment-rate-limit`
+4. **1 API Route**: Geocoding rate limiting
+
+**Expected Outputs (SAVE THESE):**
+
+```
+LocalstaysStagingPublicApiStack.PublicApiEndpoint = https://zzzzz.execute-api.eu-north-1.amazonaws.com/staging/
+LocalstaysStagingPublicApiStack.PublicApiId = zzzzz
+LocalstaysStagingPublicApiStack.CheckAndIncrementRateLimitLambdaName = localstays-staging-check-increment-rate-limit
+```
+
+**Verification:**
+
+```bash
+# Verify Public API Gateway exists
+aws apigateway get-rest-apis \
+  --region eu-north-1 \
+  --query 'items[?name==`localstays-staging-public-api`].[id,name]'
+
+# Test Public API endpoint (should return 401 Unauthorized)
+curl https://zzzzz.execute-api.eu-north-1.amazonaws.com/staging/api/v1/geocode/rate-limit
+```
+
+**📝 IMPORTANT - FRONTEND CONFIGURATION:**
+
+After deploying all 3 API stacks, you now have **3 separate API URLs**:
+
+1. **Host API**: `https://xxxxx.execute-api.eu-north-1.amazonaws.com/staging/`
+2. **Admin API**: `https://yyyyy.execute-api.eu-north-1.amazonaws.com/staging/`
+3. **Public API**: `https://zzzzz.execute-api.eu-north-1.amazonaws.com/staging/`
+
+The frontend will need to be updated to use the correct API URL for each set of endpoints. See **"Frontend Configuration Guide"** at the end of this document.
+
+---
+
+### Step 15: 🔴 MANUAL - Enable GuardDuty Malware Protection (5 minutes)
 
 **Why Required?** GuardDuty Malware Protection scans S3 uploads for viruses. Required for image/document security.
 
@@ -673,7 +861,7 @@ aws guardduty get-malware-scan-settings \
 
 ---
 
-### Step 12: Seed Database with Roles & Enums (3 minutes)
+### Step 16: Seed Database with Roles & Enums (3 minutes)
 
 ```bash
 # Navigate back to project root
@@ -756,7 +944,7 @@ npx ts-node backend/services/seed/seed-verification-templates.ts
 
 ---
 
-### Step 13: Create Admin User (2 minutes)
+### Step 17: Create Admin User (2 minutes)
 
 ```bash
 # Run the admin user seed script
@@ -1175,20 +1363,23 @@ echo "✅ Deployment complete!"
 
 ### Total Resources Created (Staging)
 
-| Category                  | Count | Examples                                   |
-| ------------------------- | ----- | ------------------------------------------ |
-| **CloudFormation Stacks** | 8     | ParamsStack, DataStack, CognitoStack, etc. |
-| **Lambda Functions**      | 15+   | API handlers, triggers, processors         |
-| **DynamoDB Tables**       | 2     | localstays-staging, email-templates        |
-| **S3 Buckets**            | 1     | localstays-staging-host-assets-\*          |
-| **Cognito User Pools**    | 1     | localstays-staging-users                   |
-| **API Gateways**          | 1     | localstays-staging-api                     |
-| **SQS Queues**            | 4     | Image queue, DLQ, verification queue, DLQ  |
-| **EventBridge Rules**     | 2     | GuardDuty scan routing                     |
-| **CloudWatch Alarms**     | 10+   | Queue backlog, Lambda errors, etc.         |
-| **KMS Keys**              | 1     | Cognito CustomEmailSender encryption       |
-| **ECR Repositories**      | 1     | staging-localstays-image-processor         |
-| **SSM Parameters**        | 2+    | SendGrid API key, config                   |
+| Category                     | Count | Examples                                                                  |
+| ---------------------------- | ----- | ------------------------------------------------------------------------- |
+| **CloudFormation Stacks**    | 13    | Params, Data, Cognito, SharedServices, HostApi, AdminApi, PublicApi, etc. |
+| **Lambda Functions**         | 16    | 4 auth triggers + 2 processors + 7 host + 4 admin + 1 public              |
+| **DynamoDB Tables**          | 3     | localstays-staging, email-templates, rate-limits                          |
+| **S3 Buckets**               | 1     | localstays-staging-host-assets-\*                                         |
+| **Cognito User Pools**       | 1     | localstays-staging-users                                                  |
+| **API Gateways**             | 3     | host-api, admin-api, public-api                                           |
+| **Cognito Authorizers**      | 3     | One per API Gateway                                                       |
+| **CloudFront Distributions** | 1     | CDN for images                                                            |
+| **SQS Queues**               | 4     | Image queue, DLQ, verification queue, DLQ                                 |
+| **EventBridge Rules**        | 2     | GuardDuty scan routing (images + verification)                            |
+| **CloudWatch Alarms**        | 10+   | Queue backlog, Lambda errors, etc.                                        |
+| **CloudWatch Log Groups**    | 19+   | 16 Lambdas + 3 API Gateways                                               |
+| **KMS Keys**                 | 1     | Cognito CustomEmailSender encryption                                      |
+| **ECR Repositories**         | 1     | staging-localstays-image-processor                                        |
+| **SSM Parameters**           | 5+    | SendGrid API key, VAPID keys, config                                      |
 
 **Total Cost Estimate:** ~$10-15/month
 
@@ -1462,15 +1653,131 @@ aws logs start-query \
 
 ---
 
-**Estimated Total Deployment Time: 45-60 minutes**
+## 🌐 Frontend Configuration Guide
 
-- Automated steps: ~15 minutes
+### ⚠️ BREAKING CHANGE: 3 Separate API URLs
+
+After the infrastructure restructure, you now have **3 separate API Gateways** instead of 1:
+
+1. **Host API** - For host-facing endpoints
+2. **Admin API** - For admin dashboard endpoints
+3. **Public API** - For public/unauthenticated endpoints
+
+### API URL Mapping
+
+| Endpoint Pattern            | API Gateway    | Environment Variable  |
+| --------------------------- | -------------- | --------------------- |
+| `/api/v1/hosts/{hostId}/**` | **Host API**   | `VITE_HOST_API_URL`   |
+| `/api/v1/listings/metadata` | **Host API**   | `VITE_HOST_API_URL`   |
+| `/api/v1/notifications/**`  | **Host API**   | `VITE_HOST_API_URL`   |
+| `/api/v1/admin/**`          | **Admin API**  | `VITE_ADMIN_API_URL`  |
+| `/api/v1/geocode/**`        | **Public API** | `VITE_PUBLIC_API_URL` |
+
+### Frontend Environment Variables (Example)
+
+```env
+# Host App (.env.staging)
+VITE_HOST_API_URL=https://xxxxx.execute-api.eu-north-1.amazonaws.com/staging
+VITE_PUBLIC_API_URL=https://zzzzz.execute-api.eu-north-1.amazonaws.com/staging
+
+# Admin Dashboard (.env.staging)
+VITE_ADMIN_API_URL=https://yyyyy.execute-api.eu-north-1.amazonaws.com/staging
+```
+
+### Code Changes Required
+
+**Before (Single API):**
+
+```typescript
+const API_URL = import.meta.env.VITE_API_URL;
+
+// All calls go to same URL
+await fetch(`${API_URL}/api/v1/hosts/${hostId}/profile`);
+await fetch(`${API_URL}/api/v1/admin/hosts`);
+await fetch(`${API_URL}/api/v1/geocode/rate-limit`);
+```
+
+**After (Multiple APIs):**
+
+```typescript
+const HOST_API_URL = import.meta.env.VITE_HOST_API_URL;
+const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL;
+const PUBLIC_API_URL = import.meta.env.VITE_PUBLIC_API_URL;
+
+// Route to correct API
+await fetch(`${HOST_API_URL}/api/v1/hosts/${hostId}/profile`); // Host API
+await fetch(`${ADMIN_API_URL}/api/v1/admin/hosts`); // Admin API
+await fetch(`${PUBLIC_API_URL}/api/v1/geocode/rate-limit`); // Public API
+```
+
+### Recommended Approach: API Client Abstraction
+
+Create separate API clients for each concern:
+
+```typescript
+// src/lib/api/host-api.ts
+const HOST_API_URL = import.meta.env.VITE_HOST_API_URL;
+
+export const hostApi = {
+  getProfile: (hostId: string) =>
+    fetch(`${HOST_API_URL}/api/v1/hosts/${hostId}/profile`),
+  getListings: (hostId: string) =>
+    fetch(`${HOST_API_URL}/api/v1/hosts/${hostId}/listings`),
+  // ... all host endpoints
+};
+
+// src/lib/api/admin-api.ts
+const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL;
+
+export const adminApi = {
+  getHosts: () => fetch(`${ADMIN_API_URL}/api/v1/admin/hosts`),
+  approveHost: (hostId: string) =>
+    fetch(`${ADMIN_API_URL}/api/v1/admin/hosts/${hostId}/approve`, {
+      method: "PUT",
+    }),
+  // ... all admin endpoints
+};
+
+// src/lib/api/public-api.ts
+const PUBLIC_API_URL = import.meta.env.VITE_PUBLIC_API_URL;
+
+export const publicApi = {
+  checkRateLimit: () =>
+    fetch(`${PUBLIC_API_URL}/api/v1/geocode/rate-limit`, { method: "POST" }),
+  // ... all public endpoints
+};
+```
+
+### Benefits of This Restructure
+
+1. **Better Organization**: Clear separation between host, admin, and public concerns
+2. **Independent Scaling**: Each API can be scaled independently based on traffic
+3. **Security**: Admin endpoints isolated from public/host APIs
+4. **Resource Limits**: Each API stays well under CloudFormation's 500 resource limit
+5. **Monitoring**: Separate CloudWatch logs per API for easier debugging
+6. **Cost Transparency**: Clear cost breakdown per API type
+
+### Migration Checklist
+
+- [ ] Update environment variables in frontend projects
+- [ ] Create API client abstractions (host-api.ts, admin-api.ts, public-api.ts)
+- [ ] Update all API calls to use correct client
+- [ ] Test all endpoints in staging
+- [ ] Update CI/CD pipelines with new environment variables
+- [ ] Update documentation with new API URLs
+
+---
+
+**Estimated Total Deployment Time: 50-65 minutes**
+
+- Automated steps: ~20 minutes (now deploying 13 stacks instead of 8)
 - Manual interventions: ~33 minutes
 - Verification & testing: ~15 minutes
 
 ---
 
-**Last Updated:** 2025-11-09
+**Last Updated:** 2025-11-19 (Infrastructure Restructure)
 **CDK Version:** 2.110.0
 **Node Version:** 20.x
 **Region:** eu-north-1
+**Stacks:** 13 (previously 8)

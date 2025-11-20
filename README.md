@@ -4,11 +4,15 @@ AWS serverless backend for the Localstays platform, built with AWS CDK (TypeScri
 
 ## 📚 Documentation
 
+- **[STAGING_DEPLOYMENT_MASTER_PLAN.md](./STAGING_DEPLOYMENT_MASTER_PLAN.md)** - **START HERE** for staging deployment (most comprehensive)
 - **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Complete deployment instructions with manual post-deployment steps
+- **[INFRASTRUCTURE_RESTRUCTURING_PLAN.md](./INFRASTRUCTURE_RESTRUCTURING_PLAN.md)** - Infrastructure split & CloudFormation resource limits
 - **[FORGOT_PASSWORD.md](./FORGOT_PASSWORD.md)** - Password reset flow documentation
 - **[PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md)** - Technical overview and architecture
 
 ## 🏗️ Architecture Overview
+
+**⚠️ Note:** The architecture has grown significantly beyond the initial signup/verification flow. This README documents the original components. See **[STAGING_DEPLOYMENT_MASTER_PLAN.md](./STAGING_DEPLOYMENT_MASTER_PLAN.md)** for the complete current architecture (13 stacks, 3 API Gateways, 16 Lambdas).
 
 **Phase 1: Signup + Custom Email Verification via Cognito Trigger**
 
