@@ -31,6 +31,10 @@ export interface AdminApiStackProps extends cdk.StackProps {
   cloudFrontDomain?: string;
   /** Frontend URL for deep links in notifications */
   frontendUrl: string;
+  /** Public listings table */
+  publicListingsTable: dynamodb.Table;
+  /** Public listing media table */
+  publicListingMediaTable: dynamodb.Table;
 }
 
 /**
@@ -188,6 +192,8 @@ export class AdminApiStack extends cdk.Stack {
       STAGE: stage,
       CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
       USE_CLOUDFRONT: props.cloudFrontDomain ? 'true' : 'false',
+      PUBLIC_LISTINGS_TABLE_NAME: props.publicListingsTable.tableName,
+      PUBLIC_LISTING_MEDIA_TABLE_NAME: props.publicListingMediaTable.tableName,
     };
 
     // Common Lambda configuration
@@ -308,6 +314,8 @@ export class AdminApiStack extends cdk.Stack {
     table.grantReadWriteData(this.adminRequestsHandlerLambda);
     bucket.grantReadWrite(this.adminRequestsHandlerLambda);
     emailTemplatesTable.grantReadData(this.adminRequestsHandlerLambda);
+    props.publicListingsTable.grantReadWriteData(this.adminRequestsHandlerLambda); // For updating PublicListings on image approval
+    props.publicListingMediaTable.grantReadWriteData(this.adminRequestsHandlerLambda); // For updating PublicListingMedia on image approval
     this.adminRequestsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],

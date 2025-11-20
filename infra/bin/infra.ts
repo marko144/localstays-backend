@@ -205,6 +205,9 @@ const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
   userPoolId: cognitoStack.userPool.userPoolId,
   userPoolArn: cognitoStack.userPool.userPoolArn,
   table: dataStack.table,
+  locationsTable: dataStack.locationsTable,
+  publicListingsTable: dataStack.publicListingsTable,
+  publicListingMediaTable: dataStack.publicListingMediaTable,
   bucket: storageStack.bucket,
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
@@ -232,6 +235,8 @@ const adminApiStack = new AdminApiStack(app, `${stackPrefix}AdminApiStack`, {
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
+  publicListingsTable: dataStack.publicListingsTable,
+  publicListingMediaTable: dataStack.publicListingMediaTable,
 });
 adminApiStack.addDependency(cognitoStack);
 adminApiStack.addDependency(dataStack);

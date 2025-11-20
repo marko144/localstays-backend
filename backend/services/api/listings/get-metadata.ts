@@ -68,6 +68,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         sr: item.translations.sr,
         category: item.metadata?.category || 'BASICS',
         sortOrder: item.sortOrder,
+        isFilter: item.isFilter ?? false,
       })),
       
       checkInTypes: checkInTypes.map((item) => ({

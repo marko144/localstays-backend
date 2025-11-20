@@ -572,68 +572,68 @@ async function seedListingEnums() {
   // Amenities
   const amenities = [
     // Basics
-    { key: 'WIFI', en: 'Wi-Fi', sr: 'Bežični internet', category: 'BASICS', sortOrder: 1 },
-    { key: 'AIR_CONDITIONING', en: 'Air Conditioning', sr: 'Klima uređaj', category: 'BASICS', sortOrder: 2 },
-    { key: 'HEATING', en: 'Heating', sr: 'Grejanje', category: 'BASICS', sortOrder: 3 },
-    { key: 'HOT_WATER', en: 'Hot Water', sr: 'Topla voda', category: 'BASICS', sortOrder: 4 },
+    { key: 'WIFI', en: 'Wi-Fi', sr: 'Bežični internet', category: 'BASICS', sortOrder: 1, isFilter: true },
+    { key: 'AIR_CONDITIONING', en: 'Air Conditioning', sr: 'Klima uređaj', category: 'BASICS', sortOrder: 2, isFilter: true },
+    { key: 'HEATING', en: 'Heating', sr: 'Grejanje', category: 'BASICS', sortOrder: 3, isFilter: false },
+    { key: 'HOT_WATER', en: 'Hot Water', sr: 'Topla voda', category: 'BASICS', sortOrder: 4, isFilter: false },
     
     // Kitchen
-    { key: 'KITCHEN', en: 'Kitchen', sr: 'Kuhinja', category: 'KITCHEN', sortOrder: 10 },
-    { key: 'REFRIGERATOR', en: 'Refrigerator', sr: 'Frižider', category: 'KITCHEN', sortOrder: 11 },
-    { key: 'MICROWAVE', en: 'Microwave', sr: 'Mikrotalasna', category: 'KITCHEN', sortOrder: 12 },
-    { key: 'OVEN', en: 'Oven', sr: 'Rerna', category: 'KITCHEN', sortOrder: 13 },
-    { key: 'STOVE', en: 'Stove', sr: 'Šporet', category: 'KITCHEN', sortOrder: 14 },
-    { key: 'DISHWASHER', en: 'Dishwasher', sr: 'Mašina za pranje sudova', category: 'KITCHEN', sortOrder: 15 },
-    { key: 'COFFEE_MAKER', en: 'Coffee Maker', sr: 'Aparat za kafu', category: 'KITCHEN', sortOrder: 16 },
+    { key: 'KITCHEN', en: 'Kitchen', sr: 'Kuhinja', category: 'KITCHEN', sortOrder: 10, isFilter: false },
+    { key: 'REFRIGERATOR', en: 'Refrigerator', sr: 'Frižider', category: 'KITCHEN', sortOrder: 11, isFilter: false },
+    { key: 'MICROWAVE', en: 'Microwave', sr: 'Mikrotalasna', category: 'KITCHEN', sortOrder: 12, isFilter: false },
+    { key: 'OVEN', en: 'Oven', sr: 'Rerna', category: 'KITCHEN', sortOrder: 13, isFilter: false },
+    { key: 'STOVE', en: 'Stove', sr: 'Šporet', category: 'KITCHEN', sortOrder: 14, isFilter: false },
+    { key: 'DISHWASHER', en: 'Dishwasher', sr: 'Mašina za pranje sudova', category: 'KITCHEN', sortOrder: 15, isFilter: false },
+    { key: 'COFFEE_MAKER', en: 'Coffee Maker', sr: 'Aparat za kafu', category: 'KITCHEN', sortOrder: 16, isFilter: false },
     
     // Laundry
-    { key: 'WASHING_MACHINE', en: 'Washing Machine', sr: 'Mašina za pranje veša', category: 'LAUNDRY', sortOrder: 20 },
-    { key: 'DRYER', en: 'Dryer', sr: 'Mašina za sušenje', category: 'LAUNDRY', sortOrder: 21 },
-    { key: 'IRON', en: 'Iron', sr: 'Pegla', category: 'LAUNDRY', sortOrder: 22 },
+    { key: 'WASHING_MACHINE', en: 'Washing Machine', sr: 'Mašina za pranje veša', category: 'LAUNDRY', sortOrder: 20, isFilter: false },
+    { key: 'DRYER', en: 'Dryer', sr: 'Mašina za sušenje', category: 'LAUNDRY', sortOrder: 21, isFilter: false },
+    { key: 'IRON', en: 'Iron', sr: 'Pegla', category: 'LAUNDRY', sortOrder: 22, isFilter: false },
     
     // Entertainment
-    { key: 'TV', en: 'TV', sr: 'Televizor', category: 'ENTERTAINMENT', sortOrder: 30 },
-    { key: 'CABLE_TV', en: 'Cable TV', sr: 'Kablovska TV', category: 'ENTERTAINMENT', sortOrder: 31 },
-    { key: 'STREAMING_SERVICES', en: 'Streaming Services', sr: 'Streaming servisi', category: 'ENTERTAINMENT', sortOrder: 32 },
+    { key: 'TV', en: 'TV', sr: 'Televizor', category: 'ENTERTAINMENT', sortOrder: 30, isFilter: false },
+    { key: 'CABLE_TV', en: 'Cable TV', sr: 'Kablovska TV', category: 'ENTERTAINMENT', sortOrder: 31, isFilter: false },
+    { key: 'STREAMING_SERVICES', en: 'Streaming Services', sr: 'Streaming servisi', category: 'ENTERTAINMENT', sortOrder: 32, isFilter: false },
     
     // Comfort
-    { key: 'BED_LINENS', en: 'Bed Linens', sr: 'Posteljina', category: 'BASICS', sortOrder: 5 },
-    { key: 'TOWELS', en: 'Towels', sr: 'Peškiri', category: 'BASICS', sortOrder: 6 },
-    { key: 'TOILETRIES', en: 'Basic Toiletries', sr: 'Osnovni toaletni pribor', category: 'BASICS', sortOrder: 7 },
-    { key: 'HAIR_DRYER', en: 'Hair Dryer', sr: 'Fen', category: 'BASICS', sortOrder: 8 },
+    { key: 'BED_LINENS', en: 'Bed Linens', sr: 'Posteljina', category: 'BASICS', sortOrder: 5, isFilter: false },
+    { key: 'TOWELS', en: 'Towels', sr: 'Peškiri', category: 'BASICS', sortOrder: 6, isFilter: false },
+    { key: 'TOILETRIES', en: 'Basic Toiletries', sr: 'Osnovni toaletni pribor', category: 'BASICS', sortOrder: 7, isFilter: false },
+    { key: 'HAIR_DRYER', en: 'Hair Dryer', sr: 'Fen', category: 'BASICS', sortOrder: 8, isFilter: false },
     
     // Outdoor
-    { key: 'BALCONY', en: 'Balcony', sr: 'Balkon', category: 'OUTDOOR', sortOrder: 40 },
-    { key: 'TERRACE', en: 'Terrace', sr: 'Terasa', category: 'OUTDOOR', sortOrder: 41 },
-    { key: 'GARDEN', en: 'Garden', sr: 'Bašta', category: 'OUTDOOR', sortOrder: 42 },
-    { key: 'BBQ_GRILL', en: 'BBQ Grill', sr: 'Roštilj', category: 'OUTDOOR', sortOrder: 43 },
+    { key: 'BALCONY', en: 'Balcony', sr: 'Balkon', category: 'OUTDOOR', sortOrder: 40, isFilter: false },
+    { key: 'TERRACE', en: 'Terrace', sr: 'Terasa', category: 'OUTDOOR', sortOrder: 41, isFilter: false },
+    { key: 'GARDEN', en: 'Garden', sr: 'Bašta', category: 'OUTDOOR', sortOrder: 42, isFilter: false },
+    { key: 'BBQ_GRILL', en: 'BBQ Grill', sr: 'Roštilj', category: 'OUTDOOR', sortOrder: 43, isFilter: false },
     
     // Building
-    { key: 'ELEVATOR', en: 'Elevator', sr: 'Lift', category: 'BUILDING', sortOrder: 50 },
-    { key: 'PARKING', en: 'Parking', sr: 'Parking', category: 'BUILDING', sortOrder: 51 },
-    { key: 'DOORMAN', en: 'Doorman/Security', sr: 'Portir/Obezbeđenje', category: 'BUILDING', sortOrder: 52 },
-    { key: 'GYM', en: 'Gym', sr: 'Teretana', category: 'BUILDING', sortOrder: 53 },
-    { key: 'POOL', en: 'Pool', sr: 'Bazen', category: 'BUILDING', sortOrder: 54 },
+    { key: 'ELEVATOR', en: 'Elevator', sr: 'Lift', category: 'BUILDING', sortOrder: 50, isFilter: false },
+    { key: 'PARKING', en: 'Parking', sr: 'Parking', category: 'BUILDING', sortOrder: 51, isFilter: true },
+    { key: 'DOORMAN', en: 'Doorman/Security', sr: 'Portir/Obezbeđenje', category: 'BUILDING', sortOrder: 52, isFilter: false },
+    { key: 'GYM', en: 'Gym', sr: 'Teretana', category: 'BUILDING', sortOrder: 53, isFilter: true },
+    { key: 'POOL', en: 'Pool', sr: 'Bazen', category: 'BUILDING', sortOrder: 54, isFilter: true },
     
     // Family
-    { key: 'CRIB', en: 'Crib', sr: 'Krevetac', category: 'FAMILY', sortOrder: 60 },
-    { key: 'HIGH_CHAIR', en: 'High Chair', sr: 'Stolica za hranjenje', category: 'FAMILY', sortOrder: 61 },
-    { key: 'CHILD_FRIENDLY', en: 'Child Friendly', sr: 'Pogodno za decu', category: 'FAMILY', sortOrder: 62 },
+    { key: 'CRIB', en: 'Crib', sr: 'Krevetac', category: 'FAMILY', sortOrder: 60, isFilter: false },
+    { key: 'HIGH_CHAIR', en: 'High Chair', sr: 'Stolica za hranjenje', category: 'FAMILY', sortOrder: 61, isFilter: false },
+    { key: 'CHILD_FRIENDLY', en: 'Child Friendly', sr: 'Pogodno za decu', category: 'FAMILY', sortOrder: 62, isFilter: false },
     
     // Accessibility
-    { key: 'WHEELCHAIR_ACCESSIBLE', en: 'Wheelchair Accessible', sr: 'Pristupačno za kolica', category: 'ACCESSIBILITY', sortOrder: 70 },
-    { key: 'STEP_FREE_ACCESS', en: 'Step-free Access', sr: 'Pristup bez stepenica', category: 'ACCESSIBILITY', sortOrder: 71 },
+    { key: 'WHEELCHAIR_ACCESSIBLE', en: 'Wheelchair Accessible', sr: 'Pristupačno za kolica', category: 'ACCESSIBILITY', sortOrder: 70, isFilter: false },
+    { key: 'STEP_FREE_ACCESS', en: 'Step-free Access', sr: 'Pristup bez stepenica', category: 'ACCESSIBILITY', sortOrder: 71, isFilter: false },
     
     // Safety
-    { key: 'SMOKE_DETECTOR', en: 'Smoke Detector', sr: 'Detektor dima', category: 'SAFETY', sortOrder: 80 },
-    { key: 'CARBON_MONOXIDE_DETECTOR', en: 'Carbon Monoxide Detector', sr: 'Detektor ugljen-monoksida', category: 'SAFETY', sortOrder: 81 },
-    { key: 'FIRE_EXTINGUISHER', en: 'Fire Extinguisher', sr: 'Aparat za gašenje požara', category: 'SAFETY', sortOrder: 82 },
-    { key: 'FIRST_AID_KIT', en: 'First Aid Kit', sr: 'Komplet prve pomoći', category: 'SAFETY', sortOrder: 83 },
+    { key: 'SMOKE_DETECTOR', en: 'Smoke Detector', sr: 'Detektor dima', category: 'SAFETY', sortOrder: 80, isFilter: false },
+    { key: 'CARBON_MONOXIDE_DETECTOR', en: 'Carbon Monoxide Detector', sr: 'Detektor ugljen-monoksida', category: 'SAFETY', sortOrder: 81, isFilter: false },
+    { key: 'FIRE_EXTINGUISHER', en: 'Fire Extinguisher', sr: 'Aparat za gašenje požara', category: 'SAFETY', sortOrder: 82, isFilter: false },
+    { key: 'FIRST_AID_KIT', en: 'First Aid Kit', sr: 'Komplet prve pomoći', category: 'SAFETY', sortOrder: 83, isFilter: false },
     
     // Work
-    { key: 'WORKSPACE', en: 'Dedicated Workspace', sr: 'Radni prostor', category: 'WORK', sortOrder: 90 },
-    { key: 'DESK', en: 'Desk', sr: 'Radni sto', category: 'WORK', sortOrder: 91 },
-    { key: 'OFFICE_CHAIR', en: 'Office Chair', sr: 'Kancelarijska stolica', category: 'WORK', sortOrder: 92 },
+    { key: 'WORKSPACE', en: 'Dedicated Workspace', sr: 'Radni prostor', category: 'WORK', sortOrder: 90, isFilter: true },
+    { key: 'DESK', en: 'Desk', sr: 'Radni sto', category: 'WORK', sortOrder: 91, isFilter: false },
+    { key: 'OFFICE_CHAIR', en: 'Office Chair', sr: 'Kancelarijska stolica', category: 'WORK', sortOrder: 92, isFilter: false },
   ];
 
   amenities.forEach((amenity) => {
@@ -644,6 +644,7 @@ async function seedListingEnums() {
       enumValue: amenity.key,
       translations: { en: amenity.en, sr: amenity.sr },
       metadata: { category: amenity.category },
+      isFilter: amenity.isFilter,
       isActive: true,
       sortOrder: amenity.sortOrder,
       createdAt: now,

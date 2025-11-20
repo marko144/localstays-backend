@@ -21,6 +21,12 @@ export interface HostApiStackProps extends cdk.StackProps {
   userPoolArn: string;
   /** DynamoDB table */
   table: dynamodb.Table;
+  /** Locations DynamoDB table */
+  locationsTable: dynamodb.Table;
+  /** Public Listings DynamoDB table */
+  publicListingsTable: dynamodb.Table;
+  /** Public Listing Media DynamoDB table */
+  publicListingMediaTable: dynamodb.Table;
   /** S3 bucket for host assets */
   bucket: s3.Bucket;
   /** Email templates DynamoDB table */
@@ -51,6 +57,8 @@ export class HostApiStack extends cdk.Stack {
   public readonly hostProfileHandlerLambda: nodejs.NodejsFunction;
   public readonly getSubscriptionLambda: nodejs.NodejsFunction;
   public readonly hostListingsHandlerLambda: nodejs.NodejsFunction;
+  public readonly publishListingLambda: nodejs.NodejsFunction;
+  public readonly unpublishListingLambda: nodejs.NodejsFunction;
   public readonly hostRequestsHandlerLambda: nodejs.NodejsFunction;
   public readonly subscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly unsubscribeNotificationLambda: nodejs.NodejsFunction;
@@ -184,6 +192,9 @@ export class HostApiStack extends cdk.Stack {
     // Common environment variables for all Lambda functions
     const commonEnvironment = {
       TABLE_NAME: table.tableName,
+      LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+      PUBLIC_LISTINGS_TABLE_NAME: props.publicListingsTable.tableName,
+      PUBLIC_LISTING_MEDIA_TABLE_NAME: props.publicListingMediaTable.tableName,
       BUCKET_NAME: bucket.bucketName,
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
@@ -277,6 +288,7 @@ export class HostApiStack extends cdk.Stack {
 
     // Grant DynamoDB permissions (read + write for all operations)
     table.grantReadWriteData(this.hostListingsHandlerLambda);
+    props.publicListingsTable.grantWriteData(this.hostListingsHandlerLambda); // For syncing updates to PublicListings
 
     // Grant S3 permissions (for pre-signed URLs and verification)
     this.hostListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
@@ -298,6 +310,42 @@ export class HostApiStack extends cdk.Stack {
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`],
     }));
+
+    // ========================================
+    // PUBLISH LISTING LAMBDA
+    // ========================================
+    this.publishListingLambda = new nodejs.NodejsFunction(this, 'PublishListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-publish-listing`,
+      entry: 'backend/services/api/listings/publish-listing.ts',
+      handler: 'handler',
+      description: 'Publish an APPROVED or OFFLINE listing to PublicListings table',
+      environment: commonEnvironment,
+    });
+
+    // Grant DynamoDB permissions (least privilege)
+    table.grantReadWriteData(this.publishListingLambda); // Main table (read listing, update status)
+    props.locationsTable.grantReadWriteData(this.publishListingLambda); // Locations table (check/create location, increment count)
+    props.publicListingsTable.grantWriteData(this.publishListingLambda); // PublicListings table (write only)
+    props.publicListingMediaTable.grantWriteData(this.publishListingLambda); // PublicListingMedia table (write only)
+
+    // ========================================
+    // UNPUBLISH LISTING LAMBDA
+    // ========================================
+    this.unpublishListingLambda = new nodejs.NodejsFunction(this, 'UnpublishListingLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-unpublish-listing`,
+      entry: 'backend/services/api/listings/unpublish-listing.ts',
+      handler: 'handler',
+      description: 'Unpublish an ONLINE listing from PublicListings table',
+      environment: commonEnvironment,
+    });
+
+    // Grant DynamoDB permissions (least privilege)
+    table.grantReadWriteData(this.unpublishListingLambda); // Main table (read listing, update status)
+    props.locationsTable.grantWriteData(this.unpublishListingLambda); // Locations table (decrement count only)
+    props.publicListingsTable.grantWriteData(this.unpublishListingLambda); // PublicListings table (delete only)
+    props.publicListingMediaTable.grantReadWriteData(this.unpublishListingLambda); // PublicListingMedia table (read for query, delete)
 
     // ========================================
     // HOST REQUESTS HANDLER LAMBDA (CONSOLIDATED)
@@ -595,6 +643,28 @@ export class HostApiStack extends cdk.Stack {
     resubmitListingResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/publish
+    const publishListingResource = listingIdParam.addResource('publish');
+    publishListingResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.publishListingLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/unpublish
+    const unpublishListingResource = listingIdParam.addResource('unpublish');
+    unpublishListingResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.unpublishListingLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

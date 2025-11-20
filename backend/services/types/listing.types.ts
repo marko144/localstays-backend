@@ -186,6 +186,8 @@ export interface ListingMetadata {
   // Capacity
   capacity: {
     beds: number;
+    bedrooms: number;
+    bathrooms: number;
     sleeps: number;
   };
   
@@ -355,7 +357,7 @@ export interface ListingAmenities {
   listingId: string;
   
   // Amenities with bilingual data
-  amenities: Array<BilingualEnum & { category: AmenityCategory }>;
+  amenities: Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }>;
   
   // Metadata
   updatedAt: string;
@@ -436,6 +438,8 @@ export interface SubmitListingIntentRequest {
   };
   capacity: {
     beds: number;
+    bedrooms: number;
+    bathrooms: number;
     sleeps: number;
   };
   pricing?: {
@@ -566,7 +570,7 @@ export interface GetListingResponse {
     width: number;               // Image dimensions
     height: number;
   }>;
-  amenities: Array<BilingualEnum & { category: AmenityCategory }>;
+  amenities: Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }>;
   verificationDocuments?: Array<{
     documentType: VerificationDocType;
     status: DocumentReviewStatus;
@@ -611,6 +615,8 @@ export interface UpdateListingRequest {
   description?: string;
   capacity?: {
     beds: number;
+    bedrooms: number;
+    bathrooms: number;
     sleeps: number;
   };
   pricing?: {
@@ -677,6 +683,8 @@ export interface UpdateListingMetadataRequest {
     };
     capacity?: {
       beds: number;
+      bedrooms: number;
+      bathrooms: number;
       sleeps: number;
     };
     pricing?: {
@@ -723,7 +731,7 @@ export interface UpdateListingMetadataResponse {
 
 export interface ListingMetadataResponse {
   propertyTypes: Array<BilingualEnum & { isEntirePlace: boolean; sortOrder: number }>;
-  amenities: Array<BilingualEnum & { category: AmenityCategory; sortOrder: number }>;
+  amenities: Array<BilingualEnum & { category: AmenityCategory; sortOrder: number; isFilter: boolean }>;
   checkInTypes: Array<BilingualEnum & { sortOrder: number }>;
   parkingTypes: Array<BilingualEnum & { sortOrder: number }>;
   paymentTypes: Array<BilingualEnum & { sortOrder: number }>;

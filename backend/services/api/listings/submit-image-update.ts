@@ -78,8 +78,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // 3. Validate at least one change is requested
     if ((!body.imagesToAdd || body.imagesToAdd.length === 0) && 
-        (!body.imagesToDelete || body.imagesToDelete.length === 0)) {
-      return response.badRequest('Must specify at least one image to add or delete');
+        (!body.imagesToDelete || body.imagesToDelete.length === 0) &&
+        !body.newPrimaryImageId) {
+      return response.badRequest('Must specify at least one change: imagesToAdd, imagesToDelete, or newPrimaryImageId');
     }
 
     // 4. Fetch listing metadata
@@ -119,10 +120,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return response.badRequest('Display orders must be unique');
       }
 
-      // Check only one primary image
+      // Check only one primary image in imagesToAdd
       const primaryCount = body.imagesToAdd.filter(img => img.isPrimary).length;
       if (primaryCount > 1) {
-        return response.badRequest('Only one image can be marked as primary');
+        return response.badRequest('Only one image can be marked as primary in imagesToAdd');
+      }
+
+      // Cannot specify both isPrimary in imagesToAdd AND newPrimaryImageId
+      if (primaryCount > 0 && body.newPrimaryImageId) {
+        return response.badRequest('Cannot specify both isPrimary in imagesToAdd and newPrimaryImageId. Use one method to set primary image.');
       }
 
       // Validate content types
@@ -131,6 +137,33 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (!validContentTypes.includes(img.contentType.toLowerCase())) {
           return response.badRequest(`Invalid content type: ${img.contentType}. Must be JPEG, PNG, WebP, or HEIC.`);
         }
+      }
+    }
+
+    // 7b. Validate newPrimaryImageId if provided
+    if (body.newPrimaryImageId) {
+      // Verify the image exists and is not being deleted
+      if (body.imagesToDelete?.includes(body.newPrimaryImageId)) {
+        return response.badRequest('Cannot set a deleted image as primary');
+      }
+
+      // Verify the image exists in the listing
+      const imageResult = await docClient.send(
+        new GetCommand({
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `LISTING#${listingId}`,
+            sk: `IMAGE#${body.newPrimaryImageId}`,
+          },
+        })
+      );
+
+      if (!imageResult.Item || imageResult.Item.isDeleted) {
+        return response.badRequest(`Image not found: ${body.newPrimaryImageId}`);
+      }
+
+      if (imageResult.Item.status !== 'READY') {
+        return response.badRequest(`Image must be in READY status to be set as primary. Current status: ${imageResult.Item.status}`);
       }
     }
 
@@ -166,6 +199,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // Store image IDs for tracking
       imagesToAdd: body.imagesToAdd?.map(img => img.imageId) || [],
       imagesToDelete: body.imagesToDelete || [],
+      newPrimaryImageId: body.newPrimaryImageId || undefined,
       
       createdAt: now,
       updatedAt: now,

@@ -19,7 +19,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { requireAuth } from '../lib/auth-middleware';
 import * as response from '../lib/response';
 import {
@@ -39,6 +39,7 @@ const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
 
 // Statuses that allow metadata updates
 const EDITABLE_STATUSES = ['IN_REVIEW', 'REJECTED', 'APPROVED', 'ONLINE', 'OFFLINE'];
@@ -348,48 +349,75 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('rightToListDocumentNumber');
     }
 
-    // 9. Update listing metadata (if any metadata fields were provided)
-    if (updateExpressionParts.length > 1) {
-      // More than just updatedAt
-      await docClient.send(
-        new UpdateCommand({
-          TableName: TABLE_NAME,
-          Key: {
-            pk: `HOST#${hostId}`,
-            sk: `LISTING_META#${listingId}`,
-          },
-          UpdateExpression: `SET ${updateExpressionParts.join(', ')}`,
-          ExpressionAttributeNames: expressionAttributeNames,
-          ExpressionAttributeValues: expressionAttributeValues,
-        })
+    // 9. Check if listing is ONLINE to determine if we need transactional update
+    const isOnline = listing.status === 'ONLINE';
+
+    if (isOnline) {
+      // ONLINE listing: Use transaction to update both main table and PublicListings atomically
+      console.log('🔄 Listing is ONLINE, using transactional update for both tables...');
+      
+      await updateListingWithTransaction(
+        hostId,
+        listingId,
+        updateExpressionParts,
+        expressionAttributeNames,
+        expressionAttributeValues,
+        updates.amenities,
+        now
       );
 
-      console.log(`✅ Updated listing metadata: ${updatedFields.join(', ')}`);
+      console.log(`✅ Updated listing metadata (transactional): ${updatedFields.join(', ')}`);
+      if (updates.amenities !== undefined) {
+        updatedFields.push('amenities');
+        console.log(`✅ Updated amenities (transactional): ${updates.amenities.length} amenities`);
+      }
+    } else {
+      // NOT ONLINE: Regular update to main table only
+      console.log('📝 Listing is not ONLINE, updating main table only...');
+
+      // 9a. Update listing metadata (if any metadata fields were provided)
+      if (updateExpressionParts.length > 1) {
+        // More than just updatedAt
+        await docClient.send(
+          new UpdateCommand({
+            TableName: TABLE_NAME,
+            Key: {
+              pk: `HOST#${hostId}`,
+              sk: `LISTING_META#${listingId}`,
+            },
+            UpdateExpression: `SET ${updateExpressionParts.join(', ')}`,
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+          })
+        );
+
+        console.log(`✅ Updated listing metadata: ${updatedFields.join(', ')}`);
+      }
+
+      // 9b. Update amenities (if provided) - full replacement
+      if (updates.amenities !== undefined) {
+        const amenityEnums = await fetchAmenityTranslations(updates.amenities);
+
+        await docClient.send(
+          new PutCommand({
+            TableName: TABLE_NAME,
+            Item: {
+              pk: `HOST#${hostId}`,
+              sk: `LISTING_AMENITIES#${listingId}`,
+              listingId,
+              amenities: amenityEnums,
+              updatedAt: now,
+              isDeleted: false,
+            },
+          })
+        );
+
+        updatedFields.push('amenities');
+        console.log(`✅ Updated amenities: ${updates.amenities.length} amenities`);
+      }
     }
 
-    // 10. Update amenities (if provided) - full replacement
-    if (updates.amenities !== undefined) {
-      const amenityEnums = await fetchAmenityTranslations(updates.amenities);
-
-      await docClient.send(
-        new PutCommand({
-          TableName: TABLE_NAME,
-          Item: {
-            pk: `HOST#${hostId}`,
-            sk: `LISTING_AMENITIES#${listingId}`,
-            listingId,
-            amenities: amenityEnums,
-            updatedAt: now,
-            isDeleted: false,
-          },
-        })
-      );
-
-      updatedFields.push('amenities');
-      console.log(`✅ Updated amenities: ${updates.amenities.length} amenities`);
-    }
-
-    // 11. Return success response
+    // 12. Return success response
     const responseData: UpdateListingMetadataResponse = {
       listingId,
       updatedFields,
@@ -496,11 +524,17 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
 
   // capacity
   if (updates.capacity !== undefined) {
-    if (!updates.capacity.beds || !updates.capacity.sleeps) {
-      return 'When updating capacity, both beds and sleeps are required';
+    if (!updates.capacity.beds || updates.capacity.bedrooms === undefined || !updates.capacity.bathrooms || !updates.capacity.sleeps) {
+      return 'When updating capacity, beds, bedrooms, bathrooms, and sleeps are required';
     }
     if (updates.capacity.beds < 1 || updates.capacity.beds > 50) {
       return 'Beds must be between 1 and 50';
+    }
+    if (updates.capacity.bedrooms < 0 || updates.capacity.bedrooms > 20) {
+      return 'Bedrooms must be between 0 and 20';
+    }
+    if (updates.capacity.bathrooms < 1 || updates.capacity.bathrooms > 20) {
+      return 'Bathrooms must be between 1 and 20';
     }
     if (updates.capacity.sleeps < 1 || updates.capacity.sleeps > 100) {
       return 'Sleeps must be between 1 and 100';
@@ -656,8 +690,8 @@ async function fetchEnumTranslation(
  */
 async function fetchAmenityTranslations(
   amenityKeys: string[]
-): Promise<Array<BilingualEnum & { category: AmenityCategory }>> {
-  const amenities: Array<BilingualEnum & { category: AmenityCategory }> = [];
+): Promise<Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }>> {
+  const amenities: Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }> = [];
 
   for (const key of amenityKeys) {
     const result = await docClient.send(
@@ -676,6 +710,7 @@ async function fetchAmenityTranslations(
         en: result.Item.translations.en,
         sr: result.Item.translations.sr,
         category: result.Item.metadata?.category || 'BASICS',
+        isFilter: result.Item.isFilter ?? false,
       });
     }
   }
@@ -732,6 +767,215 @@ function normalizeAddress(address: UpdateListingMetadataRequest['updates']['addr
   }
 
   return normalized;
+}
+
+/**
+ * Update listing with transaction (for ONLINE listings)
+ * Updates both main table and PublicListings table atomically
+ */
+async function updateListingWithTransaction(
+  hostId: string,
+  listingId: string,
+  updateExpressionParts: string[],
+  expressionAttributeNames: Record<string, string>,
+  expressionAttributeValues: Record<string, any>,
+  amenityKeys: string[] | undefined,
+  now: string
+): Promise<void> {
+  // Step 1: Fetch current listing data (before update) to get location info
+  const listingResult = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        pk: `HOST#${hostId}`,
+        sk: `LISTING_META#${listingId}`,
+      },
+    })
+  );
+
+  if (!listingResult.Item) {
+    throw new Error('Listing not found');
+  }
+
+  const currentListing = listingResult.Item;
+
+  // Step 2: Fetch current amenities (will be replaced if amenityKeys is provided)
+  const amenitiesResult = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        pk: `HOST#${hostId}`,
+        sk: `LISTING_AMENITIES#${listingId}`,
+      },
+    })
+  );
+
+  let amenities = amenitiesResult.Item?.amenities || [];
+  
+  // If amenities are being updated, fetch translations
+  if (amenityKeys !== undefined) {
+    amenities = await fetchAmenityTranslations(amenityKeys);
+  }
+
+  // Step 3: Fetch images to get primary thumbnail
+  const imagesResult = await docClient.send(
+    new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+      FilterExpression: '#status = :ready AND isDeleted = :notDeleted',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+      },
+      ExpressionAttributeValues: {
+        ':pk': `LISTING#${listingId}`,
+        ':sk': 'IMAGE#',
+        ':ready': 'READY',
+        ':notDeleted': false,
+      },
+    })
+  );
+
+  const images = imagesResult.Items || [];
+  const primaryImage = images.find((img: any) => img.isPrimary);
+
+  if (!primaryImage || !primaryImage.webpUrls?.thumbnail) {
+    throw new Error('No primary image with thumbnail found');
+  }
+
+  // Step 4: Build the updated listing object by merging current data with updates
+  // We need to simulate what the listing will look like after the update
+  const updatedListing = { ...currentListing };
+  
+  // Apply updates from expressionAttributeValues
+  for (const [placeholder, value] of Object.entries(expressionAttributeValues)) {
+    const fieldName = Object.entries(expressionAttributeNames).find(
+      ([, attrValue]) => placeholder === `:${attrValue.replace('#', '')}`
+    )?.[1]?.replace('#', '');
+    
+    if (fieldName && fieldName !== 'updatedAt') {
+      updatedListing[fieldName] = value;
+    }
+  }
+
+  // Step 5: Extract location data
+  const placeId = updatedListing.mapboxMetadata?.place?.mapbox_id;
+  const placeName = updatedListing.mapboxMetadata?.place?.name;
+  const regionName = updatedListing.mapboxMetadata?.region?.name;
+
+  if (!placeId || !placeName || !regionName) {
+    throw new Error('Missing required location metadata');
+  }
+
+  // Step 6: Derive boolean filters from amenities
+  const amenityKeyList = amenities.map((a: any) => a.key);
+  const filters = {
+    petsAllowed: updatedListing.pets?.allowed || false,
+    hasWIFI: amenityKeyList.includes('WIFI'),
+    hasAirConditioning: amenityKeyList.includes('AIR_CONDITIONING'),
+    hasParking: amenityKeyList.includes('PARKING'),
+    hasGym: amenityKeyList.includes('GYM'),
+    hasPool: amenityKeyList.includes('POOL'),
+    hasWorkspace: amenityKeyList.includes('WORKSPACE'),
+  };
+
+  // Step 7: Generate short description
+  const shortDescription =
+    updatedListing.description.length > 100
+      ? updatedListing.description.substring(0, 100).trim() + '...'
+      : updatedListing.description;
+
+  // Step 8: Build PublicListing record
+  const publicListing = {
+    pk: `LOCATION#${placeId}`,
+    sk: `LISTING#${listingId}`,
+
+    listingId: listingId,
+    locationId: placeId,
+
+    name: updatedListing.listingName,
+    shortDescription: shortDescription,
+    placeName: placeName,
+    regionName: regionName,
+
+    maxGuests: updatedListing.capacity.sleeps,
+    bedrooms: updatedListing.capacity.bedrooms,
+    beds: updatedListing.capacity.beds,
+    bathrooms: updatedListing.capacity.bathrooms,
+
+    thumbnailUrl: primaryImage.webpUrls.thumbnail,
+
+    petsAllowed: filters.petsAllowed,
+    hasWIFI: filters.hasWIFI,
+    hasAirConditioning: filters.hasAirConditioning,
+    hasParking: filters.hasParking,
+    hasGym: filters.hasGym,
+    hasPool: filters.hasPool,
+    hasWorkspace: filters.hasWorkspace,
+
+    parkingType: updatedListing.parking.type.key,
+    checkInType: updatedListing.checkIn.type.key,
+
+    instantBook: false, // Default to false
+
+    // Preserve original createdAt, update updatedAt
+    createdAt: currentListing.createdAt,
+    updatedAt: now,
+  };
+
+  // Step 9: Build transaction items
+  const transactItems: any[] = [];
+
+  // 9a. Update listing metadata (if any fields besides updatedAt)
+  if (updateExpressionParts.length > 1) {
+    transactItems.push({
+      Update: {
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `HOST#${hostId}`,
+          sk: `LISTING_META#${listingId}`,
+        },
+        UpdateExpression: `SET ${updateExpressionParts.join(', ')}`,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+      },
+    });
+  }
+
+  // 9b. Update amenities (if provided)
+  if (amenityKeys !== undefined) {
+    transactItems.push({
+      Put: {
+        TableName: TABLE_NAME,
+        Item: {
+          pk: `HOST#${hostId}`,
+          sk: `LISTING_AMENITIES#${listingId}`,
+          listingId,
+          amenities: amenities,
+          updatedAt: now,
+          isDeleted: false,
+        },
+      },
+    });
+  }
+
+  // 9c. Update PublicListing record
+  transactItems.push({
+    Put: {
+      TableName: PUBLIC_LISTINGS_TABLE_NAME,
+      Item: publicListing,
+    },
+  });
+
+  // Step 10: Execute transaction (all succeed or all fail)
+  console.log(`Executing transaction with ${transactItems.length} items (main table + PublicListings)`);
+  
+  await docClient.send(
+    new TransactWriteCommand({
+      TransactItems: transactItems,
+    })
+  );
+
+  console.log('✅ Transaction complete: Both tables updated atomically');
 }
 
 

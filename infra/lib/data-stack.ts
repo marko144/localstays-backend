@@ -20,6 +20,9 @@ export interface DataStackProps extends cdk.StackProps {
  */
 export class DataStack extends cdk.Stack {
   public readonly table: dynamodb.Table;
+  public readonly locationsTable: dynamodb.Table;
+  public readonly publicListingsTable: dynamodb.Table;
+  public readonly publicListingMediaTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -134,6 +137,108 @@ export class DataStack extends cdk.Stack {
     });
 
     // ========================================
+    // Locations Table - Separate table for location data
+    // ========================================
+    
+    // Locations table for tracking unique places and associating them with listings
+    this.locationsTable = new dynamodb.Table(this, 'LocationsTable', {
+      tableName: `localstays-locations-${stage}`,
+      partitionKey: {
+        name: 'pk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecovery: true,
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS managed keys
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI for slug-based lookups (e.g., "zlatibor-serbia")
+    this.locationsTable.addGlobalSecondaryIndex({
+      indexName: 'SlugIndex',
+      partitionKey: {
+        name: 'slug',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
+    // Public Listings Table - Read-optimized denormalized listing data
+    // ========================================
+    
+    // Public listings table for fast public search and browse
+    // Populated when a host publishes an APPROVED listing
+    this.publicListingsTable = new dynamodb.Table(this, 'PublicListingsTable', {
+      tableName: `localstays-public-listings-${stage}`,
+      partitionKey: {
+        name: 'pk', // LOCATION#<locationId> (mapbox place ID)
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // LISTING#<listingId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecovery: true,
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS managed keys
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // ========================================
+    // Public Listing Media Table - Image metadata for published listings
+    // ========================================
+    
+    // Stores image metadata for published listings (separate from main listing data)
+    // Populated atomically with PublicListings table during publish operation
+    this.publicListingMediaTable = new dynamodb.Table(this, 'PublicListingMediaTable', {
+      tableName: `localstays-public-listing-media-${stage}`,
+      partitionKey: {
+        name: 'pk', // LISTING_MEDIA_PUBLIC#<listingId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // IMAGE#<imageIndex> (0-based, 0 = cover image)
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecovery: true,
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS managed keys
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // ========================================
     // Database Seeding CustomResource
     // ========================================
     
@@ -176,7 +281,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.11.0', // Added payment types enum
+        Version: '1.12.0', // Added isFilter field to amenities
       },
     });
 
@@ -193,6 +298,42 @@ export class DataStack extends cdk.Stack {
       value: this.table.tableArn,
       description: 'DynamoDB table ARN',
       exportName: `Localstays${capitalizedStage}TableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'LocationsTableName', {
+      value: this.locationsTable.tableName,
+      description: 'Locations DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}LocationsTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'LocationsTableArn', {
+      value: this.locationsTable.tableArn,
+      description: 'Locations DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}LocationsTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'PublicListingsTableName', {
+      value: this.publicListingsTable.tableName,
+      description: 'Public Listings DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}PublicListingsTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'PublicListingsTableArn', {
+      value: this.publicListingsTable.tableArn,
+      description: 'Public Listings DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}PublicListingsTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'PublicListingMediaTableName', {
+      value: this.publicListingMediaTable.tableName,
+      description: 'Public Listing Media DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}PublicListingMediaTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'PublicListingMediaTableArn', {
+      value: this.publicListingMediaTable.tableArn,
+      description: 'Public Listing Media DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}PublicListingMediaTableArn`,
     });
 
     // Add tags for resource management

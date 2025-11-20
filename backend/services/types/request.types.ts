@@ -64,6 +64,7 @@ export interface Request {
   // Listing Image Update fields
   imagesToAdd?: string[];          // Array of imageIds being added (for LISTING_IMAGE_UPDATE)
   imagesToDelete?: string[];       // Array of imageIds to delete (for LISTING_IMAGE_UPDATE)
+  newPrimaryImageId?: string;      // Change which existing image is primary (for LISTING_IMAGE_UPDATE)
   
   // Submission Tracking (for 2-step upload)
   submissionToken?: string;        // Temporary token for upload
@@ -186,6 +187,7 @@ export interface SubmitImageUpdateRequest {
     caption?: string;
   }>;
   imagesToDelete?: string[];  // Array of imageIds to delete
+  newPrimaryImageId?: string;  // Change which existing image is primary (without adding/deleting)
 }
 
 // Submit Image Update Response

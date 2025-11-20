@@ -344,8 +344,8 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.address.street || !body.address.city || !body.address.country || !body.address.countryCode) {
     return 'address must include street, city, country, and countryCode';
   }
-  if (!body.capacity || body.capacity.beds < 1 || body.capacity.sleeps < 1) {
-    return 'capacity (beds and sleeps) is required and must be > 0';
+  if (!body.capacity || body.capacity.beds < 1 || body.capacity.bedrooms < 0 || body.capacity.bathrooms < 1 || body.capacity.sleeps < 1) {
+    return 'capacity (beds, bedrooms, bathrooms, and sleeps) is required. beds, bathrooms, and sleeps must be > 0, bedrooms must be >= 0';
   }
   if (!body.checkIn || !body.checkIn.type || !body.checkIn.checkInFrom || !body.checkIn.checkOutBy) {
     return 'checkIn details (type, checkInFrom, checkOutBy) are required';
@@ -507,8 +507,8 @@ async function fetchEnumTranslation(
  */
 async function fetchAmenityTranslations(
   amenityKeys: string[] | undefined
-): Promise<Array<BilingualEnum & { category: AmenityCategory }>> {
-  const amenities: Array<BilingualEnum & { category: AmenityCategory }> = [];
+): Promise<Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }>> {
+  const amenities: Array<BilingualEnum & { category: AmenityCategory; isFilter: boolean }> = [];
 
   // Handle case where amenities are not provided
   if (!amenityKeys || amenityKeys.length === 0) {
@@ -532,6 +532,7 @@ async function fetchAmenityTranslations(
         en: result.Item.translations.en,
         sr: result.Item.translations.sr,
         category: result.Item.metadata?.category || 'BASICS',
+        isFilter: result.Item.isFilter ?? false,
       });
     }
   }
