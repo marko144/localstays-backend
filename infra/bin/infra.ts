@@ -208,6 +208,7 @@ const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
   locationsTable: dataStack.locationsTable,
   publicListingsTable: dataStack.publicListingsTable,
   publicListingMediaTable: dataStack.publicListingMediaTable,
+  availabilityTable: dataStack.availabilityTable,
   bucket: storageStack.bucket,
   emailTemplatesTable: emailTemplateStack.table,
   sendGridParamName: paramsStack.sendGridParamName,

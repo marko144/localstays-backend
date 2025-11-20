@@ -23,6 +23,7 @@ export class DataStack extends cdk.Stack {
   public readonly locationsTable: dynamodb.Table;
   public readonly publicListingsTable: dynamodb.Table;
   public readonly publicListingMediaTable: dynamodb.Table;
+  public readonly availabilityTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -239,6 +240,54 @@ export class DataStack extends cdk.Stack {
     });
 
     // ========================================
+    // Availability Table - Listing unavailability tracking
+    // ========================================
+    
+    // Stores unavailable dates for listings (negative availability model)
+    // One record per unavailable night (bookings and blocks)
+    // PK: LISTING_AVAILABILITY#<listingId>
+    // SK: DATE#<YYYY-MM-DD>
+    this.availabilityTable = new dynamodb.Table(this, 'AvailabilityTable', {
+      tableName: `localstays-availability-${stage}`,
+      partitionKey: {
+        name: 'pk', // LISTING_AVAILABILITY#<listingId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // DATE#<YYYY-MM-DD>
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecovery: true,
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS managed keys
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: Query all availability for a host across all their listings
+    // Allows efficient queries like "show me all unavailable dates for this host"
+    this.availabilityTable.addGlobalSecondaryIndex({
+      indexName: 'HostAvailabilityIndex',
+      partitionKey: {
+        name: 'gsi1pk', // HOST_AVAILABILITY#<hostId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi1sk', // DATE#<YYYY-MM-DD>#LISTING#<listingId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
     // Database Seeding CustomResource
     // ========================================
     
@@ -334,6 +383,18 @@ export class DataStack extends cdk.Stack {
       value: this.publicListingMediaTable.tableArn,
       description: 'Public Listing Media DynamoDB table ARN',
       exportName: `Localstays${capitalizedStage}PublicListingMediaTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'AvailabilityTableName', {
+      value: this.availabilityTable.tableName,
+      description: 'Availability DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}AvailabilityTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'AvailabilityTableArn', {
+      value: this.availabilityTable.tableArn,
+      description: 'Availability DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}AvailabilityTableArn`,
     });
 
     // Add tags for resource management

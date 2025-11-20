@@ -27,6 +27,8 @@ export interface HostApiStackProps extends cdk.StackProps {
   publicListingsTable: dynamodb.Table;
   /** Public Listing Media DynamoDB table */
   publicListingMediaTable: dynamodb.Table;
+  /** Availability DynamoDB table */
+  availabilityTable: dynamodb.Table;
   /** S3 bucket for host assets */
   bucket: s3.Bucket;
   /** Email templates DynamoDB table */
@@ -60,6 +62,7 @@ export class HostApiStack extends cdk.Stack {
   public readonly publishListingLambda: nodejs.NodejsFunction;
   public readonly unpublishListingLambda: nodejs.NodejsFunction;
   public readonly hostRequestsHandlerLambda: nodejs.NodejsFunction;
+  public readonly hostAvailabilityHandlerLambda: nodejs.NodejsFunction;
   public readonly subscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly unsubscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly listSubscriptionsLambda: nodejs.NodejsFunction;
@@ -195,6 +198,7 @@ export class HostApiStack extends cdk.Stack {
       LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
       PUBLIC_LISTINGS_TABLE_NAME: props.publicListingsTable.tableName,
       PUBLIC_LISTING_MEDIA_TABLE_NAME: props.publicListingMediaTable.tableName,
+      AVAILABILITY_TABLE_NAME: props.availabilityTable.tableName,
       BUCKET_NAME: bucket.bucketName,
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
@@ -346,6 +350,22 @@ export class HostApiStack extends cdk.Stack {
     props.locationsTable.grantWriteData(this.unpublishListingLambda); // Locations table (decrement count only)
     props.publicListingsTable.grantWriteData(this.unpublishListingLambda); // PublicListings table (delete only)
     props.publicListingMediaTable.grantReadWriteData(this.unpublishListingLambda); // PublicListingMedia table (read for query, delete)
+
+    // ========================================
+    // HOST AVAILABILITY HANDLER LAMBDA (CONSOLIDATED)
+    // ========================================
+    this.hostAvailabilityHandlerLambda = new nodejs.NodejsFunction(this, 'HostAvailabilityHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-availability-handler`,
+      entry: 'backend/services/api/availability/availability-handler.ts',
+      handler: 'handler',
+      description: 'Consolidated: Host availability operations (get host availability, get listing availability, block dates, unblock dates)',
+      environment: commonEnvironment,
+    });
+
+    // Grant DynamoDB permissions
+    table.grantReadData(this.hostAvailabilityHandlerLambda); // Main table (read for listing ownership verification)
+    props.availabilityTable.grantReadWriteData(this.hostAvailabilityHandlerLambda); // Availability table (full CRUD)
 
     // ========================================
     // HOST REQUESTS HANDLER LAMBDA (CONSOLIDATED)
@@ -517,6 +537,21 @@ export class HostApiStack extends cdk.Stack {
     );
 
     // ========================================
+    // API Gateway Routes - Availability (Host-Level)
+    // ========================================
+
+    // GET /api/v1/hosts/{hostId}/availability
+    const hostAvailabilityResource = hostIdParam.addResource('availability');
+    hostAvailabilityResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostAvailabilityHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
     // API Gateway Routes - Listings
     // ========================================
 
@@ -668,6 +703,45 @@ export class HostApiStack extends cdk.Stack {
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/hosts/{hostId}/listings/{listingId}/availability
+    const listingAvailabilityResource = listingIdParam.addResource('availability');
+    listingAvailabilityResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostAvailabilityHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/availability/block
+    const blockAvailabilityResource = listingAvailabilityResource.addResource('block');
+    blockAvailabilityResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostAvailabilityHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // DELETE /api/v1/hosts/{hostId}/listings/{listingId}/availability/unblock
+    const unblockAvailabilityResource = listingAvailabilityResource.addResource('unblock');
+    unblockAvailabilityResource.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(this.hostAvailabilityHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
       }
     );
 
