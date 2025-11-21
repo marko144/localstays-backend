@@ -37,6 +37,10 @@ export interface PublicListingRecord {
   // Thumbnail
   thumbnailUrl: string; // CloudFront URL of primary image thumbnail
 
+  // Coordinates
+  latitude: number;
+  longitude: number;
+
   // Boolean filters (derived from amenities)
   petsAllowed: boolean;
   hasWIFI: boolean;
@@ -103,6 +107,10 @@ export interface PublicListingResponse {
     bathrooms: number;
   };
   thumbnailUrl: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
   filters: {
     petsAllowed: boolean;
     hasWIFI: boolean;
@@ -137,6 +145,10 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
       bathrooms: record.bathrooms,
     },
     thumbnailUrl: record.thumbnailUrl,
+    coordinates: {
+      latitude: record.latitude,
+      longitude: record.longitude,
+    },
     filters: {
       petsAllowed: record.petsAllowed,
       hasWIFI: record.hasWIFI,

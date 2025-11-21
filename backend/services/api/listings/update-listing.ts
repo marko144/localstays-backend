@@ -904,6 +904,9 @@ async function updateListingWithTransaction(
 
     thumbnailUrl: primaryImage.webpUrls.thumbnail,
 
+    latitude: updatedListing.address.coordinates.latitude,
+    longitude: updatedListing.address.coordinates.longitude,
+
     petsAllowed: filters.petsAllowed,
     hasWIFI: filters.hasWIFI,
     hasAirConditioning: filters.hasAirConditioning,

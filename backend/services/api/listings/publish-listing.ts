@@ -144,6 +144,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       thumbnailUrl: primaryImage.webpUrls.thumbnail,
 
+      latitude: listing.address.coordinates.latitude,
+      longitude: listing.address.coordinates.longitude,
+
       petsAllowed: filters.petsAllowed,
       hasWIFI: filters.hasWIFI,
       hasAirConditioning: filters.hasAirConditioning,

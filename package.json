@@ -8,7 +8,8 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "deploy": "cdk deploy --all",
-    "bootstrap": "cdk bootstrap"
+    "bootstrap": "cdk bootstrap",
+    "seed-staging": "ts-node scripts/seed-staging-data.ts"
   },
   "keywords": [
     "aws",
@@ -27,8 +28,10 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.936.0",
+    "@aws-sdk/client-s3": "^3.937.0",
+    "@aws-sdk/lib-dynamodb": "^3.936.0",
     "aws-cdk-lib": "^2.110.0",
     "constructs": "^10.3.0"
   }
 }
-
