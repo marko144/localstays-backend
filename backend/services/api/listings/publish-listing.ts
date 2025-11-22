@@ -218,24 +218,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
     });
 
-    // 11d. Increment location listings count
-    transactItems.push({
-      Update: {
-        TableName: LOCATIONS_TABLE_NAME,
-        Key: {
-          pk: `LOCATION#${placeId}`,
-          sk: 'META',
-        },
-        UpdateExpression: 'ADD listingsCount :inc SET updatedAt = :now',
-        ExpressionAttributeValues: {
-          ':inc': 1,
-          ':now': now,
-        },
-      },
-    });
-
     // Step 12: Execute transaction (all succeed or all fail)
-    console.log(`Publishing listing with ${transactItems.length} transaction items (1 listing + ${sortedImages.length} images + 2 updates)`);
+    console.log(`Publishing listing with ${transactItems.length} transaction items (1 listing + ${sortedImages.length} images + 1 status update)`);
     
     await docClient.send(
       new TransactWriteCommand({
@@ -244,6 +228,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
 
     console.log('Listing published successfully via transaction');
+
+    // Step 12b: Increment location listings count for ALL name variants
+    // This is done outside the transaction to avoid transaction size limits
+    // and because it's not critical if it fails (can be fixed with a script)
+    await incrementLocationListingsCount(placeId, now);
 
     // Step 13: Return success
     const responseData: PublishListingResponse = {
@@ -359,6 +348,9 @@ function validateListingForPublish(listing: any, images: any[]): string | null {
 
 /**
  * Ensure location exists in Locations table, create if not
+ * 
+ * Note: Multiple name variants can exist for the same location (e.g., "Belgrade" and "Beograd")
+ * This function checks if ANY name variant exists for this placeId, and creates one if not.
  */
 async function ensureLocationExists(locationData: {
   placeId: string;
@@ -370,31 +362,45 @@ async function ensureLocationExists(locationData: {
 }): Promise<void> {
   const { placeId, placeName, regionName, regionId, countryName, countryCode } = locationData;
 
-  // Check if location exists
+  // Check if this specific name variant exists
   const existingLocation = await docClient.send(
     new GetCommand({
       TableName: LOCATIONS_TABLE_NAME,
       Key: {
         pk: `LOCATION#${placeId}`,
-        sk: 'META',
+        sk: `NAME#${placeName}`,
       },
     })
   );
 
   if (existingLocation.Item) {
-    // Location already exists, no need to create
+    // This name variant already exists, no need to create
     return;
   }
+
+  // Check if ANY name variant exists for this location (to get listingsCount)
+  const anyVariant = await docClient.send(
+    new QueryCommand({
+      TableName: LOCATIONS_TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: {
+        ':pk': `LOCATION#${placeId}`,
+      },
+      Limit: 1,
+    })
+  );
+
+  const existingListingsCount = anyVariant.Items?.[0]?.listingsCount || 0;
 
   // Generate slug and searchName
   const slug = generateLocationSlug(placeName, countryCode);
   const searchName = generateSearchName(placeName, regionName);
 
-  // Create new location
+  // Create new location name variant
   const now = new Date().toISOString();
   const newLocation = {
     pk: `LOCATION#${placeId}`,
-    sk: 'META',
+    sk: `NAME#${placeName}`,
 
     locationId: placeId,
     locationType: 'PLACE',
@@ -407,9 +413,9 @@ async function ensureLocationExists(locationData: {
 
     slug: slug,
     searchName: searchName,
-    isSearchable: true,
+    entityType: 'LOCATION', // Constant for GSI partition key
 
-    listingsCount: 0, // Will be incremented after publishing
+    listingsCount: existingListingsCount, // Inherit from existing variants
 
     createdAt: now,
     updatedAt: now,
@@ -445,6 +451,56 @@ function generateLocationSlug(name: string, countryCode: string): string {
  */
 function generateSearchName(name: string, regionName: string): string {
   return `${name.toLowerCase()} ${regionName.toLowerCase()}`;
+}
+
+/**
+ * Increment listingsCount for ALL name variants of a location
+ * This ensures all variants (e.g., "Belgrade" and "Beograd") have the same count
+ */
+async function incrementLocationListingsCount(placeId: string, timestamp: string): Promise<void> {
+  try {
+    // Query all name variants for this location
+    const variants = await docClient.send(
+      new QueryCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk',
+        ExpressionAttributeValues: {
+          ':pk': `LOCATION#${placeId}`,
+        },
+      })
+    );
+
+    if (!variants.Items || variants.Items.length === 0) {
+      console.warn(`No location variants found for placeId: ${placeId}`);
+      return;
+    }
+
+    console.log(`Incrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
+
+    // Update each variant
+    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+    for (const variant of variants.Items) {
+      await docClient.send(
+        new UpdateCommand({
+          TableName: LOCATIONS_TABLE_NAME,
+          Key: {
+            pk: variant.pk,
+            sk: variant.sk,
+          },
+          UpdateExpression: 'ADD listingsCount :inc SET updatedAt = :now',
+          ExpressionAttributeValues: {
+            ':inc': 1,
+            ':now': timestamp,
+          },
+        })
+      );
+    }
+
+    console.log(`Successfully incremented listingsCount for all variants`);
+  } catch (error) {
+    console.error(`Failed to increment location listings count for ${placeId}:`, error);
+    // Don't throw - this is not critical
+  }
 }
 
 

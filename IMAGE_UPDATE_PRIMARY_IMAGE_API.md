@@ -369,3 +369,4 @@ const submitImageUpdate = async () => {
 - This image's thumbnail will be shown in search results
 - All other images should have `isPrimary: false`
 - Frontend should validate that exactly one primary image exists before submitting
+one small issue - there is a flag we set on a listing once pricing has been set - can you confirm whether we did this? 

@@ -14,6 +14,7 @@ import { SharedServicesStack } from '../lib/shared-services-stack';
 import { HostApiStack } from '../lib/host-api-stack';
 import { AdminApiStack } from '../lib/admin-api-stack';
 import { PublicApiStack } from '../lib/public-api-stack';
+import { GuestApiStack } from '../lib/guest-api-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -79,7 +80,8 @@ const stackPrefix = `Localstays${stage.charAt(0).toUpperCase() + stage.slice(1)}
  * Phase 5: API Layer (Dependent on Phase 4)
  * 11. HostApiStack - Host-facing API Gateway + Lambda handlers
  * 12. AdminApiStack - Admin dashboard API Gateway + Lambda handlers
- * 13. PublicApiStack - Public-facing API Gateway + Lambda handlers
+ * 13. PublicApiStack - Public-facing API Gateway + Lambda handlers (geocoding)
+ * 14. GuestApiStack - Guest/Member API Gateway + Lambda handlers (search)
  */
 
 // Phase 1: Foundation Stacks
@@ -247,7 +249,7 @@ adminApiStack.addDependency(paramsStack);
 adminApiStack.addDependency(cloudFrontStack);
 adminApiStack.addDependency(sharedServicesStack);
 
-// Stack 13: Public API (Public-facing endpoints)
+// Stack 13: Public API (Public-facing endpoints - geocoding)
 const publicApiStack = new PublicApiStack(app, `${stackPrefix}PublicApiStack`, {
   env,
   description: `Public API Gateway and Lambda functions (${stage})`,
@@ -264,6 +266,22 @@ publicApiStack.addDependency(cognitoStack);
 publicApiStack.addDependency(dataStack);
 publicApiStack.addDependency(rateLimitStack);
 
+// Stack 14: Guest API (Guest/Member search endpoints)
+const guestApiStack = new GuestApiStack(app, `${stackPrefix}GuestApiStack`, {
+  env,
+  description: `Guest API Gateway and Lambda functions for search (${stage})`,
+  stackName: `localstays-${stage}-guest-api`,
+  stage,
+  table: dataStack.table,
+  locationsTable: dataStack.locationsTable,
+  publicListingsTable: dataStack.publicListingsTable,
+  rateLimitTable: rateLimitStack.table,
+  userPool: cognitoStack.userPool,
+});
+guestApiStack.addDependency(cognitoStack);
+guestApiStack.addDependency(dataStack);
+guestApiStack.addDependency(rateLimitStack);
+
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
@@ -278,7 +296,8 @@ console.log(`   9. ${cloudFrontStack.stackName} (CloudFront CDN)`);
 console.log(`  10. ${sharedServicesStack.stackName} (Shared Services: Image/Verification Processing)`);
 console.log(`  11. ${hostApiStack.stackName} (Host API Gateway + Lambdas)`);
 console.log(`  12. ${adminApiStack.stackName} (Admin API Gateway + Lambdas)`);
-console.log(`  13. ${publicApiStack.stackName} (Public API Gateway + Lambdas)`);
+console.log(`  13. ${publicApiStack.stackName} (Public API Gateway + Lambdas - Geocoding)`);
+console.log(`  14. ${guestApiStack.stackName} (Guest API Gateway + Lambdas - Search)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

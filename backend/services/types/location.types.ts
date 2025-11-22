@@ -9,18 +9,21 @@
  * Location record in DynamoDB
  * 
  * Access patterns:
- * - By locationId: pk=LOCATION#<mapboxPlaceId>, sk=META
+ * - By locationId: pk=LOCATION#<mapboxPlaceId>, sk=NAME#<name>
  * - By slug: GSI (SlugIndex) slug=<slug>
+ * 
+ * Note: Multiple name variants can exist for the same location (e.g., "Belgrade" and "Beograd")
+ * All variants share the same locationId (Mapbox Place ID) and listingsCount
  */
 export interface LocationRecord {
   // Primary key
   pk: string;                    // "LOCATION#<mapboxPlaceId>"
-  sk: string;                    // Always "META"
+  sk: string;                    // "NAME#<name>" (e.g., "NAME#Belgrade" or "NAME#Beograd")
   
   // Core fields
   locationId: string;            // Canonical ID (same as mapboxPlaceId)
   locationType: 'PLACE';         // Always "PLACE" for now
-  name: string;                  // Place name (e.g., "Zlatibor")
+  name: string;                  // Place name (e.g., "Zlatibor", "Belgrade", "Beograd")
   regionName: string;            // Region name (e.g., "Zlatibor District")
   countryName: string;           // Country name (e.g., "Serbia")
   
@@ -31,10 +34,10 @@ export interface LocationRecord {
   // Search & routing
   slug: string;                  // URL-safe slug (e.g., "zlatibor-serbia")
   searchName: string;            // Normalized search text (e.g., "zlatibor zlatibor district serbia")
-  isSearchable: boolean;         // Whether to show in autocomplete
+  entityType: string;            // Always "LOCATION" - used as GSI partition key for search
   
   // Metrics
-  listingsCount: number;         // Number of active listings in this location
+  listingsCount: number;         // Number of active listings in this location (shared across all name variants)
   
   // Timestamps
   createdAt: string;             // ISO timestamp
@@ -62,7 +65,21 @@ export interface GetLocationResponse {
   countryName: string;
   slug: string;
   listingsCount: number;
-  isSearchable: boolean;
+}
+
+/**
+ * Location search result for autocomplete
+ */
+export interface LocationSearchResult {
+  locationId: string;  // Mapbox place ID
+  name: string;        // Display name (e.g., "Užice")
+}
+
+/**
+ * Response for location search endpoint
+ */
+export interface LocationSearchResponse {
+  locations: LocationSearchResult[];
 }
 
 /**
@@ -85,10 +102,17 @@ export function generateLocationSlug(name: string, countryCode: string): string 
 
 /**
  * Helper to generate searchName from location data
- * Format: "placename regionname" (lowercase, space-separated for substring matching)
+ * Format: "placename regionname" (lowercase, normalized, space-separated for substring matching)
+ * Removes diacritics so "Užice" becomes "uzice" for easier searching
  */
 export function generateSearchName(name: string, regionName: string): string {
-  return `${name.toLowerCase()} ${regionName.toLowerCase()}`;
+  const normalize = (str: string) => 
+    str
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
+  
+  return `${normalize(name)} ${normalize(regionName)}`;
 }
 
 

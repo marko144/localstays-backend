@@ -124,24 +124,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       },
     });
 
-    // 5d. Decrement location listings count
-    transactItems.push({
-      Update: {
-        TableName: LOCATIONS_TABLE_NAME,
-        Key: {
-          pk: `LOCATION#${placeId}`,
-          sk: 'META',
-        },
-        UpdateExpression: 'ADD listingsCount :dec SET updatedAt = :now',
-        ExpressionAttributeValues: {
-          ':dec': -1,
-          ':now': now,
-        },
-      },
-    });
-
     // Step 6: Execute transaction (all succeed or all fail)
-    console.log(`Unpublishing listing with ${transactItems.length} transaction items (1 listing + ${mediaRecords.length} images + 2 updates)`);
+    console.log(`Unpublishing listing with ${transactItems.length} transaction items (1 listing + ${mediaRecords.length} images + 1 status update)`);
     
     await docClient.send(
       new TransactWriteCommand({
@@ -150,6 +134,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
 
     console.log('Listing unpublished successfully via transaction');
+
+    // Step 6b: Decrement location listings count for ALL name variants
+    // This is done outside the transaction to avoid transaction size limits
+    await decrementLocationListingsCount(placeId, now);
 
     // Step 7: Return success
     const responseData: UnpublishListingResponse = {
@@ -197,6 +185,56 @@ async function fetchPublicListingMedia(listingId: string): Promise<any[]> {
   );
 
   return result.Items || [];
+}
+
+/**
+ * Decrement listingsCount for ALL name variants of a location
+ * This ensures all variants (e.g., "Belgrade" and "Beograd") have the same count
+ */
+async function decrementLocationListingsCount(placeId: string, timestamp: string): Promise<void> {
+  try {
+    // Query all name variants for this location
+    const variants = await docClient.send(
+      new QueryCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk',
+        ExpressionAttributeValues: {
+          ':pk': `LOCATION#${placeId}`,
+        },
+      })
+    );
+
+    if (!variants.Items || variants.Items.length === 0) {
+      console.warn(`No location variants found for placeId: ${placeId}`);
+      return;
+    }
+
+    console.log(`Decrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
+
+    // Update each variant
+    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+    for (const variant of variants.Items) {
+      await docClient.send(
+        new UpdateCommand({
+          TableName: LOCATIONS_TABLE_NAME,
+          Key: {
+            pk: variant.pk,
+            sk: variant.sk,
+          },
+          UpdateExpression: 'ADD listingsCount :dec SET updatedAt = :now',
+          ExpressionAttributeValues: {
+            ':dec': -1,
+            ':now': timestamp,
+          },
+        })
+      );
+    }
+
+    console.log(`Successfully decremented listingsCount for all variants`);
+  } catch (error) {
+    console.error(`Failed to decrement location listings count for ${placeId}:`, error);
+    // Don't throw - this is not critical
+  }
 }
 
 

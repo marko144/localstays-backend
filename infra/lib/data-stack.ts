@@ -177,6 +177,22 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI for text-based search (autocomplete)
+    // Partition by entityType (constant "LOCATION" for all location records)
+    // Sort by searchName for begins_with queries
+    this.locationsTable.addGlobalSecondaryIndex({
+      indexName: 'LocationSearchIndex',
+      partitionKey: {
+        name: 'entityType',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'searchName',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ========================================
     // Public Listings Table - Read-optimized denormalized listing data
     // ========================================
@@ -331,6 +347,54 @@ export class DataStack extends cdk.Stack {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
         Version: '1.12.0', // Added isFilter field to amenities
+      },
+    });
+
+    // ========================================
+    // Location Variants Seeding CustomResource
+    // ========================================
+    
+    // Lambda function to seed location name variants (e.g., Belgrade/Beograd)
+    const seedLocationVariantsLambda = new nodejs.NodejsFunction(this, 'SeedLocationVariantsHandler', {
+      functionName: `localstays-${stage}-location-variants-seed`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: 'backend/services/seed/seed-location-variants.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      environment: {
+        LOCATIONS_TABLE_NAME: this.locationsTable.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'es2022',
+        externalModules: ['@aws-sdk/*'],
+      },
+      logRetention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant permissions to write to Locations table
+    this.locationsTable.grantWriteData(seedLocationVariantsLambda);
+    this.locationsTable.grantReadData(seedLocationVariantsLambda);
+
+    // Create custom resource provider
+    const seedLocationVariantsProvider = new cr.Provider(this, 'SeedLocationVariantsProvider', {
+      onEventHandler: seedLocationVariantsLambda,
+      logRetention: stage === 'prod' 
+        ? logs.RetentionDays.ONE_MONTH 
+        : logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Create custom resource (triggers seeding on stack create/update)
+    new cdk.CustomResource(this, 'SeedLocationVariantsCustomResource', {
+      serviceToken: seedLocationVariantsProvider.serviceToken,
+      properties: {
+        LocationsTableName: this.locationsTable.tableName,
+        // Change this value to trigger re-seeding
+        Version: '1.0.0', // Initial version with Belgrade/Beograd variant
       },
     });
 
