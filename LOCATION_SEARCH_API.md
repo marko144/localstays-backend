@@ -40,4 +40,3 @@ GET https://40usmhyfm9.execute-api.eu-north-1.amazonaws.com/staging/api/v1/publi
 - Returns max 10 results sorted by popularity
 - Handles special characters (e.g., searching "Uzi" matches "Užice")
 - CORS restricted to localhost and staging.localstays.me
-

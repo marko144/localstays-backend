@@ -12,6 +12,7 @@ export interface GuestApiStackProps extends cdk.StackProps {
   table: dynamodb.Table;
   locationsTable: dynamodb.Table;
   publicListingsTable: dynamodb.Table;
+  availabilityTable: dynamodb.Table;
   rateLimitTable: dynamodb.Table;
   userPool: cognito.UserPool;
 }
@@ -34,7 +35,7 @@ export class GuestApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GuestApiStackProps) {
     super(scope, id, props);
 
-    const { stage, table, locationsTable, publicListingsTable, rateLimitTable, userPool } = props;
+    const { stage, table, locationsTable, publicListingsTable, availabilityTable, rateLimitTable, userPool } = props;
 
     // ========================================
     // CloudWatch Log Group for API Gateway
@@ -165,11 +166,16 @@ export class GuestApiStack extends cdk.Stack {
     // Common Lambda Configuration
     // ========================================
     const commonEnvironment = {
-      TABLE_NAME: table.tableName,
+      MAIN_TABLE_NAME: table.tableName,
       LOCATIONS_TABLE_NAME: locationsTable.tableName,
       PUBLIC_LISTINGS_TABLE_NAME: publicListingsTable.tableName,
+      AVAILABILITY_TABLE_NAME: availabilityTable.tableName,
       RATE_LIMIT_TABLE_NAME: rateLimitTable.tableName,
       STAGE: stage,
+      // Configuration for search-listings
+      MAX_RESULTS_LIMIT: '100',
+      AVAILABILITY_BATCH_SIZE: '40',
+      PRICING_BATCH_SIZE: '40',
     };
 
     const commonLambdaProps = {
@@ -216,6 +222,39 @@ export class GuestApiStack extends cdk.Stack {
     searchLocationsResource.addMethod(
       'GET',
       new apigateway.LambdaIntegration(searchLocationsLambda, {
+        proxy: true,
+      })
+    );
+
+    // ========================================
+    // Listing Search Endpoint
+    // GET /api/v1/public/listings/search?locationId={id}&checkIn={date}&checkOut={date}&adults={n}
+    // ========================================
+    const listingsResource = publicResource.addResource('listings');
+    const searchListingsResource = listingsResource.addResource('search');
+
+    const searchListingsLambda = new nodejs.NodejsFunction(this, 'SearchListingsFunction', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-search-listings`,
+      entry: 'backend/services/api/guest/search-listings.ts',
+      handler: 'handler',
+      description: 'Search available listings with pricing (optional auth for member pricing)',
+      timeout: cdk.Duration.seconds(30), // Longer timeout for complex queries
+      memorySize: 1024, // More memory for parallel processing
+    });
+
+    // Grant permissions
+    table.grantReadData(searchListingsLambda); // For pricing matrix
+    publicListingsTable.grantReadData(searchListingsLambda);
+    availabilityTable.grantReadData(searchListingsLambda);
+    rateLimitTable.grantReadWriteData(searchListingsLambda);
+
+    // Add method without authorizer (authentication is optional)
+    // Lambda will check Authorization header manually if present
+    // This allows both authenticated (member pricing) and anonymous (standard pricing) access
+    searchListingsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(searchListingsLambda, {
         proxy: true,
       })
     );

@@ -34,6 +34,7 @@ import {
   BilingualEnum,
   AmenityCategory,
 } from '../../types/listing.types';
+import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -890,6 +891,7 @@ async function updateListingWithTransaction(
     sk: `LISTING#${listingId}`,
 
     listingId: listingId,
+    hostId: hostId,
     locationId: placeId,
 
     name: updatedListing.listingName,
@@ -902,7 +904,7 @@ async function updateListingWithTransaction(
     beds: updatedListing.capacity.beds,
     bathrooms: updatedListing.capacity.bathrooms,
 
-    thumbnailUrl: primaryImage.webpUrls.thumbnail,
+    thumbnailUrl: buildCloudFrontUrl(primaryImage.webpUrls.thumbnail, primaryImage.updatedAt),
 
     latitude: updatedListing.address.coordinates.latitude,
     longitude: updatedListing.address.coordinates.longitude,

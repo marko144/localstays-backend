@@ -147,10 +147,12 @@ export interface PricingMatrixRecord {
   matrix: PricingMatrix;
   
   // Tourist tax configuration (optional)
+  // Note: Always stored and returned as per-night amounts
+  // Frontend can calculate total based on number of nights and guests
   touristTax?: {
-    type: 'PER_NIGHT' | 'PER_STAY';
-    adultAmount: number;
-    childAmount: number;
+    type: 'PER_NIGHT' | 'PER_STAY';  // How the tax is charged (for display purposes)
+    adultAmount: number;              // Amount per adult per night
+    childAmount: number;              // Amount per child per night
   };
   
   // Metadata
@@ -198,9 +200,9 @@ export interface SetPricingRequest {
     discountAbsolute?: number;
   }>;
   touristTax?: {
-    type: 'PER_NIGHT' | 'PER_STAY';   // Daily per person or one-time per person
-    adultAmount: number;               // Amount per adult in listing currency
-    childAmount: number;               // Amount per child in listing currency
+    type: 'PER_NIGHT' | 'PER_STAY';   // How the tax is charged (for display purposes)
+    adultAmount: number;               // Amount per adult per night in listing currency
+    childAmount: number;               // Amount per child per night in listing currency
   };
 }
 
@@ -235,9 +237,9 @@ export interface PricingConfiguration {
     discountAbsolute?: number;
   }>;
   touristTax?: {
-    type: 'PER_NIGHT' | 'PER_STAY';
-    adultAmount: number;
-    childAmount: number;
+    type: 'PER_NIGHT' | 'PER_STAY';  // How the tax is charged (for display purposes)
+    adultAmount: number;              // Amount per adult per night
+    childAmount: number;              // Amount per child per night
   };
 }
 

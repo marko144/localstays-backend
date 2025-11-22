@@ -275,6 +275,7 @@ const guestApiStack = new GuestApiStack(app, `${stackPrefix}GuestApiStack`, {
   table: dataStack.table,
   locationsTable: dataStack.locationsTable,
   publicListingsTable: dataStack.publicListingsTable,
+  availabilityTable: dataStack.availabilityTable,
   rateLimitTable: rateLimitStack.table,
   userPool: cognitoStack.userPool,
 });

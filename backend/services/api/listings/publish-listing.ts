@@ -12,6 +12,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import * as response from '../lib/response';
 import { buildPublicListingMediaPK, buildPublicListingMediaSK } from '../../types/public-listing-media.types';
+import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -130,6 +131,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       sk: `LISTING#${listingId}`,
 
       listingId: listingId,
+      hostId: hostId,
       locationId: placeId,
 
       name: listing.listingName,
@@ -142,7 +144,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       beds: listing.capacity.beds,
       bathrooms: listing.capacity.bathrooms,
 
-      thumbnailUrl: primaryImage.webpUrls.thumbnail,
+      thumbnailUrl: buildCloudFrontUrl(primaryImage.webpUrls.thumbnail, primaryImage.updatedAt),
 
       latitude: listing.address.coordinates.latitude,
       longitude: listing.address.coordinates.longitude,
@@ -180,8 +182,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         listingId: listingId,
         imageIndex: index,
 
-        url: image.webpUrls.full,
-        thumbnailUrl: image.webpUrls.thumbnail,
+        url: buildCloudFrontUrl(image.webpUrls.full, image.updatedAt),
+        thumbnailUrl: buildCloudFrontUrl(image.webpUrls.thumbnail, image.updatedAt),
 
         caption: image.caption || undefined,
         isCoverImage: index === 0, // First image is cover

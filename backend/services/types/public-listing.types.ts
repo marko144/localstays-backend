@@ -20,6 +20,7 @@ export interface PublicListingRecord {
 
   // IDs
   listingId: string;
+  hostId: string; // Host who owns this listing (needed for pricing lookup)
   locationId: string; // Mapbox place ID
 
   // Display information
@@ -95,6 +96,7 @@ export function extractListingIdFromSK(sk: string): string {
  */
 export interface PublicListingResponse {
   listingId: string;
+  hostId: string;
   locationId: string;
   name: string;
   shortDescription: string;
@@ -133,6 +135,7 @@ export interface PublicListingResponse {
 export function toPublicListingResponse(record: PublicListingRecord): PublicListingResponse {
   return {
     listingId: record.listingId,
+    hostId: record.hostId,
     locationId: record.locationId,
     name: record.name,
     shortDescription: record.shortDescription,

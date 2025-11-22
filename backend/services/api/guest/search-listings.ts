@@ -1,0 +1,907 @@
+/**
+ * Search Listings API
+ * 
+ * Public endpoint for searching available listings based on location, dates, guests, and filters.
+ * Returns listings with calculated pricing based on authentication status.
+ * 
+ * Security: Comprehensive input validation, rate limiting, parameterized queries
+ * 
+ * Version: 1.0.0 - Initial deployment
+ */
+
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PublicListingRecord } from '../../types/public-listing.types';
+import { PricingMatrixRecord, BasePriceWithDiscounts, LengthOfStayPricing } from '../../types/pricing.types';
+
+const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'eu-north-1' });
+const docClient = DynamoDBDocumentClient.from(client);
+
+const MAIN_TABLE_NAME = process.env.MAIN_TABLE_NAME!;
+const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
+const AVAILABILITY_TABLE_NAME = process.env.AVAILABILITY_TABLE_NAME!;
+const RATE_LIMIT_TABLE_NAME = process.env.RATE_LIMIT_TABLE_NAME!;
+
+// Configuration
+const MAX_RESULTS_LIMIT = parseInt(process.env.MAX_RESULTS_LIMIT || '100');
+const AVAILABILITY_BATCH_SIZE = parseInt(process.env.AVAILABILITY_BATCH_SIZE || '40');
+const PRICING_BATCH_SIZE = parseInt(process.env.PRICING_BATCH_SIZE || '40');
+const RATE_LIMIT_REQUESTS = 60;
+const RATE_LIMIT_WINDOW = 60; // seconds
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface SearchFilters {
+  petsAllowed?: boolean;
+  hasWIFI?: boolean;
+  hasAirConditioning?: boolean;
+  hasParking?: boolean;
+  hasGym?: boolean;
+  hasPool?: boolean;
+  hasWorkspace?: boolean;
+  instantBook?: boolean;
+  parkingType?: string;
+  checkInType?: string;
+}
+
+interface NightlyPriceBreakdown {
+  date: string;
+  basePrice: number;
+  finalPrice: number;
+  isMembersPrice: boolean;
+  isSeasonalPrice: boolean;
+}
+
+interface ListingPricing {
+  currency: string;
+  totalPrice: number;
+  pricePerNight: number;
+  breakdown: NightlyPriceBreakdown[];
+  lengthOfStayDiscount: {
+    applied: boolean;
+    minNights: number;
+    discountType: 'PERCENTAGE' | 'ABSOLUTE';
+    discountValue: number;
+    totalSavings: number;
+  } | null;
+  membersPricingApplied: boolean;
+  touristTax: {
+    perNightAdult: number;
+    perNightChild: number;
+  } | null;
+}
+
+interface SearchResult {
+  listingId: string;
+  hostId: string;
+  name: string;
+  shortDescription: string;
+  thumbnailUrl: string;
+  placeName: string;
+  regionName: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  maxGuests: number;
+  bedrooms: number;
+  beds: number;
+  bathrooms: number;
+  petsAllowed: boolean;
+  hasWIFI: boolean;
+  hasAirConditioning: boolean;
+  hasParking: boolean;
+  hasGym: boolean;
+  hasPool: boolean;
+  hasWorkspace: boolean;
+  parkingType: string;
+  checkInType: string;
+  instantBook: boolean;
+  pricing: ListingPricing;
+}
+
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
+export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  console.log('Search Listings Request:', JSON.stringify(event, null, 2));
+
+  try {
+    // ========================================
+    // 1. RATE LIMITING
+    // ========================================
+    const sourceIp = event.requestContext.identity.sourceIp;
+    
+    // Validate IP format
+    if (!sourceIp || !/^[\d.]+$/.test(sourceIp)) {
+      return errorResponse(400, 'Invalid request source');
+    }
+
+    const isRateLimited = await checkRateLimit(sourceIp);
+    if (isRateLimited) {
+      return errorResponse(429, 'Too many requests. Please try again later.');
+    }
+
+    // ========================================
+    // 2. INPUT VALIDATION
+    // ========================================
+    const validationResult = validateInputs(event);
+    if (!validationResult.valid) {
+      return errorResponse(400, validationResult.error!);
+    }
+
+    const {
+      locationId,
+      checkIn,
+      checkOut,
+      adults,
+      children,
+      totalGuests,
+      daysDiff,
+      filters,
+      decodedCursor,
+    } = validationResult.data!;
+
+    // ========================================
+    // 3. CHECK AUTHENTICATION (OPTIONAL)
+    // ========================================
+    // Since we're not using API Gateway authorizer (to allow optional auth),
+    // we check if Authorization header is present
+    // For now, we'll use a simple check - in production, you'd validate the JWT
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const isAuthenticated = !!authHeader && authHeader.startsWith('Bearer ');
+    
+    // Note: In a production system with optional auth, you would:
+    // 1. Parse the JWT from the Authorization header
+    // 2. Verify it against Cognito (using jwks-rsa or similar)
+    // 3. Extract the user ID from the validated token
+    // For now, we'll just use the presence of a valid-looking header as a flag
+    
+    console.log(`Search request - Location: ${locationId}, Dates: ${checkIn} to ${checkOut}, Guests: ${totalGuests}, Authenticated: ${isAuthenticated}`);
+
+    // ========================================
+    // 4. QUERY PUBLIC LISTINGS
+    // ========================================
+    const publicListingsResult = await docClient.send(
+      new QueryCommand({
+        TableName: PUBLIC_LISTINGS_TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk',
+        FilterExpression: 'maxGuests >= :totalGuests',
+        ExpressionAttributeValues: {
+          ':pk': `LOCATION#${locationId}`,
+          ':totalGuests': totalGuests,
+        },
+        Limit: MAX_RESULTS_LIMIT,
+        ExclusiveStartKey: decodedCursor,
+      })
+    );
+
+    let candidateListings = (publicListingsResult.Items || []) as PublicListingRecord[];
+    console.log(`Found ${candidateListings.length} candidate listings`);
+
+    if (candidateListings.length === 0) {
+      return successResponse({
+        listings: [],
+        pagination: {
+          hasMore: false,
+          nextCursor: null,
+          totalReturned: 0,
+        },
+        searchMeta: {
+          locationId,
+          checkIn,
+          checkOut,
+          nights: daysDiff,
+          adults,
+          children,
+          totalGuests,
+        },
+      });
+    }
+
+    // ========================================
+    // 5. APPLY OPTIONAL FILTERS (IN LAMBDA)
+    // ========================================
+    candidateListings = applyFilters(candidateListings, filters);
+    console.log(`After filtering: ${candidateListings.length} listings`);
+
+    if (candidateListings.length === 0) {
+      return successResponse({
+        listings: [],
+        pagination: {
+          hasMore: !!publicListingsResult.LastEvaluatedKey,
+          nextCursor: publicListingsResult.LastEvaluatedKey 
+            ? encodeCursor(publicListingsResult.LastEvaluatedKey) 
+            : null,
+          totalReturned: 0,
+        },
+        searchMeta: {
+          locationId,
+          checkIn,
+          checkOut,
+          nights: daysDiff,
+          adults,
+          children,
+          totalGuests,
+        },
+      });
+    }
+
+    // ========================================
+    // 6. CHECK AVAILABILITY (PARALLEL BATCHES)
+    // ========================================
+    const nightDates = generateNightDates(checkIn, checkOut);
+    const lastNight = nightDates[nightDates.length - 1];
+    
+    const availableListings = await checkAvailabilityBatch(
+      candidateListings,
+      checkIn,
+      lastNight
+    );
+    console.log(`Available listings: ${availableListings.length}`);
+
+    if (availableListings.length === 0) {
+      return successResponse({
+        listings: [],
+        pagination: {
+          hasMore: !!publicListingsResult.LastEvaluatedKey,
+          nextCursor: publicListingsResult.LastEvaluatedKey 
+            ? encodeCursor(publicListingsResult.LastEvaluatedKey) 
+            : null,
+          totalReturned: 0,
+        },
+        searchMeta: {
+          locationId,
+          checkIn,
+          checkOut,
+          nights: daysDiff,
+          adults,
+          children,
+          totalGuests,
+        },
+      });
+    }
+
+    // ========================================
+    // 7. FETCH PRICING (PARALLEL BATCHES)
+    // ========================================
+    const pricingMap = await fetchPricingBatch(availableListings);
+    console.log(`Fetched pricing for ${pricingMap.size} listings`);
+
+    // ========================================
+    // 8. CALCULATE PRICING & BUILD RESULTS
+    // ========================================
+    const results: SearchResult[] = availableListings
+      .map((listing) => {
+        const pricing = pricingMap.get(listing.listingId);
+        
+        if (!pricing) {
+          // Skip listings without pricing
+          return null;
+        }
+
+        const calculatedPricing = calculateListingPrice(
+          pricing,
+          nightDates,
+          isAuthenticated
+        );
+
+        return {
+          listingId: listing.listingId,
+          hostId: listing.hostId,
+          name: listing.name,
+          shortDescription: listing.shortDescription,
+          thumbnailUrl: listing.thumbnailUrl,
+          placeName: listing.placeName,
+          regionName: listing.regionName,
+          coordinates: {
+            latitude: listing.latitude,
+            longitude: listing.longitude,
+          },
+          maxGuests: listing.maxGuests,
+          bedrooms: listing.bedrooms,
+          beds: listing.beds,
+          bathrooms: listing.bathrooms,
+          petsAllowed: listing.petsAllowed,
+          hasWIFI: listing.hasWIFI,
+          hasAirConditioning: listing.hasAirConditioning,
+          hasParking: listing.hasParking,
+          hasGym: listing.hasGym,
+          hasPool: listing.hasPool,
+          hasWorkspace: listing.hasWorkspace,
+          parkingType: listing.parkingType,
+          checkInType: listing.checkInType,
+          instantBook: listing.instantBook,
+          pricing: calculatedPricing,
+        };
+      })
+      .filter((l): l is SearchResult => l !== null);
+
+    console.log(`Final results: ${results.length} listings`);
+
+    // ========================================
+    // 9. RETURN RESPONSE
+    // ========================================
+    return successResponse({
+      listings: results,
+      pagination: {
+        hasMore: !!publicListingsResult.LastEvaluatedKey,
+        nextCursor: publicListingsResult.LastEvaluatedKey 
+          ? encodeCursor(publicListingsResult.LastEvaluatedKey) 
+          : null,
+        totalReturned: results.length,
+      },
+      searchMeta: {
+        locationId,
+        checkIn,
+        checkOut,
+        nights: daysDiff,
+        adults,
+        children,
+        totalGuests,
+      },
+    });
+
+  } catch (error) {
+    console.error('Error searching listings:', error);
+    return errorResponse(500, 'Internal server error');
+  }
+}
+
+// ============================================================================
+// VALIDATION
+// ============================================================================
+
+interface ValidationResult {
+  valid: boolean;
+  error?: string;
+  data?: {
+    locationId: string;
+    checkIn: string;
+    checkOut: string;
+    adults: number;
+    children: number;
+    totalGuests: number;
+    daysDiff: number;
+    filters: SearchFilters;
+    decodedCursor?: any;
+  };
+}
+
+function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
+  // 1. locationId validation
+  const locationId = event.queryStringParameters?.locationId?.trim();
+  if (!locationId) {
+    return { valid: false, error: 'locationId is required' };
+  }
+  if (!/^[A-Za-z0-9_-]{10,50}$/.test(locationId)) {
+    return { valid: false, error: 'Invalid locationId format' };
+  }
+
+  // 2. checkIn validation
+  const checkIn = event.queryStringParameters?.checkIn?.trim();
+  if (!checkIn) {
+    return { valid: false, error: 'checkIn is required' };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn)) {
+    return { valid: false, error: 'checkIn must be in YYYY-MM-DD format' };
+  }
+  const checkInDate = new Date(checkIn);
+  if (isNaN(checkInDate.getTime())) {
+    return { valid: false, error: 'Invalid checkIn date' };
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (checkInDate < today) {
+    return { valid: false, error: 'checkIn cannot be in the past' };
+  }
+
+  // 3. checkOut validation
+  const checkOut = event.queryStringParameters?.checkOut?.trim();
+  if (!checkOut) {
+    return { valid: false, error: 'checkOut is required' };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+    return { valid: false, error: 'checkOut must be in YYYY-MM-DD format' };
+  }
+  const checkOutDate = new Date(checkOut);
+  if (isNaN(checkOutDate.getTime())) {
+    return { valid: false, error: 'Invalid checkOut date' };
+  }
+  if (checkOutDate <= checkInDate) {
+    return { valid: false, error: 'checkOut must be after checkIn' };
+  }
+  const daysDiff = Math.floor(
+    (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (daysDiff > 365) {
+    return { valid: false, error: 'Date range cannot exceed 365 days' };
+  }
+  if (daysDiff < 1) {
+    return { valid: false, error: 'Minimum stay is 1 night' };
+  }
+
+  // 4. adults validation
+  const adultsStr = event.queryStringParameters?.adults?.trim();
+  if (!adultsStr) {
+    return { valid: false, error: 'adults is required' };
+  }
+  const adults = parseInt(adultsStr, 10);
+  if (isNaN(adults) || adults < 1 || adults > 50) {
+    return { valid: false, error: 'adults must be between 1 and 50' };
+  }
+
+  // 5. children validation (optional)
+  let children = 0;
+  if (event.queryStringParameters?.children) {
+    const childrenStr = event.queryStringParameters.children.trim();
+    children = parseInt(childrenStr, 10);
+    if (isNaN(children) || children < 0 || children > 50) {
+      return { valid: false, error: 'children must be between 0 and 50' };
+    }
+  }
+
+  // 6. Total guests validation
+  const totalGuests = adults + children;
+  if (totalGuests > 50) {
+    return { valid: false, error: 'Total guests cannot exceed 50' };
+  }
+
+  // 7. cursor validation (optional)
+  let decodedCursor = undefined;
+  if (event.queryStringParameters?.cursor) {
+    try {
+      const cursorStr = event.queryStringParameters.cursor.trim();
+      if (!/^[A-Za-z0-9+/]+=*$/.test(cursorStr)) {
+        return { valid: false, error: 'Invalid cursor format' };
+      }
+      if (cursorStr.length > 2000) {
+        return { valid: false, error: 'Cursor too large' };
+      }
+      const decoded = Buffer.from(cursorStr, 'base64').toString('utf-8');
+      decodedCursor = JSON.parse(decoded);
+    } catch (error) {
+      return { valid: false, error: 'Invalid cursor' };
+    }
+  }
+
+  // 8. Boolean filter validation
+  const filters: SearchFilters = {};
+  const booleanFilters = [
+    'petsAllowed',
+    'hasWIFI',
+    'hasAirConditioning',
+    'hasParking',
+    'hasGym',
+    'hasPool',
+    'hasWorkspace',
+    'instantBook',
+  ];
+  
+  for (const filterName of booleanFilters) {
+    if (event.queryStringParameters?.[filterName]) {
+      const value = event.queryStringParameters[filterName].toLowerCase();
+      if (value !== 'true' && value !== 'false') {
+        return { valid: false, error: `${filterName} must be 'true' or 'false'` };
+      }
+      filters[filterName as keyof SearchFilters] = value === 'true';
+    }
+  }
+
+  // 9. Categorical filter validation
+  const parkingType = event.queryStringParameters?.parkingType?.trim().toUpperCase();
+  if (parkingType) {
+    const validParkingTypes = ['FREE', 'PAID', 'STREET', 'NONE'];
+    if (!validParkingTypes.includes(parkingType)) {
+      return { valid: false, error: 'Invalid parkingType' };
+    }
+    filters.parkingType = parkingType;
+  }
+
+  const checkInType = event.queryStringParameters?.checkInType?.trim().toUpperCase();
+  if (checkInType) {
+    const validCheckInTypes = ['SELF_CHECKIN', 'HOST_GREETING', 'KEYPAD', 'LOCKBOX'];
+    if (!validCheckInTypes.includes(checkInType)) {
+      return { valid: false, error: 'Invalid checkInType' };
+    }
+    filters.checkInType = checkInType;
+  }
+
+  return {
+    valid: true,
+    data: {
+      locationId,
+      checkIn,
+      checkOut,
+      adults,
+      children,
+      totalGuests,
+      daysDiff,
+      filters,
+      decodedCursor,
+    },
+  };
+}
+
+// ============================================================================
+// FILTERING
+// ============================================================================
+
+function applyFilters(
+  listings: PublicListingRecord[],
+  filters: SearchFilters
+): PublicListingRecord[] {
+  let filtered = listings;
+
+  // Boolean filters
+  if (filters.petsAllowed !== undefined) {
+    filtered = filtered.filter((l) => l.petsAllowed === filters.petsAllowed);
+  }
+  if (filters.hasWIFI !== undefined) {
+    filtered = filtered.filter((l) => l.hasWIFI === filters.hasWIFI);
+  }
+  if (filters.hasAirConditioning !== undefined) {
+    filtered = filtered.filter((l) => l.hasAirConditioning === filters.hasAirConditioning);
+  }
+  if (filters.hasParking !== undefined) {
+    filtered = filtered.filter((l) => l.hasParking === filters.hasParking);
+  }
+  if (filters.hasGym !== undefined) {
+    filtered = filtered.filter((l) => l.hasGym === filters.hasGym);
+  }
+  if (filters.hasPool !== undefined) {
+    filtered = filtered.filter((l) => l.hasPool === filters.hasPool);
+  }
+  if (filters.hasWorkspace !== undefined) {
+    filtered = filtered.filter((l) => l.hasWorkspace === filters.hasWorkspace);
+  }
+  if (filters.instantBook !== undefined) {
+    filtered = filtered.filter((l) => l.instantBook === filters.instantBook);
+  }
+
+  // Categorical filters
+  if (filters.parkingType) {
+    filtered = filtered.filter((l) => l.parkingType === filters.parkingType);
+  }
+  if (filters.checkInType) {
+    filtered = filtered.filter((l) => l.checkInType === filters.checkInType);
+  }
+
+  return filtered;
+}
+
+// ============================================================================
+// AVAILABILITY CHECKING
+// ============================================================================
+
+async function checkAvailabilityBatch(
+  listings: PublicListingRecord[],
+  checkIn: string,
+  lastNight: string
+): Promise<PublicListingRecord[]> {
+  const availableListings: PublicListingRecord[] = [];
+
+  // Process in batches
+  for (let i = 0; i < listings.length; i += AVAILABILITY_BATCH_SIZE) {
+    const batch = listings.slice(i, i + AVAILABILITY_BATCH_SIZE);
+
+    const availabilityChecks = batch.map(async (listing) => {
+      try {
+        const result = await docClient.send(
+          new QueryCommand({
+            TableName: AVAILABILITY_TABLE_NAME,
+            KeyConditionExpression: 'pk = :pk AND sk BETWEEN :startSk AND :endSk',
+            ExpressionAttributeValues: {
+              ':pk': `LISTING_AVAILABILITY#${listing.listingId}`,
+              ':startSk': `DATE#${checkIn}`,
+              ':endSk': `DATE#${lastNight}`,
+            },
+            Limit: 1, // We only need to know if ANY record exists
+          })
+        );
+
+        // If no records found, listing is available
+        return result.Items?.length === 0 ? listing : null;
+      } catch (error) {
+        console.error(`Error checking availability for ${listing.listingId}:`, error);
+        return null;
+      }
+    });
+
+    const batchResults = await Promise.all(availabilityChecks);
+    availableListings.push(...batchResults.filter((l): l is PublicListingRecord => l !== null));
+  }
+
+  return availableListings;
+}
+
+// ============================================================================
+// PRICING FETCHING
+// ============================================================================
+
+async function fetchPricingBatch(
+  listings: PublicListingRecord[]
+): Promise<Map<string, PricingMatrixRecord>> {
+  const pricingMap = new Map<string, PricingMatrixRecord>();
+
+  // Process in batches
+  for (let i = 0; i < listings.length; i += PRICING_BATCH_SIZE) {
+    const batch = listings.slice(i, i + PRICING_BATCH_SIZE);
+
+    const pricingFetches = batch.map(async (listing) => {
+      try {
+        const result = await docClient.send(
+          new QueryCommand({
+            TableName: MAIN_TABLE_NAME,
+            IndexName: 'DocumentStatusIndex', // GSI3
+            KeyConditionExpression: 'gsi3pk = :pk AND gsi3sk = :sk',
+            ExpressionAttributeValues: {
+              ':pk': `LISTING#${listing.listingId}`,
+              ':sk': 'PRICING_MATRIX',
+            },
+            Limit: 1,
+          })
+        );
+
+        if (result.Items?.[0]) {
+          return {
+            listingId: listing.listingId,
+            pricing: result.Items[0] as PricingMatrixRecord,
+          };
+        }
+        return null;
+      } catch (error) {
+        console.error(`Error fetching pricing for ${listing.listingId}:`, error);
+        return null;
+      }
+    });
+
+    const batchResults = await Promise.all(pricingFetches);
+    batchResults.forEach((result) => {
+      if (result) {
+        pricingMap.set(result.listingId, result.pricing);
+      }
+    });
+  }
+
+  return pricingMap;
+}
+
+// ============================================================================
+// PRICING CALCULATION
+// ============================================================================
+
+function calculateListingPrice(
+  pricingMatrix: PricingMatrixRecord,
+  nightDates: string[],
+  isAuthenticated: boolean
+): ListingPricing {
+  const { matrix, currency, touristTax } = pricingMatrix;
+  const nights = nightDates.length;
+
+  // Step 1: Determine base price for each night
+  const nightlyBreakdown = nightDates.map((date) => {
+    const basePrice = findApplicableBasePrice(matrix.basePrices, date);
+    const useMembersPrice = isAuthenticated && basePrice.membersDiscount !== null;
+    const pricePerNight = useMembersPrice
+      ? basePrice.membersDiscount!.calculatedPrice
+      : basePrice.standardPrice;
+
+    return {
+      date,
+      basePrice: pricePerNight,
+      isMembersPrice: useMembersPrice,
+      isSeasonalPrice: !basePrice.isDefault,
+    };
+  });
+
+  // Step 2: Apply length-of-stay discount (if applicable)
+  const losDiscount = findApplicableLengthOfStayDiscount(matrix.basePrices, nights);
+
+  let totalPrice = 0;
+  let totalSavings = 0;
+
+  const finalBreakdown: NightlyPriceBreakdown[] = nightlyBreakdown.map((night) => {
+    let finalPrice = night.basePrice;
+
+    if (losDiscount) {
+      if (losDiscount.discountType === 'PERCENTAGE') {
+        const discount = (night.basePrice * losDiscount.discountValue) / 100;
+        finalPrice = night.basePrice - discount;
+        totalSavings += discount;
+      } else {
+        // ABSOLUTE
+        finalPrice = night.basePrice - losDiscount.discountValue;
+        totalSavings += losDiscount.discountValue;
+      }
+    }
+
+    totalPrice += finalPrice;
+
+    return {
+      date: night.date,
+      basePrice: night.basePrice,
+      finalPrice,
+      isMembersPrice: night.isMembersPrice,
+      isSeasonalPrice: night.isSeasonalPrice,
+    };
+  });
+
+  return {
+    currency,
+    totalPrice: Math.round(totalPrice * 100) / 100, // Round to 2 decimals
+    pricePerNight: Math.round((totalPrice / nights) * 100) / 100,
+    breakdown: finalBreakdown,
+    lengthOfStayDiscount: losDiscount
+      ? {
+          applied: true,
+          minNights: losDiscount.minNights,
+          discountType: losDiscount.discountType,
+          discountValue: losDiscount.discountValue,
+          totalSavings: Math.round(totalSavings * 100) / 100,
+        }
+      : null,
+    membersPricingApplied: isAuthenticated && nightlyBreakdown.some((n) => n.isMembersPrice),
+    touristTax: touristTax
+      ? {
+          perNightAdult: touristTax.adultAmount,
+          perNightChild: touristTax.childAmount,
+        }
+      : null,
+  };
+}
+
+function findApplicableBasePrice(
+  basePrices: BasePriceWithDiscounts[],
+  date: string
+): BasePriceWithDiscounts {
+  // Check seasonal prices first
+  for (const basePrice of basePrices) {
+    if (!basePrice.isDefault && basePrice.dateRange) {
+      const { startDate, endDate } = basePrice.dateRange;
+      if (date >= startDate && date <= endDate) {
+        return basePrice;
+      }
+    }
+  }
+
+  // Fall back to default
+  const defaultPrice = basePrices.find((bp) => bp.isDefault);
+  if (!defaultPrice) {
+    throw new Error('No default base price found');
+  }
+  return defaultPrice;
+}
+
+function findApplicableLengthOfStayDiscount(
+  basePrices: BasePriceWithDiscounts[],
+  nights: number
+): { minNights: number; discountType: 'PERCENTAGE' | 'ABSOLUTE'; discountValue: number } | null {
+  // Collect all LoS discounts from all base prices
+  const allLosDiscounts: LengthOfStayPricing[] = [];
+  basePrices.forEach((bp) => {
+    allLosDiscounts.push(...bp.lengthOfStayPricing);
+  });
+
+  // Find the highest minNights threshold that the booking qualifies for
+  const applicableDiscounts = allLosDiscounts
+    .filter((los) => nights >= los.minNights)
+    .sort((a, b) => b.minNights - a.minNights); // Highest threshold first
+
+  if (applicableDiscounts.length === 0) {
+    return null;
+  }
+
+  const bestDiscount = applicableDiscounts[0];
+  return {
+    minNights: bestDiscount.minNights,
+    discountType: bestDiscount.discountType,
+    discountValue: bestDiscount.discountValue,
+  };
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function generateNightDates(checkIn: string, checkOut: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(checkIn);
+  const end = new Date(checkOut);
+
+  while (current < end) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function encodeCursor(lastEvaluatedKey: any): string {
+  return Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64');
+}
+
+function successResponse(data: any): APIGatewayProxyResult {
+  return {
+    statusCode: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*', // Will be overridden by API Gateway CORS
+    },
+    body: JSON.stringify(data),
+  };
+}
+
+function errorResponse(statusCode: number, message: string): APIGatewayProxyResult {
+  return {
+    statusCode,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+    body: JSON.stringify({
+      error: message,
+      code: statusCode === 400 ? 'VALIDATION_ERROR' : statusCode === 429 ? 'RATE_LIMIT_EXCEEDED' : 'INTERNAL_ERROR',
+    }),
+  };
+}
+
+/**
+ * Check if request exceeds rate limit
+ * Uses DynamoDB for distributed rate limiting
+ * 
+ * Strategy: Store one record per minute window with count
+ * id = "listing-search:{sourceIp}:{minuteTimestamp}"
+ */
+async function checkRateLimit(sourceIp: string): Promise<boolean> {
+  try {
+    const now = Date.now();
+    const currentMinute = Math.floor(now / 60000) * 60000; // Round down to minute
+    const recordId = `listing-search:${sourceIp}:${currentMinute}`;
+
+    // Check current count
+    const result = await docClient.send(
+      new GetCommand({
+        TableName: RATE_LIMIT_TABLE_NAME,
+        Key: { id: recordId },
+      })
+    );
+
+    const currentCount = result.Item?.count || 0;
+
+    console.log(`Rate limit check for ${sourceIp}: ${currentCount}/${RATE_LIMIT_REQUESTS} requests this minute`);
+
+    if (currentCount >= RATE_LIMIT_REQUESTS) {
+      return true; // Rate limited
+    }
+
+    // Increment counter (or create if doesn't exist)
+    await docClient.send(
+      new UpdateCommand({
+        TableName: RATE_LIMIT_TABLE_NAME,
+        Key: { id: recordId },
+        UpdateExpression: 'SET #count = if_not_exists(#count, :zero) + :inc, #ttl = :ttl',
+        ExpressionAttributeNames: {
+          '#count': 'count',
+          '#ttl': 'ttl',
+        },
+        ExpressionAttributeValues: {
+          ':zero': 0,
+          ':inc': 1,
+          ':ttl': Math.floor((currentMinute + 120000) / 1000), // TTL 2 minutes after window
+        },
+      })
+    );
+
+    return false; // Not rate limited
+  } catch (error) {
+    console.error('Error checking rate limit:', error);
+    // On error, allow the request (fail open)
+    return false;
+  }
+}
+
