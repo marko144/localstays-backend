@@ -246,6 +246,9 @@ export interface ListingMetadata {
   submissionToken?: string;
   submissionTokenExpiresAt?: string;
   
+  // Verification flags
+  listingVerified: boolean;     // True if admin explicitly verified the listing during approval
+  
   // Metadata
   isDeleted: boolean;
   deletedAt?: string;

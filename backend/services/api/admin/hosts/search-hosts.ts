@@ -9,7 +9,7 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission } from '../../lib/auth-middleware';
 import { parsePaginationParams, paginateArray } from '../../lib/pagination';
 import { HostSummary } from '../../../types/admin.types';
@@ -116,42 +116,35 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 3. Parse pagination params
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
 
-    // 4. Scan for all host records
-    const scanResult = await docClient.send(
-      new ScanCommand({
+    // 4. Query EmailIndex for exact email match
+    const normalizedEmail = searchQuery.toLowerCase().trim();
+    
+    const queryResult = await docClient.send(
+      new QueryCommand({
         TableName: TABLE_NAME,
-        FilterExpression: 'begins_with(pk, :pkPrefix) AND sk = :sk AND isDeleted = :isDeleted',
+        IndexName: 'EmailIndex',
+        KeyConditionExpression: 'gsi6pk = :email',
+        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
-          ':pkPrefix': 'HOST#',
-          ':sk': 'META',
+          ':email': normalizedEmail,
           ':isDeleted': false,
         },
       })
     );
 
-    const allHosts = (scanResult.Items || []) as Host[];
+    const matchingHosts = (queryResult.Items || []) as Host[];
 
-    // 5. Filter by search query
-    const matchingHosts = allHosts.filter(host => matchesSearchQuery(host, searchQuery));
+    console.log(`Found ${matchingHosts.length} hosts matching email "${searchQuery}"`);
 
-    console.log(`Found ${matchingHosts.length} hosts matching "${searchQuery}"`);
-
-    // 6. Convert to summary format
+    // 5. Convert to summary format
     const hostSummaries = matchingHosts.map(toHostSummary);
 
-    // 7. Sort by relevance (exact email match first, then by createdAt)
+    // 6. Sort by newest first
     hostSummaries.sort((a, b) => {
-      const aEmailMatch = a.email.toLowerCase() === searchQuery.toLowerCase();
-      const bEmailMatch = b.email.toLowerCase() === searchQuery.toLowerCase();
-      
-      if (aEmailMatch && !bEmailMatch) return -1;
-      if (!aEmailMatch && bEmailMatch) return 1;
-      
-      // Otherwise sort by newest first
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    // 8. Paginate
+    // 7. Paginate
     const result = paginateArray(hostSummaries, page, limit);
 
     console.log(`✅ Returning ${result.items.length} hosts (page ${page}, total ${result.pagination.total})`);

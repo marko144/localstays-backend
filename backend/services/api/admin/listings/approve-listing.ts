@@ -2,8 +2,10 @@
  * Admin API: Approve Listing
  * 
  * PUT /api/v1/admin/listings/{listingId}/approve
+ * Body: { listingVerified: boolean }
  * 
  * Approves a listing (IN_REVIEW → APPROVED).
+ * Admin explicitly sets whether the listing is verified.
  * Host can later manually set to ONLINE.
  * Sends approval email notification.
  * Permission required: ADMIN_LISTING_APPROVE
@@ -22,6 +24,21 @@ const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+
+/**
+ * Validate request body
+ */
+function validateRequest(body: any): { valid: boolean; error?: string; listingVerified?: boolean } {
+  if (!body) {
+    return { valid: false, error: 'Request body is required' };
+  }
+
+  if (typeof body.listingVerified !== 'boolean') {
+    return { valid: false, error: 'listingVerified is required and must be a boolean' };
+  }
+
+  return { valid: true, listingVerified: body.listingVerified };
+}
 
 /**
  * Find listing by listingId using GSI3 (DocumentStatusIndex)
@@ -84,7 +101,29 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`Admin ${user.email} approving listing: ${listingId}`);
 
-    // 3. Find listing
+    // 3. Validate request body
+    const bodyValidation = validateRequest(event.body ? JSON.parse(event.body) : null);
+    if (!bodyValidation.valid) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: bodyValidation.error,
+          },
+        }),
+      };
+    }
+
+    const listingVerified = bodyValidation.listingVerified!;
+    console.log(`Setting listingVerified to: ${listingVerified}`);
+
+    // 4. Find listing
     const listing = await findListing(listingId);
 
     if (!listing) {
@@ -123,7 +162,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 5. Update listing status
+    // 6. Update listing status and set listingVerified
     const now = new Date().toISOString();
 
     await docClient.send(
@@ -135,6 +174,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         },
         UpdateExpression: `
           SET #status = :status,
+              #listingVerified = :listingVerified,
               #approvedAt = :approvedAt,
               #updatedAt = :updatedAt,
               #gsi2pk = :gsi2pk,
@@ -142,6 +182,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         `,
         ExpressionAttributeNames: {
           '#status': 'status',
+          '#listingVerified': 'listingVerified',
           '#approvedAt': 'approvedAt',
           '#updatedAt': 'updatedAt',
           '#gsi2pk': 'gsi2pk',
@@ -149,6 +190,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         },
         ExpressionAttributeValues: {
           ':status': 'APPROVED',
+          ':listingVerified': listingVerified,
           ':approvedAt': now,
           ':updatedAt': now,
           ':gsi2pk': 'LISTING_STATUS#APPROVED',
@@ -157,9 +199,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       })
     );
 
-    console.log(`✅ Listing ${listingId} approved successfully`);
+    console.log(`✅ Listing ${listingId} approved successfully (listingVerified=${listingVerified})`);
 
-    // 6. Send approval email and push notification
+    // 7. Send approval email and push notification
     try {
       // Fetch host details for email and notification
       const hostResult = await docClient.send(

@@ -11,17 +11,21 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { ListingMetadata } from '../../../types/listing.types';
 import { SuspendListingRequest } from '../../../types/admin.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendListingSuspendedEmail } from '../../lib/email-service';
+import { buildPublicListingMediaPK } from '../../../types/public-listing-media.types';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
+const PUBLIC_LISTING_MEDIA_TABLE_NAME = process.env.PUBLIC_LISTING_MEDIA_TABLE_NAME!;
+const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 const MAX_REASON_LENGTH = 500;
 
 /**
@@ -74,6 +78,46 @@ async function findListing(listingId: string): Promise<ListingMetadata | null> {
   }
 
   return result.Items[0] as ListingMetadata;
+}
+
+/**
+ * Fetch all public listing media records for a listing
+ */
+async function fetchPublicListingMedia(listingId: string): Promise<any[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: PUBLIC_LISTING_MEDIA_TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: {
+        ':pk': buildPublicListingMediaPK(listingId),
+      },
+    })
+  );
+  return result.Items || [];
+}
+
+/**
+ * Decrement location listings count
+ */
+async function decrementLocationListingsCount(locationId: string): Promise<void> {
+  try {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        Key: {
+          pk: 'LOCATION',
+          sk: `LOCATION#${locationId}`,
+        },
+        UpdateExpression: 'SET listingsCount = if_not_exists(listingsCount, :zero) - :dec',
+        ExpressionAttributeValues: {
+          ':dec': 1,
+          ':zero': 0,
+        },
+      })
+    );
+  } catch (error) {
+    console.error(`Failed to decrement listings count for location ${locationId}:`, error);
+  }
 }
 
 /**
@@ -195,47 +239,181 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 6. Update listing status with lock reason
+    // 6. If listing is ONLINE, remove it from public listings table
+    const isOnline = listing.status === 'ONLINE';
     const now = new Date().toISOString();
 
-    await docClient.send(
-      new UpdateCommand({
-        TableName: TABLE_NAME,
-        Key: {
-          pk: `HOST#${listing.hostId}`,
-          sk: `LISTING_META#${listingId}`,
-        },
-        UpdateExpression: `
-          SET #status = :status,
-              #lockedAt = :lockedAt,
-              #lockedBy = :lockedBy,
-              #lockReason = :lockReason,
-              #updatedAt = :updatedAt,
-              #gsi2pk = :gsi2pk,
-              #gsi2sk = :gsi2sk
-        `,
-        ExpressionAttributeNames: {
-          '#status': 'status',
-          '#lockedAt': 'lockedAt',
-          '#lockedBy': 'lockedBy',
-          '#lockReason': 'lockReason',
-          '#updatedAt': 'updatedAt',
-          '#gsi2pk': 'gsi2pk',
-          '#gsi2sk': 'gsi2sk',
-        },
-        ExpressionAttributeValues: {
-          ':status': 'LOCKED',
-          ':lockedAt': now,
-          ':lockedBy': user.sub,
-          ':lockReason': lockReason,
-          ':updatedAt': now,
-          ':gsi2pk': 'LISTING_STATUS#LOCKED',
-          ':gsi2sk': now,
-        },
-      })
-    );
+    if (isOnline) {
+      console.log(`Listing is ONLINE - removing from public listings table`);
 
-    console.log(`✅ Listing ${listingId} suspended successfully`);
+      // Get location IDs
+      const placeId = listing.mapboxMetadata?.place?.mapbox_id;
+      if (!placeId) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+          body: JSON.stringify({
+            success: false,
+            error: {
+              code: 'MISSING_LOCATION_DATA',
+              message: 'Listing is missing location information',
+            },
+          }),
+        };
+      }
+
+      const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
+      const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+
+      // Fetch all media records
+      const mediaRecords = await fetchPublicListingMedia(listingId);
+
+      // Build transaction items
+      const transactItems: any[] = [];
+
+      // Delete PLACE listing record
+      transactItems.push({
+        Delete: {
+          TableName: PUBLIC_LISTINGS_TABLE_NAME,
+          Key: {
+            pk: `LOCATION#${placeId}`,
+            sk: `LISTING#${listingId}`,
+          },
+        },
+      });
+
+      // If locality exists, also delete LOCALITY listing record
+      if (hasLocality && localityId) {
+        transactItems.push({
+          Delete: {
+            TableName: PUBLIC_LISTINGS_TABLE_NAME,
+            Key: {
+              pk: `LOCATION#${localityId}`,
+              sk: `LISTING#${listingId}`,
+            },
+          },
+        });
+        console.log(`Deleting dual public listing records: PLACE and LOCALITY`);
+      } else {
+        console.log(`Deleting single public listing record: PLACE only`);
+      }
+
+      // Delete all PublicListingMedia records
+      mediaRecords.forEach((media) => {
+        transactItems.push({
+          Delete: {
+            TableName: PUBLIC_LISTING_MEDIA_TABLE_NAME,
+            Key: {
+              pk: media.pk,
+              sk: media.sk,
+            },
+          },
+        });
+      });
+
+      // Update listing status to LOCKED
+      transactItems.push({
+        Update: {
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `HOST#${listing.hostId}`,
+            sk: `LISTING_META#${listingId}`,
+          },
+          UpdateExpression: `
+            SET #status = :status,
+                #listingVerified = :listingVerified,
+                #lockedAt = :lockedAt,
+                #lockedBy = :lockedBy,
+                #lockReason = :lockReason,
+                #updatedAt = :updatedAt,
+                #gsi2pk = :gsi2pk,
+                #gsi2sk = :gsi2sk
+          `,
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            '#listingVerified': 'listingVerified',
+            '#lockedAt': 'lockedAt',
+            '#lockedBy': 'lockedBy',
+            '#lockReason': 'lockReason',
+            '#updatedAt': 'updatedAt',
+            '#gsi2pk': 'gsi2pk',
+            '#gsi2sk': 'gsi2sk',
+          },
+          ExpressionAttributeValues: {
+            ':status': 'LOCKED',
+            ':listingVerified': false,
+            ':lockedAt': now,
+            ':lockedBy': user.sub,
+            ':lockReason': lockReason,
+            ':updatedAt': now,
+            ':gsi2pk': 'LISTING_STATUS#LOCKED',
+            ':gsi2sk': now,
+          },
+        },
+      });
+
+      // Execute transaction
+      console.log(`Suspending ONLINE listing with ${transactItems.length} transaction items`);
+      await docClient.send(
+        new TransactWriteCommand({
+          TransactItems: transactItems,
+        })
+      );
+
+      // Decrement location listings counts
+      await decrementLocationListingsCount(placeId);
+      if (localityId) {
+        await decrementLocationListingsCount(localityId);
+      }
+
+      console.log(`✅ Listing ${listingId} suspended and removed from public listings`);
+    } else {
+      // Listing is APPROVED (not yet online) - just update status
+      await docClient.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `HOST#${listing.hostId}`,
+            sk: `LISTING_META#${listingId}`,
+          },
+          UpdateExpression: `
+            SET #status = :status,
+                #listingVerified = :listingVerified,
+                #lockedAt = :lockedAt,
+                #lockedBy = :lockedBy,
+                #lockReason = :lockReason,
+                #updatedAt = :updatedAt,
+                #gsi2pk = :gsi2pk,
+                #gsi2sk = :gsi2sk
+          `,
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            '#listingVerified': 'listingVerified',
+            '#lockedAt': 'lockedAt',
+            '#lockedBy': 'lockedBy',
+            '#lockReason': 'lockReason',
+            '#updatedAt': 'updatedAt',
+            '#gsi2pk': 'gsi2pk',
+            '#gsi2sk': 'gsi2sk',
+          },
+          ExpressionAttributeValues: {
+            ':status': 'LOCKED',
+            ':listingVerified': false,
+            ':lockedAt': now,
+            ':lockedBy': user.sub,
+            ':lockReason': lockReason,
+            ':updatedAt': now,
+            ':gsi2pk': 'LISTING_STATUS#LOCKED',
+            ':gsi2sk': now,
+          },
+        })
+      );
+
+      console.log(`✅ Listing ${listingId} suspended (was APPROVED, not yet online)`);
+    }
 
     // 7. Send suspension email
     try {

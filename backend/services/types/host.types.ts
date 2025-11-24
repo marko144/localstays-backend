@@ -129,6 +129,8 @@ export interface BaseHost {
   gsi2sk?: string;             // createdAt
   gsi4pk?: string;             // For CountryIndex: countryCode
   gsi4sk?: string;             // createdAt
+  gsi6pk?: string;             // For EmailIndex: lowercase email
+  gsi6sk?: string;             // "HOST#{hostId}"
   
   // Metadata
   isDeleted: boolean;

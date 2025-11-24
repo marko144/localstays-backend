@@ -16,9 +16,10 @@ const STAGE = process.env.STAGE || 'staging';
 const RATE_LIMIT_MAX_REQUESTS = 20; // 20 requests per minute
 
 // Allowed origins for CORS
+// In non-prod, allow all origins for local development (including mobile on local network)
 const ALLOWED_ORIGINS = STAGE === 'prod'
   ? ['https://localstays.me', 'https://www.localstays.me']
-  : ['http://localhost:3000', 'http://localhost:3001', 'https://staging.localstays.me'];
+  : null; // null means allow all origins in non-prod
 
 /**
  * GET /api/v1/public/locations/search?q={query}
@@ -45,7 +46,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   // Determine allowed origin for CORS
   const requestOrigin = event.headers.origin || event.headers.Origin || '';
-  const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0];
+  const allowedOrigin = ALLOWED_ORIGINS === null 
+    ? requestOrigin || '*' // Allow all origins in non-prod
+    : (ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : ALLOWED_ORIGINS[0]);
 
   try {
     // 1. Extract and validate query parameter

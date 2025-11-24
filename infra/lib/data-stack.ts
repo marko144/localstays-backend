@@ -137,6 +137,21 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI6 - EmailIndex: Query hosts by email (exact match, case-insensitive)
+    // pk=lowercase email, sk=HOST#{hostId}
+    this.table.addGlobalSecondaryIndex({
+      indexName: 'EmailIndex',
+      partitionKey: {
+        name: 'gsi6pk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi6sk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ========================================
     // Locations Table - Separate table for location data
     // ========================================

@@ -81,7 +81,7 @@ export class GuestApiStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
           ? ['https://localstays.me', 'https://www.localstays.me']
-          : ['http://localhost:3000', 'http://localhost:3001', 'https://staging.localstays.me'],
+          : apigateway.Cors.ALL_ORIGINS, // Allow all origins in non-prod for local development (including mobile on local network)
         allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowHeaders: [
           'Content-Type',

@@ -937,9 +937,11 @@ async function updateListingWithTransaction(
 
     parkingType: updatedListing.parking.type.key,
     checkInType: updatedListing.checkIn.type.key,
+    propertyType: updatedListing.propertyType.key,
 
     instantBook: false, // Default to false
     hostVerified: hostVerified, // Sync from host profile
+    listingVerified: updatedListing.listingVerified || false, // Sync from listing metadata
 
     // Preserve original createdAt, update updatedAt
     createdAt: currentListing.createdAt,

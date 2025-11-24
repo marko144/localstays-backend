@@ -56,12 +56,14 @@ export interface PublicListingRecord {
   // Categorical filters (stored as enum keys, e.g., "FREE", "SELF_CHECKIN")
   parkingType: string; // From listing.parking.type
   checkInType: string; // From listing.checkIn.type
+  propertyType: string; // From listing.propertyType (APARTMENT, HOUSE, VILLA, STUDIO, ROOM)
 
   // Booking behaviour
   instantBook: boolean;
 
-  // Host verification status
+  // Verification status
   hostVerified: boolean; // True if host status is VERIFIED
+  listingVerified: boolean; // True if admin explicitly verified the listing
 
   // Timestamps
   createdAt: string; // ISO 8601
@@ -129,8 +131,10 @@ export interface PublicListingResponse {
   };
   parkingType: string;
   checkInType: string;
+  propertyType: string;
   instantBook: boolean;
   hostVerified: boolean;
+  listingVerified: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,8 +173,10 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     },
     parkingType: record.parkingType,
     checkInType: record.checkInType,
+    propertyType: record.propertyType,
     instantBook: record.instantBook,
     hostVerified: record.hostVerified,
+    listingVerified: record.listingVerified,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

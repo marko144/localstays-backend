@@ -240,6 +240,7 @@ const adminApiStack = new AdminApiStack(app, `${stackPrefix}AdminApiStack`, {
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
   publicListingsTable: dataStack.publicListingsTable,
   publicListingMediaTable: dataStack.publicListingMediaTable,
+  locationsTable: dataStack.locationsTable,
 });
 adminApiStack.addDependency(cognitoStack);
 adminApiStack.addDependency(dataStack);

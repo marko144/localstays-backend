@@ -46,6 +46,7 @@ interface SearchFilters {
   instantBook?: boolean;
   parkingType?: string;
   checkInType?: string;
+  propertyType?: string;
 }
 
 interface NightlyPriceBreakdown {
@@ -100,8 +101,10 @@ interface SearchResult {
   hasWorkspace: boolean;
   parkingType: string;
   checkInType: string;
+  propertyType: string;
   instantBook: boolean;
   hostVerified: boolean;
+  listingVerified: boolean;
   pricing: ListingPricing;
 }
 
@@ -332,12 +335,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           hasGym: listing.hasGym,
           hasPool: listing.hasPool,
           hasWorkspace: listing.hasWorkspace,
-          parkingType: listing.parkingType,
-          checkInType: listing.checkInType,
-          instantBook: listing.instantBook,
-          hostVerified: listing.hostVerified,
-          pricing: calculatedPricing,
-        };
+        parkingType: listing.parkingType,
+        checkInType: listing.checkInType,
+        propertyType: listing.propertyType,
+        instantBook: listing.instantBook,
+        hostVerified: listing.hostVerified,
+        listingVerified: listing.listingVerified,
+        pricing: calculatedPricing,
+      };
       })
       .filter((l): l is SearchResult => l !== null);
 
@@ -573,6 +578,15 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
     filters.checkInType = checkInType;
   }
 
+  const propertyType = event.queryStringParameters?.propertyType?.trim().toUpperCase();
+  if (propertyType) {
+    const validPropertyTypes = ['APARTMENT', 'HOUSE', 'VILLA', 'STUDIO', 'ROOM'];
+    if (!validPropertyTypes.includes(propertyType)) {
+      return { valid: false, error: 'Invalid propertyType' };
+    }
+    filters.propertyType = propertyType;
+  }
+
   return {
     valid: true,
     data: {
@@ -632,6 +646,9 @@ function applyFilters(
   }
   if (filters.checkInType) {
     filtered = filtered.filter((l) => l.checkInType === filters.checkInType);
+  }
+  if (filters.propertyType) {
+    filtered = filtered.filter((l) => l.propertyType === filters.propertyType);
   }
 
   return filtered;

@@ -187,9 +187,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       parkingType: listing.parking.type.key, // Store enum key only
       checkInType: listing.checkIn.type.key, // Store enum key only
+      propertyType: listing.propertyType.key, // Store enum key only (APARTMENT, HOUSE, VILLA, STUDIO, ROOM)
 
       instantBook: false, // Default to false
       hostVerified: hostVerified, // Sync from host profile
+      listingVerified: listing.listingVerified || false, // Sync from listing metadata
 
       createdAt: now,
       updatedAt: now,

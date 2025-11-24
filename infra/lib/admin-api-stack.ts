@@ -35,6 +35,8 @@ export interface AdminApiStackProps extends cdk.StackProps {
   publicListingsTable: dynamodb.Table;
   /** Public listing media table */
   publicListingMediaTable: dynamodb.Table;
+  /** Locations table */
+  locationsTable: dynamodb.Table;
 }
 
 /**
@@ -68,6 +70,9 @@ export class AdminApiStack extends cdk.Stack {
       emailTemplatesTable, 
       sendGridParamName, 
       frontendUrl,
+      publicListingsTable,
+      publicListingMediaTable,
+      locationsTable,
     } = props;
 
     // ========================================
@@ -256,6 +261,11 @@ export class AdminApiStack extends cdk.Stack {
     table.grantReadWriteData(this.adminListingsHandlerLambda);
     bucket.grantRead(this.adminListingsHandlerLambda);
     emailTemplatesTable.grantReadData(this.adminListingsHandlerLambda);
+    
+    // Grant access to public listings tables (for suspend operation - deletes listings from public tables)
+    publicListingsTable.grantReadWriteData(this.adminListingsHandlerLambda);
+    publicListingMediaTable.grantReadWriteData(this.adminListingsHandlerLambda);
+    locationsTable.grantReadWriteData(this.adminListingsHandlerLambda); // For decrementing listings count
     
     // Grant SSM parameter access for email operations (approve/reject)
     this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({

@@ -352,6 +352,9 @@ async function executeProfileSubmissionTransaction(
     // Update GSI2 for StatusIndex
     gsi2pk: 'HOST#VERIFICATION',
     gsi2sk: submittedAt,
+    // Update GSI6 for EmailIndex (for admin search by email)
+    gsi6pk: tokenRecord.profileData.email.toLowerCase(),
+    gsi6sk: `HOST#${hostId}`,
   };
 
   transactItems.push({
