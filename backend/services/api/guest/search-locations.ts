@@ -135,7 +135,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 6. Map to response format
     const results: LocationSearchResult[] = sortedLocations.map((loc) => ({
       locationId: loc.locationId,
+      slug: loc.slug,
       name: loc.name,
+      displayName: loc.displayName || loc.name, // Fallback to name for backward compatibility
+      locationType: loc.locationType || 'PLACE', // Fallback to PLACE for backward compatibility
     }));
 
     // 7. Build response

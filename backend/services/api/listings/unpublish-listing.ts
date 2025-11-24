@@ -67,11 +67,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       );
     }
 
-    // Step 3: Get location ID from listing
+    // Step 3: Get location IDs from listing
     const placeId = listing.mapboxMetadata?.place?.mapbox_id;
     if (!placeId) {
       return response.badRequest('Missing location information on listing');
     }
+
+    // Check if locality exists
+    const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
+    const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+    const localityName = hasLocality ? listing.mapboxMetadata.locality.name : null;
 
     // Step 4: Fetch all media records for this listing
     const mediaRecords = await fetchPublicListingMedia(listingId);
@@ -80,7 +85,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const now = new Date().toISOString();
     const transactItems: any[] = [];
 
-    // 5a. Delete PublicListing record
+    // 5a. Delete PublicListing record(s)
+    // Always delete PLACE listing record
     transactItems.push({
       Delete: {
         TableName: PUBLIC_LISTINGS_TABLE_NAME,
@@ -90,6 +96,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         },
       },
     });
+
+    // If locality exists, also delete LOCALITY listing record
+    if (hasLocality && localityId) {
+      transactItems.push({
+        Delete: {
+          TableName: PUBLIC_LISTINGS_TABLE_NAME,
+          Key: {
+            pk: `LOCATION#${localityId}`,
+            sk: `LISTING#${listingId}`,
+          },
+        },
+      });
+      console.log(`Deleting dual listing records: PLACE and LOCALITY (${localityName})`);
+    } else {
+      console.log(`Deleting single listing record: PLACE only`);
+    }
 
     // 5b. Delete all PublicListingMedia records
     mediaRecords.forEach((media) => {
@@ -138,6 +160,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Step 6b: Decrement location listings count for ALL name variants
     // This is done outside the transaction to avoid transaction size limits
     await decrementLocationListingsCount(placeId, now);
+    
+    // If locality exists, also decrement its listings count
+    if (hasLocality && localityId) {
+      await decrementLocationListingsCount(localityId, now);
+    }
 
     // Step 7: Return success
     const responseData: UnpublishListingResponse = {

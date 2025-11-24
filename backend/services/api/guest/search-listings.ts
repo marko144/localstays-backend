@@ -22,6 +22,7 @@ const MAIN_TABLE_NAME = process.env.MAIN_TABLE_NAME!;
 const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
 const AVAILABILITY_TABLE_NAME = process.env.AVAILABILITY_TABLE_NAME!;
 const RATE_LIMIT_TABLE_NAME = process.env.RATE_LIMIT_TABLE_NAME!;
+const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 
 // Configuration
 const MAX_RESULTS_LIMIT = parseInt(process.env.MAX_RESULTS_LIMIT || '100');
@@ -100,6 +101,7 @@ interface SearchResult {
   parkingType: string;
   checkInType: string;
   instantBook: boolean;
+  hostVerified: boolean;
   pricing: ListingPricing;
 }
 
@@ -135,7 +137,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const {
-      locationId,
+      locationIdentifier,
+      isSlug,
       checkIn,
       checkOut,
       adults,
@@ -145,6 +148,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       filters,
       decodedCursor,
     } = validationResult.data!;
+
+    // ========================================
+    // 2b. RESOLVE SLUG TO LOCATION ID (if needed)
+    // ========================================
+    let locationId: string;
+    
+    if (isSlug) {
+      const resolvedLocationId = await resolveLocationSlug(locationIdentifier);
+      if (!resolvedLocationId) {
+        return errorResponse(404, `Location not found: ${locationIdentifier}`);
+      }
+      locationId = resolvedLocationId;
+      console.log(`Resolved slug "${locationIdentifier}" to locationId: ${locationId}`);
+    } else {
+      locationId = locationIdentifier;
+    }
 
     // ========================================
     // 3. CHECK AUTHENTICATION (OPTIONAL)
@@ -161,7 +180,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 3. Extract the user ID from the validated token
     // For now, we'll just use the presence of a valid-looking header as a flag
     
-    console.log(`Search request - Location: ${locationId}, Dates: ${checkIn} to ${checkOut}, Guests: ${totalGuests}, Authenticated: ${isAuthenticated}`);
+    console.log(`Search request - Location: ${isSlug ? locationIdentifier + ' (slug)' : locationId}, Dates: ${checkIn} to ${checkOut}, Guests: ${totalGuests}, Authenticated: ${isAuthenticated}`);
 
     // ========================================
     // 4. QUERY PUBLIC LISTINGS
@@ -316,6 +335,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           parkingType: listing.parkingType,
           checkInType: listing.checkInType,
           instantBook: listing.instantBook,
+          hostVerified: listing.hostVerified,
           pricing: calculatedPricing,
         };
       })
@@ -360,7 +380,8 @@ interface ValidationResult {
   valid: boolean;
   error?: string;
   data?: {
-    locationId: string;
+    locationIdentifier: string; // Either slug or locationId
+    isSlug: boolean; // True if locationIdentifier is a slug
     checkIn: string;
     checkOut: string;
     adults: number;
@@ -372,15 +393,56 @@ interface ValidationResult {
   };
 }
 
-function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
-  // 1. locationId validation
-  const locationId = event.queryStringParameters?.locationId?.trim();
-  if (!locationId) {
-    return { valid: false, error: 'locationId is required' };
+/**
+ * Resolve location slug to locationId using SlugIndex GSI
+ * Returns null if slug not found
+ */
+async function resolveLocationSlug(slug: string): Promise<string | null> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        IndexName: 'SlugIndex',
+        KeyConditionExpression: 'slug = :slug',
+        ExpressionAttributeValues: {
+          ':slug': slug.toLowerCase(),
+        },
+        Limit: 1,
+      })
+    );
+
+    if (result.Items && result.Items.length > 0) {
+      return result.Items[0].locationId;
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Error resolving slug "${slug}":`, error);
+    return null;
   }
-  if (!/^[A-Za-z0-9_-]{10,50}$/.test(locationId)) {
+}
+
+function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
+  // 1. location validation (slug or locationId for backward compatibility)
+  const locationSlug = event.queryStringParameters?.location?.trim();
+  const locationId = event.queryStringParameters?.locationId?.trim();
+  
+  if (!locationSlug && !locationId) {
+    return { valid: false, error: 'location or locationId is required' };
+  }
+  
+  // Validate slug format if provided (e.g., "zlatibor-serbia")
+  if (locationSlug && !/^[a-z0-9-]{3,100}$/.test(locationSlug)) {
+    return { valid: false, error: 'Invalid location slug format' };
+  }
+  
+  // Validate locationId format if provided (backward compatibility)
+  if (locationId && !/^[A-Za-z0-9_-]{10,50}$/.test(locationId)) {
     return { valid: false, error: 'Invalid locationId format' };
   }
+  
+  // Prefer slug over locationId
+  const locationIdentifier = locationSlug || locationId;
 
   // 2. checkIn validation
   const checkIn = event.queryStringParameters?.checkIn?.trim();
@@ -495,7 +557,7 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
   // 9. Categorical filter validation
   const parkingType = event.queryStringParameters?.parkingType?.trim().toUpperCase();
   if (parkingType) {
-    const validParkingTypes = ['FREE', 'PAID', 'STREET', 'NONE'];
+    const validParkingTypes = ['NO_PARKING', 'FREE', 'PAID'];
     if (!validParkingTypes.includes(parkingType)) {
       return { valid: false, error: 'Invalid parkingType' };
     }
@@ -504,7 +566,7 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
 
   const checkInType = event.queryStringParameters?.checkInType?.trim().toUpperCase();
   if (checkInType) {
-    const validCheckInTypes = ['SELF_CHECKIN', 'HOST_GREETING', 'KEYPAD', 'LOCKBOX'];
+    const validCheckInTypes = ['SELF_CHECKIN', 'HOST_GREETING', 'LOCKBOX', 'DOORMAN'];
     if (!validCheckInTypes.includes(checkInType)) {
       return { valid: false, error: 'Invalid checkInType' };
     }
@@ -514,7 +576,8 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
   return {
     valid: true,
     data: {
-      locationId,
+      locationIdentifier, // Either slug or locationId
+      isSlug: !!locationSlug, // Flag to indicate if we need to resolve slug
       checkIn,
       checkOut,
       adults,

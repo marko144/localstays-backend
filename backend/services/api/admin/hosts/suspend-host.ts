@@ -18,6 +18,7 @@ import { Host, isIndividualHost } from '../../../types/host.types';
 import { ListingMetadata } from '../../../types/listing.types';
 import { SuspendHostRequest } from '../../../types/admin.types';
 import { sendHostSuspendedEmail } from '../../lib/email-service';
+import { syncHostVerificationStatus } from '../../../lib/host-verification-sync';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -303,7 +304,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Host ${hostId} suspended successfully`);
 
-    // 9. Send suspension email
+    // 9. Sync hostVerified flag for all ONLINE listings (if any remain)
+    // Note: Listings are already set to OFFLINE, but we sync anyway for consistency
+    try {
+      const syncCount = await syncHostVerificationStatus(hostId, 'SUSPENDED');
+      console.log(`✅ Synced hostVerified flag for ${syncCount} public listing record(s)`);
+    } catch (syncError) {
+      console.error('Failed to sync host verification status:', syncError);
+      // Don't fail the request if sync fails
+    }
+
+    // 10. Send suspension email
     const hostName = isIndividualHost(host)
       ? `${host.forename} ${host.surname}`
       : host.legalName || host.displayName || host.businessName || 'Host';
@@ -321,13 +332,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       // Don't fail the request if email fails
     }
 
-    // 10. Log admin action
+    // 11. Log admin action
     logAdminAction(user, 'SUSPEND_HOST', 'HOST', hostId, {
       suspendedReason,
       listingsSetOffline: listingsUpdatedCount,
     });
 
-    // 11. Return success response
+    // 12. Return success response
     return {
       statusCode: 200,
       headers: {

@@ -61,7 +61,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const subscription = subscriptionResult.Item;
 
     // 4. Verify ownership
-    if (subscription.userSub !== user.sub) {
+    if (subscription.userId !== user.sub) {
       return response.forbidden('You do not have permission to delete this subscription');
     }
 

@@ -17,23 +17,28 @@
  */
 export interface LocationRecord {
   // Primary key
-  pk: string;                    // "LOCATION#<mapboxPlaceId>"
+  pk: string;                    // "LOCATION#<mapboxPlaceId>" or "LOCATION#<mapboxLocalityId>"
   sk: string;                    // "NAME#<name>" (e.g., "NAME#Belgrade" or "NAME#Beograd")
   
   // Core fields
-  locationId: string;            // Canonical ID (same as mapboxPlaceId)
-  locationType: 'PLACE';         // Always "PLACE" for now
-  name: string;                  // Place name (e.g., "Zlatibor", "Belgrade", "Beograd")
+  locationId: string;            // Canonical ID (mapboxPlaceId or mapboxLocalityId)
+  locationType: 'PLACE' | 'LOCALITY';  // Location type
+  name: string;                  // Place or locality name (e.g., "Zlatibor", "Čajetina")
+  displayName: string;           // Display name for autocomplete (e.g., "Zlatibor" or "Čajetina, Zlatibor")
   regionName: string;            // Region name (e.g., "Zlatibor District")
   countryName: string;           // Country name (e.g., "Serbia")
   
+  // Parent reference (for LOCALITY only)
+  parentPlaceName?: string;      // Parent place name (e.g., "Zlatibor") - only for LOCALITY type
+  
   // Mapbox IDs
-  mapboxPlaceId: string;         // Mapbox place ID (same as locationId)
+  mapboxPlaceId: string;         // Mapbox place ID (always present, parent place for localities)
   mapboxRegionId: string;        // Mapbox region ID
+  mapboxLocalityId?: string;     // Mapbox locality ID (only for LOCALITY type)
   
   // Search & routing
-  slug: string;                  // URL-safe slug (e.g., "zlatibor-serbia")
-  searchName: string;            // Normalized search text (e.g., "zlatibor zlatibor district serbia")
+  slug: string;                  // URL-safe slug (e.g., "zlatibor-rs" or "cajetina-rs")
+  searchName: string;            // Normalized search text (e.g., "zlatibor zlatibor district")
   entityType: string;            // Always "LOCATION" - used as GSI partition key for search
   
   // Metrics
@@ -71,8 +76,11 @@ export interface GetLocationResponse {
  * Location search result for autocomplete
  */
 export interface LocationSearchResult {
-  locationId: string;  // Mapbox place ID
-  name: string;        // Display name (e.g., "Užice")
+  locationId: string;            // Mapbox place ID or locality ID
+  slug: string;                  // SEO-friendly slug (e.g., "zlatibor-rs" or "cajetina-rs")
+  name: string;                  // Raw name (e.g., "Zlatibor" or "Čajetina")
+  displayName: string;           // Display name for UI (e.g., "Zlatibor" or "Čajetina, Zlatibor")
+  locationType: 'PLACE' | 'LOCALITY';  // Location type indicator
 }
 
 /**

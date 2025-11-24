@@ -14,6 +14,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Host } from '../../../types/host.types';
+import { syncHostVerificationStatus } from '../../../lib/host-verification-sync';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -145,10 +146,19 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Host ${hostId} reinstated successfully`);
 
-    // 6. Log admin action
+    // 6. Sync hostVerified flag for all ONLINE listings (if any)
+    try {
+      const syncCount = await syncHostVerificationStatus(hostId, 'VERIFIED');
+      console.log(`✅ Synced hostVerified flag for ${syncCount} public listing record(s)`);
+    } catch (syncError) {
+      console.error('Failed to sync host verification status:', syncError);
+      // Don't fail the request if sync fails
+    }
+
+    // 7. Log admin action
     logAdminAction(user, 'REINSTATE_HOST', 'HOST', hostId);
 
-    // 7. Return success response
+    // 8. Return success response
     return {
       statusCode: 200,
       headers: {

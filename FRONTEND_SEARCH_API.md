@@ -457,6 +457,3 @@ interface SearchResponse {
 - **Tourist Tax**: Display separately, NOT included in `totalPrice`
 - **Members Pricing**: Only applies if user is authenticated AND host set members discount
 - **Cursor**: Opaque base64 string - don't parse it, just pass it back
-
-
-

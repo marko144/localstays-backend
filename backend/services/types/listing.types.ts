@@ -181,6 +181,10 @@ export interface ListingMetadata {
       mapbox_id: string;
       name: string;
     };
+    locality?: {
+      mapbox_id: string;
+      name: string;
+    };
   };
   
   // Capacity
@@ -435,6 +439,10 @@ export interface SubmitListingIntentRequest {
       mapbox_id: string;
       name: string;
     };
+    locality?: {
+      mapbox_id: string;
+      name: string;
+    };
   };
   capacity: {
     beds: number;
@@ -677,6 +685,10 @@ export interface UpdateListingMetadataRequest {
         name: string;
       };
       place?: {
+        mapbox_id: string;
+        name: string;
+      };
+      locality?: {
         mapbox_id: string;
         name: string;
       };

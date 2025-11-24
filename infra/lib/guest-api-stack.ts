@@ -245,6 +245,7 @@ export class GuestApiStack extends cdk.Stack {
 
     // Grant permissions
     table.grantReadData(searchListingsLambda); // For pricing matrix
+    locationsTable.grantReadData(searchListingsLambda); // For slug resolution
     publicListingsTable.grantReadData(searchListingsLambda);
     availabilityTable.grantReadData(searchListingsLambda);
     rateLimitTable.grantReadWriteData(searchListingsLambda);

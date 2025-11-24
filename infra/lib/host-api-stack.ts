@@ -65,7 +65,7 @@ export class HostApiStack extends cdk.Stack {
   public readonly hostAvailabilityHandlerLambda: nodejs.NodejsFunction;
   public readonly subscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly unsubscribeNotificationLambda: nodejs.NodejsFunction;
-  public readonly listSubscriptionsLambda: nodejs.NodejsFunction;
+  public readonly checkNotificationStatusLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: HostApiStackProps) {
     super(scope, id, props);
@@ -425,13 +425,13 @@ export class HostApiStack extends cdk.Stack {
       },
     });
 
-    // List user's push subscriptions
-    this.listSubscriptionsLambda = new nodejs.NodejsFunction(this, 'ListSubscriptionsLambda', {
+    // Check notification status for a device
+    this.checkNotificationStatusLambda = new nodejs.NodejsFunction(this, 'CheckNotificationStatusLambda', {
       ...commonLambdaProps,
-      functionName: `localstays-${stage}-list-subscriptions`,
-      entry: 'backend/services/api/notifications/list-subscriptions.ts',
+      functionName: `localstays-${stage}-check-notification-status`,
+      entry: 'backend/services/api/notifications/check-status.ts',
       handler: 'handler',
-      description: 'List push subscriptions for authenticated user',
+      description: 'Check notification status for a specific device',
       environment: {
         ...commonEnvironment,
         STAGE: stage,
@@ -441,7 +441,7 @@ export class HostApiStack extends cdk.Stack {
     // Grant DynamoDB permissions for notification lambdas
     table.grantReadWriteData(this.subscribeNotificationLambda);
     table.grantReadWriteData(this.unsubscribeNotificationLambda);
-    table.grantReadData(this.listSubscriptionsLambda);
+    table.grantReadData(this.checkNotificationStatusLambda);
 
     // Grant SSM parameter access for VAPID keys
     const vapidPolicyStatement = new iam.PolicyStatement({
@@ -908,11 +908,11 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
-    // GET /api/v1/notifications/subscriptions
-    const subscriptionsResource = notificationsResource.addResource('subscriptions');
-    subscriptionsResource.addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(this.listSubscriptionsLambda, { proxy: true }),
+    // POST /api/v1/notifications/status
+    const statusResource = notificationsResource.addResource('status');
+    statusResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.checkNotificationStatusLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

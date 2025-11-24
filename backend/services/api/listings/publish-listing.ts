@@ -65,18 +65,27 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Step 2: Fetch listing images
     const images = await fetchListingImages(listingId);
 
-    // Step 3: Validate listing eligibility
+    // Step 3: Fetch host profile to get verification status
+    const hostProfile = await fetchHostProfile(hostId);
+    if (!hostProfile) {
+      return response.internalError('Host profile not found', new Error('Missing host profile'));
+    }
+
+    const hostVerified = hostProfile.status === 'VERIFIED';
+    console.log(`Host verification status: ${hostProfile.status}, hostVerified: ${hostVerified}`);
+
+    // Step 4: Validate listing eligibility
     const validationError = validateListingForPublish(listing, images);
     if (validationError) {
       return response.badRequest(validationError);
     }
 
-    // Step 4: Check if already online
+    // Step 5: Check if already online
     if (listing.status === 'ONLINE') {
       return response.badRequest('Listing is already online');
     }
 
-    // Step 5: Extract location data
+    // Step 6: Extract location data
     const placeId = listing.mapboxMetadata!.place!.mapbox_id;
     const placeName = listing.mapboxMetadata!.place!.name;
     const regionName = listing.mapboxMetadata!.region!.name;
@@ -84,7 +93,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const countryName = listing.address.country;
     const countryCode = listing.address.countryCode;
 
-    // Step 6: Check/create location
+    // Check if locality exists
+    const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id && listing.mapboxMetadata?.locality?.name;
+    const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+    const localityName = hasLocality ? listing.mapboxMetadata.locality.name : null;
+
+    // Step 7: Check/create location(s)
+    // Always create/check PLACE location
     await ensureLocationExists({
       placeId,
       placeName,
@@ -92,9 +107,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       regionId,
       countryName,
       countryCode,
+      locationType: 'PLACE',
     });
 
-    // Step 7: Derive boolean filters from amenities
+    // If locality exists, also create/check LOCALITY location
+    if (hasLocality && localityId && localityName) {
+      await ensureLocationExists({
+        placeId: localityId,
+        placeName: localityName,
+        regionName: regionName,
+        regionId: regionId,
+        countryName: countryName,
+        countryCode: countryCode,
+        locationType: 'LOCALITY',
+        parentPlaceName: placeName, // Store parent place name for display
+        parentPlaceId: placeId, // Store parent place ID
+      });
+    }
+
+    // Step 8: Derive boolean filters from amenities
     const amenityKeys = listing.amenities?.map((a: any) => a.key) || [];
     const filters = {
       petsAllowed: listing.pets?.allowed || false,
@@ -106,33 +137,30 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       hasWorkspace: amenityKeys.includes('WORKSPACE'),
     };
 
-    // Step 8: Get primary image thumbnail
+    // Step 9: Get primary image thumbnail
     const primaryImage = images.find((img: any) => img.isPrimary);
     if (!primaryImage || !primaryImage.webpUrls?.thumbnail) {
       return response.badRequest('No primary image with thumbnail found');
     }
 
-    // Step 9: Generate short description
+    // Step 10: Generate short description
     const shortDescription =
       listing.description.length > 100
         ? listing.description.substring(0, 100).trim() + '...'
         : listing.description;
 
-    // Step 10: Sort images by displayOrder and prepare media records
+    // Step 11: Sort images by displayOrder and prepare media records
     const sortedImages = images.sort((a, b) => a.displayOrder - b.displayOrder);
     
-    // Step 11: Build transaction items
+    // Step 12: Build transaction items
     const now = new Date().toISOString();
     const transactItems: any[] = [];
 
-    // 11a. Create PublicListing record
-    const publicListing = {
-      pk: `LOCATION#${placeId}`,
-      sk: `LISTING#${listingId}`,
-
+    // 11a. Create PublicListing record(s)
+    // Base listing data shared by both PLACE and LOCALITY records
+    const basePublicListing = {
       listingId: listingId,
       hostId: hostId,
-      locationId: placeId,
 
       name: listing.listingName,
       shortDescription: shortDescription,
@@ -161,17 +189,50 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       checkInType: listing.checkIn.type.key, // Store enum key only
 
       instantBook: false, // Default to false
+      hostVerified: hostVerified, // Sync from host profile
 
       createdAt: now,
       updatedAt: now,
     };
 
+    // Create PLACE listing record (always)
+    const placePublicListing = {
+      ...basePublicListing,
+      pk: `LOCATION#${placeId}`,
+      sk: `LISTING#${listingId}`,
+      locationId: placeId,
+      locationType: 'PLACE' as const,
+    };
+
     transactItems.push({
       Put: {
         TableName: PUBLIC_LISTINGS_TABLE_NAME,
-        Item: publicListing,
+        Item: placePublicListing,
       },
     });
+
+    // Create LOCALITY listing record (if locality exists)
+    if (hasLocality && localityId && localityName) {
+      const localityPublicListing = {
+        ...basePublicListing,
+        pk: `LOCATION#${localityId}`,
+        sk: `LISTING#${listingId}`,
+        locationId: localityId,
+        locationType: 'LOCALITY' as const,
+        localityName: localityName, // Add locality name for display
+      };
+
+      transactItems.push({
+        Put: {
+          TableName: PUBLIC_LISTINGS_TABLE_NAME,
+          Item: localityPublicListing,
+        },
+      });
+
+      console.log(`Creating dual listing records: PLACE (${placeName}) and LOCALITY (${localityName})`);
+    } else {
+      console.log(`Creating single listing record: PLACE (${placeName}) only`);
+    }
 
     // 11b. Create PublicListingMedia records for all images
     sortedImages.forEach((image, index) => {
@@ -235,6 +296,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // This is done outside the transaction to avoid transaction size limits
     // and because it's not critical if it fails (can be fixed with a script)
     await incrementLocationListingsCount(placeId, now);
+    
+    // If locality exists, also increment its listings count
+    if (hasLocality && localityId) {
+      await incrementLocationListingsCount(localityId, now);
+    }
 
     // Step 13: Return success
     const responseData: PublishListingResponse = {
@@ -261,6 +327,23 @@ async function fetchListing(hostId: string, listingId: string): Promise<any | nu
       Key: {
         pk: `HOST#${hostId}`,
         sk: `LISTING_META#${listingId}`,
+      },
+    })
+  );
+
+  return result.Item || null;
+}
+
+/**
+ * Fetch host profile to get verification status
+ */
+async function fetchHostProfile(hostId: string): Promise<any | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        pk: `HOST#${hostId}`,
+        sk: 'META',
       },
     })
   );
@@ -361,8 +444,21 @@ async function ensureLocationExists(locationData: {
   regionId: string;
   countryName: string;
   countryCode: string;
+  locationType: 'PLACE' | 'LOCALITY';
+  parentPlaceName?: string;
+  parentPlaceId?: string;
 }): Promise<void> {
-  const { placeId, placeName, regionName, regionId, countryName, countryCode } = locationData;
+  const { 
+    placeId, 
+    placeName, 
+    regionName, 
+    regionId, 
+    countryName, 
+    countryCode, 
+    locationType,
+    parentPlaceName,
+    parentPlaceId,
+  } = locationData;
 
   // Check if this specific name variant exists
   const existingLocation = await docClient.send(
@@ -398,19 +494,28 @@ async function ensureLocationExists(locationData: {
   const slug = generateLocationSlug(placeName, countryCode);
   const searchName = generateSearchName(placeName, regionName);
 
+  // Generate displayName based on locationType
+  let displayName: string;
+  if (locationType === 'LOCALITY' && parentPlaceName) {
+    displayName = `${placeName}, ${parentPlaceName}`;
+  } else {
+    displayName = placeName;
+  }
+
   // Create new location name variant
   const now = new Date().toISOString();
-  const newLocation = {
+  const newLocation: any = {
     pk: `LOCATION#${placeId}`,
     sk: `NAME#${placeName}`,
 
     locationId: placeId,
-    locationType: 'PLACE',
+    locationType: locationType,
     name: placeName,
+    displayName: displayName,
     regionName: regionName,
     countryName: countryName,
 
-    mapboxPlaceId: placeId,
+    mapboxPlaceId: locationType === 'PLACE' ? placeId : (parentPlaceId || placeId),
     mapboxRegionId: regionId,
 
     slug: slug,
@@ -422,6 +527,14 @@ async function ensureLocationExists(locationData: {
     createdAt: now,
     updatedAt: now,
   };
+
+  // Add optional fields for LOCALITY
+  if (locationType === 'LOCALITY') {
+    newLocation.mapboxLocalityId = placeId;
+    if (parentPlaceName) {
+      newLocation.parentPlaceName = parentPlaceName;
+    }
+  }
 
   await docClient.send(
     new PutCommand({

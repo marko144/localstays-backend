@@ -15,19 +15,21 @@
  */
 export interface PublicListingRecord {
   // Keys
-  pk: string; // LOCATION#<locationId>
+  pk: string; // LOCATION#<locationId> (place or locality)
   sk: string; // LISTING#<listingId>
 
   // IDs
   listingId: string;
   hostId: string; // Host who owns this listing (needed for pricing lookup)
-  locationId: string; // Mapbox place ID
+  locationId: string; // Mapbox place ID or locality ID
+  locationType: 'PLACE' | 'LOCALITY'; // Location type indicator
 
   // Display information
   name: string;
   shortDescription: string; // First 100 chars of description
-  placeName: string; // From Locations table
+  placeName: string; // Always the place name (parent for localities)
   regionName: string; // From Locations table
+  localityName?: string; // Locality name (only if listing has a locality)
 
   // Capacity
   maxGuests: number;
@@ -57,6 +59,9 @@ export interface PublicListingRecord {
 
   // Booking behaviour
   instantBook: boolean;
+
+  // Host verification status
+  hostVerified: boolean; // True if host status is VERIFIED
 
   // Timestamps
   createdAt: string; // ISO 8601
@@ -125,6 +130,7 @@ export interface PublicListingResponse {
   parkingType: string;
   checkInType: string;
   instantBook: boolean;
+  hostVerified: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -164,6 +170,7 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     parkingType: record.parkingType,
     checkInType: record.checkInType,
     instantBook: record.instantBook,
+    hostVerified: record.hostVerified,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

@@ -205,22 +205,36 @@ export async function getHostAvailability(
 
 /**
  * Block dates for a listing
+ * 
+ * @param endDate - Optional. If not provided, defaults to startDate (single day block)
  */
 export async function blockDates(
   docClient: DynamoDBDocumentClient,
   listingId: string,
   hostId: string,
   startDate: string,
-  endDate: string
+  endDate?: string
 ): Promise<{ blockId: string; nightsBlocked: string[] }> {
-  // Validate date range
-  const validation = validateDateRange(startDate, endDate);
-  if (!validation.valid) {
-    throw new Error(validation.error);
+  // Default endDate to startDate for single-day blocks
+  const effectiveEndDate = endDate || startDate;
+
+  // Validate single date or date range
+  if (startDate === effectiveEndDate) {
+    // Single date - just validate the one date
+    const validation = validateDate(startDate);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+  } else {
+    // Date range - validate the range
+    const validation = validateDateRange(startDate, effectiveEndDate);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
   }
 
   // Generate dates (INCLUSIVE for host blocks - all selected dates should be blocked)
-  const nights = generateDatesInclusive(startDate, endDate);
+  const nights = generateDatesInclusive(startDate, effectiveEndDate);
 
   // Check for conflicts
   const { available, conflicts } = await checkAvailability(docClient, listingId, nights);
@@ -282,22 +296,36 @@ export async function blockDates(
 
 /**
  * Unblock a date range for a listing
+ * 
+ * @param endDate - Optional. If not provided, defaults to startDate (single day unblock)
  */
 export async function unblockDateRange(
   docClient: DynamoDBDocumentClient,
   listingId: string,
   hostId: string,
   startDate: string,
-  endDate: string
+  endDate?: string
 ): Promise<{ nightsUnblocked: string[] }> {
-  // Validate date range
-  const validation = validateDateRange(startDate, endDate);
-  if (!validation.valid) {
-    throw new Error(validation.error);
+  // Default endDate to startDate for single-day unblocks
+  const effectiveEndDate = endDate || startDate;
+
+  // Validate single date or date range
+  if (startDate === effectiveEndDate) {
+    // Single date - just validate the one date
+    const validation = validateDate(startDate);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+  } else {
+    // Date range - validate the range
+    const validation = validateDateRange(startDate, effectiveEndDate);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
   }
 
   // Generate dates to unblock (INCLUSIVE for host blocks)
-  const nights = generateDatesInclusive(startDate, endDate);
+  const nights = generateDatesInclusive(startDate, effectiveEndDate);
 
   // Query existing records for these dates to verify they're HOST_CLOSED blocks
   const pk = buildAvailabilityPK(listingId);

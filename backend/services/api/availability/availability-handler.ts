@@ -171,7 +171,9 @@ async function handleGetListingAvailability(event: APIGatewayProxyEvent): Promis
 /**
  * Handler: Block dates for listing
  * POST /api/v1/hosts/{hostId}/listings/{listingId}/availability/block
- * Body: { startDate: "2025-01-10", endDate: "2025-01-15" }
+ * Body: { startDate: "2025-01-10", endDate?: "2025-01-15" }
+ * 
+ * endDate is optional - if not provided, only startDate will be blocked (single day)
  */
 async function handleBlockDates(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
@@ -197,22 +199,26 @@ async function handleBlockDates(event: APIGatewayProxyEvent): Promise<APIGateway
     const body = JSON.parse(event.body);
     const { startDate, endDate } = body;
 
-    if (!startDate || !endDate) {
-      return response.badRequest('startDate and endDate are required');
+    if (!startDate) {
+      return response.badRequest('startDate is required');
     }
 
-    console.log(`Blocking dates for listing ${listingId}`, { startDate, endDate });
+    console.log(`Blocking dates for listing ${listingId}`, { 
+      startDate, 
+      endDate: endDate || startDate,
+      isSingleDay: !endDate 
+    });
 
-    // 4. Block dates
+    // 4. Block dates (endDate is optional, defaults to startDate in service)
     const result = await blockDates(docClient, listingId, hostId, startDate, endDate);
 
     return response.success({
-      message: 'Dates blocked successfully',
+      message: endDate ? 'Date range blocked successfully' : 'Date blocked successfully',
       blockId: result.blockId,
       listingId,
       dateRange: {
         startDate,
-        endDate,
+        endDate: endDate || startDate,
       },
       nightsBlocked: result.nightsBlocked,
       totalNights: result.nightsBlocked.length,
@@ -244,7 +250,9 @@ async function handleBlockDates(event: APIGatewayProxyEvent): Promise<APIGateway
 /**
  * Handler: Unblock date range for listing
  * DELETE /api/v1/hosts/{hostId}/listings/{listingId}/availability/unblock
- * Body: { startDate: "2025-01-10", endDate: "2025-01-15" }
+ * Body: { startDate: "2025-01-10", endDate?: "2025-01-15" }
+ * 
+ * endDate is optional - if not provided, only startDate will be unblocked (single day)
  */
 async function handleUnblockDates(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
@@ -270,21 +278,25 @@ async function handleUnblockDates(event: APIGatewayProxyEvent): Promise<APIGatew
     const body = JSON.parse(event.body);
     const { startDate, endDate } = body;
 
-    if (!startDate || !endDate) {
-      return response.badRequest('startDate and endDate are required');
+    if (!startDate) {
+      return response.badRequest('startDate is required');
     }
 
-    console.log(`Unblocking date range for listing ${listingId}`, { startDate, endDate });
+    console.log(`Unblocking dates for listing ${listingId}`, { 
+      startDate, 
+      endDate: endDate || startDate,
+      isSingleDay: !endDate 
+    });
 
-    // 4. Unblock date range
+    // 4. Unblock date range (endDate is optional, defaults to startDate in service)
     const result = await unblockDateRange(docClient, listingId, hostId, startDate, endDate);
 
     return response.success({
-      message: 'Dates unblocked successfully',
+      message: endDate ? 'Date range unblocked successfully' : 'Date unblocked successfully',
       listingId,
       dateRange: {
         startDate,
-        endDate,
+        endDate: endDate || startDate,
       },
       nightsUnblocked: result.nightsUnblocked,
       totalNights: result.nightsUnblocked.length,

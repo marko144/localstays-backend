@@ -800,7 +800,24 @@ async function updateListingWithTransaction(
 
   const currentListing = listingResult.Item;
 
-  // Step 2: Fetch current amenities (will be replaced if amenityKeys is provided)
+  // Step 2: Fetch host profile to get verification status
+  const hostProfileResult = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        pk: `HOST#${hostId}`,
+        sk: 'META',
+      },
+    })
+  );
+
+  if (!hostProfileResult.Item) {
+    throw new Error('Host profile not found');
+  }
+
+  const hostVerified = hostProfileResult.Item.status === 'VERIFIED';
+
+  // Step 3: Fetch current amenities (will be replaced if amenityKeys is provided)
   const amenitiesResult = await docClient.send(
     new GetCommand({
       TableName: TABLE_NAME,
@@ -818,7 +835,7 @@ async function updateListingWithTransaction(
     amenities = await fetchAmenityTranslations(amenityKeys);
   }
 
-  // Step 3: Fetch images to get primary thumbnail
+  // Step 4: Fetch images to get primary thumbnail
   const imagesResult = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
@@ -843,7 +860,7 @@ async function updateListingWithTransaction(
     throw new Error('No primary image with thumbnail found');
   }
 
-  // Step 4: Build the updated listing object by merging current data with updates
+  // Step 5: Build the updated listing object by merging current data with updates
   // We need to simulate what the listing will look like after the update
   const updatedListing = { ...currentListing };
   
@@ -858,7 +875,7 @@ async function updateListingWithTransaction(
     }
   }
 
-  // Step 5: Extract location data
+  // Step 6: Extract location data
   const placeId = updatedListing.mapboxMetadata?.place?.mapbox_id;
   const placeName = updatedListing.mapboxMetadata?.place?.name;
   const regionName = updatedListing.mapboxMetadata?.region?.name;
@@ -867,7 +884,12 @@ async function updateListingWithTransaction(
     throw new Error('Missing required location metadata');
   }
 
-  // Step 6: Derive boolean filters from amenities
+  // Check if locality exists
+  const hasLocality = updatedListing.mapboxMetadata?.locality?.mapbox_id && updatedListing.mapboxMetadata?.locality?.name;
+  const localityId = hasLocality ? updatedListing.mapboxMetadata.locality.mapbox_id : null;
+  const localityName = hasLocality ? updatedListing.mapboxMetadata.locality.name : null;
+
+  // Step 7: Derive boolean filters from amenities
   const amenityKeyList = amenities.map((a: any) => a.key);
   const filters = {
     petsAllowed: updatedListing.pets?.allowed || false,
@@ -879,20 +901,16 @@ async function updateListingWithTransaction(
     hasWorkspace: amenityKeyList.includes('WORKSPACE'),
   };
 
-  // Step 7: Generate short description
+  // Step 8: Generate short description
   const shortDescription =
     updatedListing.description.length > 100
       ? updatedListing.description.substring(0, 100).trim() + '...'
       : updatedListing.description;
 
-  // Step 8: Build PublicListing record
-  const publicListing = {
-    pk: `LOCATION#${placeId}`,
-    sk: `LISTING#${listingId}`,
-
+  // Step 9: Build base PublicListing data (shared by PLACE and LOCALITY)
+  const basePublicListing = {
     listingId: listingId,
     hostId: hostId,
-    locationId: placeId,
 
     name: updatedListing.listingName,
     shortDescription: shortDescription,
@@ -921,16 +939,26 @@ async function updateListingWithTransaction(
     checkInType: updatedListing.checkIn.type.key,
 
     instantBook: false, // Default to false
+    hostVerified: hostVerified, // Sync from host profile
 
     // Preserve original createdAt, update updatedAt
     createdAt: currentListing.createdAt,
     updatedAt: now,
   };
 
-  // Step 9: Build transaction items
+  // Create PLACE listing record (always)
+  const placePublicListing = {
+    ...basePublicListing,
+    pk: `LOCATION#${placeId}`,
+    sk: `LISTING#${listingId}`,
+    locationId: placeId,
+    locationType: 'PLACE' as const,
+  };
+
+  // Step 10: Build transaction items
   const transactItems: any[] = [];
 
-  // 9a. Update listing metadata (if any fields besides updatedAt)
+  // 10a. Update listing metadata (if any fields besides updatedAt)
   if (updateExpressionParts.length > 1) {
     transactItems.push({
       Update: {
@@ -946,7 +974,7 @@ async function updateListingWithTransaction(
     });
   }
 
-  // 9b. Update amenities (if provided)
+  // 10b. Update amenities (if provided)
   if (amenityKeys !== undefined) {
     transactItems.push({
       Put: {
@@ -963,13 +991,33 @@ async function updateListingWithTransaction(
     });
   }
 
-  // 9c. Update PublicListing record
+  // 10c. Update PublicListing record(s)
+  // Always update PLACE record
   transactItems.push({
     Put: {
       TableName: PUBLIC_LISTINGS_TABLE_NAME,
-      Item: publicListing,
+      Item: placePublicListing,
     },
   });
+
+  // Update LOCALITY record (if exists)
+  if (hasLocality && localityId && localityName) {
+    const localityPublicListing = {
+      ...basePublicListing,
+      pk: `LOCATION#${localityId}`,
+      sk: `LISTING#${listingId}`,
+      locationId: localityId,
+      locationType: 'LOCALITY' as const,
+      localityName: localityName,
+    };
+
+    transactItems.push({
+      Put: {
+        TableName: PUBLIC_LISTINGS_TABLE_NAME,
+        Item: localityPublicListing,
+      },
+    });
+  }
 
   // Step 10: Execute transaction (all succeed or all fail)
   console.log(`Executing transaction with ${transactItems.length} items (main table + PublicListings)`);

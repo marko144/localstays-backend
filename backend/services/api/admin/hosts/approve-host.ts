@@ -14,6 +14,7 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendHostProfileApprovedEmail } from '../../lib/email-service';
+import { syncHostVerificationStatus } from '../../../lib/host-verification-sync';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -138,7 +139,16 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Host ${hostId} approved successfully`);
 
-    // 6. Send approval email
+    // 6. Sync hostVerified flag for all ONLINE listings
+    try {
+      const syncCount = await syncHostVerificationStatus(hostId, 'VERIFIED');
+      console.log(`✅ Synced hostVerified flag for ${syncCount} public listing record(s)`);
+    } catch (syncError) {
+      console.error('Failed to sync host verification status:', syncError);
+      // Don't fail the request if sync fails - listings will be updated on next publish/update
+    }
+
+    // 7. Send approval email
     const hostName = isIndividualHost(host)
       ? `${host.forename} ${host.surname}`
       : host.legalName || host.displayName || host.businessName || 'Host';
@@ -155,10 +165,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       // Don't fail the request if email fails
     }
 
-    // 7. Log admin action
+    // 8. Log admin action
     logAdminAction(user, 'APPROVE_HOST', 'HOST', hostId);
 
-    // 8. Return success response
+    // 9. Return success response
     return {
       statusCode: 200,
       headers: {
