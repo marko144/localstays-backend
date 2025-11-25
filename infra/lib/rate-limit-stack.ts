@@ -40,11 +40,14 @@ export class RateLimitStack extends cdk.Stack {
       // TTL for automatic cleanup of hourly records
       timeToLiveAttribute: 'ttl',
       
-      // Encryption at rest (same as main table)
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      encryption: dynamodb.TableEncryption.DEFAULT,
       
       // NO point-in-time recovery (data is disposable, saves cost)
-      pointInTimeRecovery: false,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: false,
+      },
       
       // Removal policy: DESTROY even in prod (rate limit data is disposable)
       removalPolicy: cdk.RemovalPolicy.DESTROY,

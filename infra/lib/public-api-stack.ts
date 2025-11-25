@@ -188,10 +188,15 @@ export class PublicApiStack extends cdk.Stack {
         target: 'es2022',
         externalModules: ['@aws-sdk/*'],
       },
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
     };
+    
+    // Log retention configuration (applied per Lambda)
+    const logRetentionDays = stage === 'prod' 
+      ? logs.RetentionDays.ONE_MONTH 
+      : logs.RetentionDays.ONE_WEEK;
+    const logRemovalPolicy = stage === 'prod' 
+      ? cdk.RemovalPolicy.RETAIN 
+      : cdk.RemovalPolicy.DESTROY;
 
     // ========================================
     // RATE LIMIT LAMBDA (GEOCODING)
@@ -206,6 +211,11 @@ export class PublicApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Check and increment geocoding rate limit atomically',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'CheckAndIncrementRateLimitLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-check-increment-rate-limit`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions

@@ -220,10 +220,15 @@ export class HostApiStack extends cdk.Stack {
         target: 'es2022',
         externalModules: ['@aws-sdk/*'], // Only AWS SDK is external (available in Lambda runtime)
       },
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
     };
+    
+    // Log retention configuration (applied per Lambda)
+    const logRetentionDays = stage === 'prod' 
+      ? logs.RetentionDays.ONE_MONTH 
+      : logs.RetentionDays.ONE_WEEK;
+    const logRemovalPolicy = stage === 'prod' 
+      ? cdk.RemovalPolicy.RETAIN 
+      : cdk.RemovalPolicy.DESTROY;
 
     // ========================================
     // HOST PROFILE LAMBDA (CONSOLIDATED)
@@ -235,6 +240,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Consolidated: Host profile operations (submit-intent, confirm-submission, update-rejected, get-profile)',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'HostProfileHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-host-profile-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (read + write for all operations)
@@ -273,6 +283,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Retrieve host subscription details and entitlements',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'GetSubscriptionLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-get-subscription`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (read-only)
@@ -288,6 +303,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Consolidated: Host listings operations (get-metadata, submit-intent, confirm-submission, list, get, delete)',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'HostListingsHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-host-listings-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (read + write for all operations)
@@ -325,6 +345,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Publish an APPROVED or OFFLINE listing to PublicListings table',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'PublishListingLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-publish-listing`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (least privilege)
@@ -343,6 +368,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Unpublish an ONLINE listing from PublicListings table',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'UnpublishListingLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-unpublish-listing`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (least privilege)
@@ -361,6 +391,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Consolidated: Host availability operations (get host availability, get listing availability, block dates, unblock dates)',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'HostAvailabilityHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-host-availability-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions
@@ -377,6 +412,11 @@ export class HostApiStack extends cdk.Stack {
       handler: 'handler',
       description: 'Consolidated: Host requests operations (list, get, submit-intent, confirm-submission, video, verification)',
       environment: commonEnvironment,
+      logGroup: new logs.LogGroup(this, 'HostRequestsHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-host-requests-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions (read + write for all operations)
@@ -410,6 +450,11 @@ export class HostApiStack extends cdk.Stack {
         ...commonEnvironment,
         STAGE: stage,
       },
+      logGroup: new logs.LogGroup(this, 'SubscribeNotificationLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-subscribe-notification`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Unsubscribe from push notifications
@@ -423,6 +468,11 @@ export class HostApiStack extends cdk.Stack {
         ...commonEnvironment,
         STAGE: stage,
       },
+      logGroup: new logs.LogGroup(this, 'UnsubscribeNotificationLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-unsubscribe-notification`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Check notification status for a device
@@ -436,6 +486,11 @@ export class HostApiStack extends cdk.Stack {
         ...commonEnvironment,
         STAGE: stage,
       },
+      logGroup: new logs.LogGroup(this, 'CheckNotificationStatusLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-check-notification-status`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
     });
 
     // Grant DynamoDB permissions for notification lambdas

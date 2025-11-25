@@ -17,6 +17,11 @@ export interface DataStackProps extends cdk.StackProps {
 /**
  * Stack for DynamoDB tables and data layer infrastructure
  * Implements single-table design pattern for Localstays platform
+ * 
+ * ENCRYPTION POLICY:
+ * All tables use TableEncryption.DEFAULT (AWS-owned keys) to avoid KMS API charges.
+ * This provides the same security as AWS_MANAGED but with zero KMS costs.
+ * See DYNAMODB_ENCRYPTION_POLICY.md for details.
  */
 export class DataStack extends cdk.Stack {
   public readonly table: dynamodb.Table;
@@ -44,7 +49,9 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       
       // Point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       
       // TTL attribute for automatic item expiration
       // Used for: submission tokens, temporary sessions, expired documents
@@ -56,8 +63,11 @@ export class DataStack extends cdk.Stack {
       // Enable deletion protection in prod
       deletionProtection: stage === 'prod',
       
-      // Encryption at rest using AWS managed keys
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      // DEFAULT = AWS-owned keys (free, no KMS calls)
+      // AWS_MANAGED = AWS-managed KMS key (charges per API call)
+      encryption: dynamodb.TableEncryption.DEFAULT,
       
       // Stream configuration for future event processing
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
@@ -170,7 +180,9 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       
       // Point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       
       // Environment-specific removal policy
       removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -178,8 +190,9 @@ export class DataStack extends cdk.Stack {
       // Enable deletion protection in prod
       deletionProtection: stage === 'prod',
       
-      // Encryption at rest using AWS managed keys
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      encryption: dynamodb.TableEncryption.DEFAULT,
     });
 
     // GSI for slug-based lookups (e.g., "zlatibor-serbia")
@@ -227,7 +240,9 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       
       // Point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       
       // Environment-specific removal policy
       removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -235,8 +250,9 @@ export class DataStack extends cdk.Stack {
       // Enable deletion protection in prod
       deletionProtection: stage === 'prod',
       
-      // Encryption at rest using AWS managed keys
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      encryption: dynamodb.TableEncryption.DEFAULT,
     });
 
     // ========================================
@@ -258,7 +274,9 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       
       // Point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       
       // Environment-specific removal policy
       removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -266,8 +284,9 @@ export class DataStack extends cdk.Stack {
       // Enable deletion protection in prod
       deletionProtection: stage === 'prod',
       
-      // Encryption at rest using AWS managed keys
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      encryption: dynamodb.TableEncryption.DEFAULT,
     });
 
     // ========================================
@@ -291,7 +310,9 @@ export class DataStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       
       // Point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       
       // Environment-specific removal policy
       removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -299,8 +320,9 @@ export class DataStack extends cdk.Stack {
       // Enable deletion protection in prod
       deletionProtection: stage === 'prod',
       
-      // Encryption at rest using AWS managed keys
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      // Note: Use DEFAULT instead of AWS_MANAGED to avoid KMS API charges
+      encryption: dynamodb.TableEncryption.DEFAULT,
     });
 
     // GSI1: Query all availability for a host across all their listings
@@ -339,9 +361,15 @@ export class DataStack extends cdk.Stack {
         target: 'es2022',
         externalModules: ['@aws-sdk/*'],
       },
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
+      logGroup: new logs.LogGroup(this, 'SeedHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-db-seed`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
     });
 
     // Grant permissions to write to DynamoDB
@@ -350,9 +378,15 @@ export class DataStack extends cdk.Stack {
     // Create custom resource provider
     const seedProvider = new cr.Provider(this, 'SeedProvider', {
       onEventHandler: seedLambda,
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
+      logGroup: new logs.LogGroup(this, 'SeedProviderLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-seed-provider`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
     });
 
     // Create custom resource (triggers seeding on stack create)
@@ -386,9 +420,15 @@ export class DataStack extends cdk.Stack {
         target: 'es2022',
         externalModules: ['@aws-sdk/*'],
       },
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
+      logGroup: new logs.LogGroup(this, 'SeedLocationVariantsHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-location-variants-seed`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
     });
 
     // Grant permissions to write to Locations table
@@ -398,9 +438,15 @@ export class DataStack extends cdk.Stack {
     // Create custom resource provider
     const seedLocationVariantsProvider = new cr.Provider(this, 'SeedLocationVariantsProvider', {
       onEventHandler: seedLocationVariantsLambda,
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
+      logGroup: new logs.LogGroup(this, 'SeedLocationVariantsProviderLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-location-variants-provider`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
     });
 
     // Create custom resource (triggers seeding on stack create/update)

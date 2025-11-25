@@ -212,10 +212,15 @@ export class AdminApiStack extends cdk.Stack {
         target: 'es2022',
         externalModules: ['@aws-sdk/*'],
       },
-      logRetention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_MONTH 
-        : logs.RetentionDays.ONE_WEEK,
     };
+    
+    // Log retention configuration (applied per Lambda)
+    const logRetentionDays = stage === 'prod' 
+      ? logs.RetentionDays.ONE_MONTH 
+      : logs.RetentionDays.ONE_WEEK;
+    const logRemovalPolicy = stage === 'prod' 
+      ? cdk.RemovalPolicy.RETAIN 
+      : cdk.RemovalPolicy.DESTROY;
 
     // ========================================
     // ADMIN HOST LAMBDA (CONSOLIDATED)
