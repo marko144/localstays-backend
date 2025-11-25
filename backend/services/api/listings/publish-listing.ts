@@ -192,6 +192,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       instantBook: false, // Default to false
       hostVerified: hostVerified, // Sync from host profile
       listingVerified: listing.listingVerified || false, // Sync from listing metadata
+      officialStarRating: listing.officialStarRating || undefined, // Sync from listing metadata
 
       createdAt: now,
       updatedAt: now,

@@ -343,7 +343,7 @@ export class SharedServicesStack extends cdk.Stack {
     this.verificationProcessorLambda = new nodejs.NodejsFunction(this, 'VerificationProcessorLambda', {
       functionName: `${stage}-verification-processor`,
       description: 'Process verification files: malware scanning + move to final destination',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       entry: 'backend/services/verification-processor/index.js',
       handler: 'handler',

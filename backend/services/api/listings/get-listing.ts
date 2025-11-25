@@ -156,6 +156,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         approvedAt: listing.approvedAt,
         rejectedAt: listing.rejectedAt,
         rejectionReason: listing.rejectionReason,
+        rightToListDocumentNumber: listing.rightToListDocumentNumber,
+        officialStarRating: listing.officialStarRating,
       },
       images,
       amenities,

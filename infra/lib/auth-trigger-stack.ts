@@ -55,7 +55,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'CustomEmailSenderLambda',
       {
         functionName: `localstays-${stage}-custom-email-sender`,
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -136,7 +136,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PreSignUpLambda',
       {
         functionName: `localstays-${stage}-pre-signup`,
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -195,7 +195,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PostConfirmationLambda',
       {
         functionName: `localstays-${stage}-post-confirmation`,
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: 'handler',
         entry: path.join(
           __dirname,
@@ -276,7 +276,7 @@ export class AuthTriggerStack extends cdk.Stack {
       'PreTokenGenerationLambda',
       {
         functionName: `localstays-${stage}-pre-token-generation`,
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: 'handler',
         entry: path.join(
           __dirname,

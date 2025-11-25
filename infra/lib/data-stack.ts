@@ -347,7 +347,7 @@ export class DataStack extends cdk.Stack {
     // Lambda function to seed roles and enums
     const seedLambda = new nodejs.NodejsFunction(this, 'SeedHandler', {
       functionName: `localstays-${stage}-db-seed`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       entry: 'backend/services/seed/seed-handler.ts',
       handler: 'handler',
       timeout: cdk.Duration.minutes(2),
@@ -406,7 +406,7 @@ export class DataStack extends cdk.Stack {
     // Lambda function to seed location name variants (e.g., Belgrade/Beograd)
     const seedLocationVariantsLambda = new nodejs.NodejsFunction(this, 'SeedLocationVariantsHandler', {
       functionName: `localstays-${stage}-location-variants-seed`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       entry: 'backend/services/seed/seed-location-variants.ts',
       handler: 'handler',
       timeout: cdk.Duration.minutes(2),

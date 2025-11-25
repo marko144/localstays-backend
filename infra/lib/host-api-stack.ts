@@ -211,7 +211,7 @@ export class HostApiStack extends cdk.Stack {
 
     // Common Lambda configuration
     const commonLambdaProps = {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
       bundling: {

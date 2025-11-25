@@ -56,7 +56,7 @@ export class EmailTemplateStack extends cdk.Stack {
       functionName: `localstays-${stage}-seed-email-templates`,
       entry: 'backend/services/seed/seed-email-templates-handler.ts',
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: {

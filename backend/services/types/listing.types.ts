@@ -241,6 +241,7 @@ export interface ListingMetadata {
   
   // Verification Document Details
   rightToListDocumentNumber?: string;  // Optional document reference number (max 30 chars)
+  officialStarRating?: number;         // Optional official star rating (1-5) from local authority
   
   // Submission tracking
   submissionToken?: string;
@@ -486,6 +487,7 @@ export interface SubmitListingIntentRequest {
     caption?: string;
   }>;
   rightToListDocumentNumber?: string;  // Optional document reference number (max 30 chars)
+  officialStarRating?: number;         // Optional official star rating (1-5) from local authority
   verificationDocuments?: Array<{
     documentType: VerificationDocType;
     contentType: string;
@@ -570,6 +572,8 @@ export interface GetListingResponse {
     approvedAt?: string;
     rejectedAt?: string;
     rejectionReason?: string;
+    rightToListDocumentNumber?: string;
+    officialStarRating?: number;
   };
   images: Array<{
     imageId: string;

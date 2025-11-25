@@ -65,6 +65,9 @@ export interface PublicListingRecord {
   hostVerified: boolean; // True if host status is VERIFIED
   listingVerified: boolean; // True if admin explicitly verified the listing
 
+  // Official rating
+  officialStarRating?: number; // Official star rating (1-5) from local authority
+
   // Timestamps
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -135,6 +138,7 @@ export interface PublicListingResponse {
   instantBook: boolean;
   hostVerified: boolean;
   listingVerified: boolean;
+  officialStarRating?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -177,6 +181,7 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     instantBook: record.instantBook,
     hostVerified: record.hostVerified,
     listingVerified: record.listingVerified,
+    officialStarRating: record.officialStarRating,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

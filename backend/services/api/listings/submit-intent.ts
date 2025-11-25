@@ -132,8 +132,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           
           s3Prefix,
           
-          // Optional document reference number
+          // Optional document reference number and star rating
           rightToListDocumentNumber: body.rightToListDocumentNumber?.trim() || undefined,
+          officialStarRating: body.officialStarRating || undefined,
           
           submissionToken,
           submissionTokenExpiresAt: tokenExpiresAt.toISOString(),
@@ -382,6 +383,16 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
     const trimmed = body.rightToListDocumentNumber.trim();
     if (trimmed.length === 0 || trimmed.length > 30) {
       return 'rightToListDocumentNumber must be between 1 and 30 characters';
+    }
+  }
+
+  // Optional: officialStarRating validation (only allowed with registration document)
+  if (body.officialStarRating !== undefined) {
+    if (!body.rightToListDocumentNumber || body.rightToListDocumentNumber.trim().length === 0) {
+      return 'officialStarRating requires rightToListDocumentNumber to be provided';
+    }
+    if (!Number.isInteger(body.officialStarRating) || body.officialStarRating < 1 || body.officialStarRating > 5) {
+      return 'officialStarRating must be an integer between 1 and 5';
     }
   }
 

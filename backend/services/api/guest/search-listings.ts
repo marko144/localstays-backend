@@ -105,6 +105,7 @@ interface SearchResult {
   instantBook: boolean;
   hostVerified: boolean;
   listingVerified: boolean;
+  officialStarRating?: number;
   pricing: ListingPricing;
 }
 
@@ -341,6 +342,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         instantBook: listing.instantBook,
         hostVerified: listing.hostVerified,
         listingVerified: listing.listingVerified,
+        officialStarRating: listing.officialStarRating,
         pricing: calculatedPricing,
       };
       })
