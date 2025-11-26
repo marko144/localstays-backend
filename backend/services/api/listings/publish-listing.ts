@@ -11,6 +11,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import * as response from '../lib/response';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { buildPublicListingMediaPK, buildPublicListingMediaSK } from '../../types/public-listing-media.types';
 import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
 
@@ -54,6 +55,18 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Verify user is a HOST
     if (!groups.includes('HOST')) {
       return response.forbidden('Only hosts can publish listings');
+    }
+
+    // Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'listing-publish');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for listing publish:', { userId, hostId, listingId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
     }
 
     // Step 1: Fetch listing metadata

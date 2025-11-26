@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import {
   ConfirmListingSubmissionRequest,
   ConfirmListingSubmissionResponse,
@@ -47,14 +48,26 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     assertCanAccessHost(auth, hostId);
 
-    // 2. Parse request body
+    // 2. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'listing-confirm-submission');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for listing confirm-submission:', { userId, hostId, listingId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
+    }
+
+    // 3. Parse request body
     const body: ConfirmListingSubmissionRequest = JSON.parse(event.body || '{}');
 
     if (!body.submissionToken) {
       return response.badRequest('submissionToken is required');
     }
 
-    // 3. Verify submission token (fetch from DynamoDB)
+    // 4. Verify submission token (fetch from DynamoDB)
     const tokenResult = await docClient.send(
       new GetCommand({
         TableName: TABLE_NAME,

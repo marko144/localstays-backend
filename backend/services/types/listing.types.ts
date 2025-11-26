@@ -13,10 +13,8 @@ export type PropertyType = 'APARTMENT' | 'HOUSE' | 'VILLA' | 'STUDIO' | 'ROOM';
 export type CheckInType = 'SELF_CHECKIN' | 'HOST_GREETING' | 'LOCKBOX' | 'DOORMAN';
 export type ParkingType = 'NO_PARKING' | 'FREE' | 'PAID';
 export type PaymentType = 
-  | 'PAY_ONLINE'
-  | 'PAY_DEPOSIT_ONLINE'
-  | 'PAY_LATER_CASH'
-  | 'PAY_LATER_CARD';
+  | 'PAY_LATER'
+  | 'PAY_LATER_CASH_ONLY';
 export type CancellationPolicyType = 
   | 'NO_CANCELLATION'
   | '24_HOURS'

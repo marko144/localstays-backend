@@ -24,9 +24,9 @@ const TABLE_NAME = `localstays-${environment}`;
 
 // Default payment type enum (bilingual)
 const DEFAULT_PAYMENT_TYPE = {
-  key: 'PAY_ONLINE',
-  en: 'Pay Online',
-  sr: 'Plaćanje online',
+  key: 'PAY_LATER',
+  en: 'Pay Later',
+  sr: 'Plaćanje kasnije',
 };
 
 /**

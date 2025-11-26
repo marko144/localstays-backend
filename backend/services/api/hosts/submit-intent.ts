@@ -13,6 +13,7 @@ import * as response from '../lib/response';
 import { generateUploadUrl, validateS3Key } from '../lib/s3-presigned';
 import { validateDocumentTypes, validateAllDocumentIntents } from '../lib/document-validation';
 import { validateProfileData, sanitizeProfileData } from '../lib/profile-validation';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { ProfileData } from '../../types/host.types';
 import { DocumentUploadIntent, DocumentUploadUrl, DocumentType } from '../../types/document.types';
 import { SubmissionToken } from '../../types/submission.types';
@@ -59,7 +60,26 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 2. Verify authorization
     assertCanAccessHost(auth, hostId);
 
-    // 3. Parse and validate request body
+    // 3. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'profile-submit-intent');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for profile submit-intent:', { userId, hostId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
+    }
+
+    console.log('Rate limit check passed:', {
+      userId,
+      hostId,
+      hourlyRemaining: rateLimitCheck.hourlyRemaining,
+      dailyRemaining: rateLimitCheck.dailyRemaining,
+    });
+
+    // 4. Parse and validate request body
     if (!event.body) {
       console.error('❌ Request body is missing');
       return response.badRequest('Request body is required');
@@ -96,7 +116,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       })),
     });
 
-    // 4. Sanitize and validate profile data
+    // 5. Sanitize and validate profile data
     const sanitizedProfile = sanitizeProfileData(profile);
     const profileValidation = validateProfileData(sanitizedProfile);
 
@@ -117,7 +137,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       hostType: sanitizedProfile.hostType,
     });
 
-    // 5. Validate document intents
+    // 6. Validate document intents
     const documentValidation = validateAllDocumentIntents(documents);
     if (!documentValidation.valid) {
       console.error('❌ Document intent validation failed:', {
@@ -135,7 +155,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       documentCount: documents.length,
     });
 
-    // 6. Validate document types match host type requirements
+    // 7. Validate document types match host type requirements
     const vatRegistered = profile.hostType === 'BUSINESS' ? profile.vatRegistered : false;
     const documentTypeValidation = validateDocumentTypes(
       profile.hostType,
@@ -182,7 +202,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // 7. Fetch current host record to verify status
+    // 8. Fetch current host record to verify status
     const hostRecord = await getHostRecord(hostId);
     
     if (!hostRecord) {
@@ -196,7 +216,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       hostType: hostRecord.hostType,
     });
 
-    // 8. Verify host status allows submission
+    // 9. Verify host status allows submission
     const allowedStatuses = ['NOT_SUBMITTED', 'INCOMPLETE', 'INFO_REQUIRED'];
     if (!allowedStatuses.includes(hostRecord.status)) {
       console.error('❌ Host status does not allow submission:', {
@@ -221,7 +241,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // (They could be cleaned up by a TTL or background job in the future)
     }
 
-    // 9. Generate submission token and document IDs
+    // 10. Generate submission token and document IDs
     const submissionToken = `sub_${randomUUID()}`;
     const now = new Date().toISOString();
     const expiresAt = Math.floor(Date.now() / 1000) + (SUBMISSION_EXPIRY_MINUTES * 60);
@@ -264,9 +284,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           mimeType: doc.backFile.mimeType,
         });
       } else {
-        // Single file document
+        // Single file document (no doc_ prefix needed - it's added in the S3 key template)
         documentRecords.push({
-          documentId: `doc_${randomUUID()}`,
+          documentId: randomUUID(),
           documentType: doc.documentType,
           documentSide: 'SINGLE',
           relatedDocumentId: null,
@@ -277,10 +297,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // 10. Create document records in DynamoDB
+    // 11. Create document records in DynamoDB
     await createDocumentRecords(hostId, auth.userId, documentRecords);
 
-    // 11. Generate pre-signed upload URLs (upload to BUCKET ROOT with veri_ prefix)
+    // 12. Generate pre-signed upload URLs (upload to BUCKET ROOT with veri_ prefix)
     const uploadUrls: DocumentUploadUrl[] = await Promise.all(
       documentRecords.map(async (doc) => {
         // Add side prefix for front/back documents
@@ -346,7 +366,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // 12. Create submission token record
+    // 13. Create submission token record
     await createSubmissionToken({
       submissionToken,
       hostId,
@@ -358,10 +378,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       createdAt: now,
     });
 
-    // 13. Update host record with submission tracking
+    // 14. Update host record with submission tracking
     await updateHostSubmissionTracking(hostId, submissionToken, now, expiresAt);
 
-    // 14. Return success response
+    // 15. Return success response
     return response.success({
       success: true,
       hostId,

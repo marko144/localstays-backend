@@ -496,10 +496,8 @@ async function seedListingEnums() {
 
   // Payment Types
   const paymentTypes = [
-    { key: 'PAY_ONLINE', en: 'Pay Online', sr: 'Plaćanje online', sortOrder: 1 },
-    { key: 'PAY_DEPOSIT_ONLINE', en: 'Pay Deposit Online', sr: 'Plaćanje depozita online', sortOrder: 2 },
-    { key: 'PAY_LATER_CASH', en: 'Pay Later (Cash)', sr: 'Plaćanje kasnije (Gotovina)', sortOrder: 3 },
-    { key: 'PAY_LATER_CARD', en: 'Pay Later (Card)', sr: 'Plaćanje kasnije (Kartica)', sortOrder: 4 },
+    { key: 'PAY_LATER', en: 'Pay Later', sr: 'Plaćanje kasnije', sortOrder: 1 },
+    { key: 'PAY_LATER_CASH_ONLY', en: 'Pay Later - Cash Only', sr: 'Plaćanje kasnije - Samo gotovina', sortOrder: 2 },
   ];
 
   paymentTypes.forEach((type) => {

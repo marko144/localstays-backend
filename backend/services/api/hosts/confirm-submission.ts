@@ -12,6 +12,7 @@ import * as response from '../lib/response';
 import { executeTransaction } from '../lib/transaction';
 import { sendProfileSubmissionEmail, sendLiveIdCheckRequestEmail } from '../lib/email-service';
 import { sendNotificationToUser } from '../lib/notification-utils';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { SubmissionToken } from '../../types/submission.types';
 import { Document } from '../../types/document.types';
 import { randomUUID } from 'crypto';
@@ -54,7 +55,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 2. Verify authorization
     assertCanAccessHost(auth, hostId);
 
-    // 3. Parse request body
+    // 3. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'profile-confirm-submission');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for profile confirm-submission:', { userId, hostId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
+    }
+
+    // 4. Parse request body
     if (!event.body) {
       return response.badRequest('Request body is required');
     }
@@ -76,7 +89,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('uploadedDocuments array is required');
     }
 
-    // 4. Retrieve submission token
+    // 5. Retrieve submission token
     const tokenRecord = await getSubmissionToken(submissionToken);
 
     if (!tokenRecord) {

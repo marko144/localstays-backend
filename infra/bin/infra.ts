@@ -213,6 +213,7 @@ const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
   availabilityTable: dataStack.availabilityTable,
   bucket: storageStack.bucket,
   emailTemplatesTable: emailTemplateStack.table,
+  rateLimitTable: rateLimitStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
 });

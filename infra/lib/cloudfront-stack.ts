@@ -40,8 +40,9 @@ export class CloudFrontStack extends cdk.Stack {
         minTtl: cdk.Duration.seconds(0),
         maxTtl: cdk.Duration.days(365),
 
-        // Cache based on query strings (for versioning via ?v= parameter)
-        queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+        // Ignore all query strings - images are immutable and content-addressed by UUID
+        // This prevents cache-busting attacks and improves cache hit ratio
+        queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
 
         // Don't cache based on headers or cookies
         headerBehavior: cloudfront.CacheHeaderBehavior.none(),

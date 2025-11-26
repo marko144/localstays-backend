@@ -228,9 +228,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             mimeType: doc.backFile.mimeType,
           });
         } else {
-          // Single file document
+          // Single file document (no doc_ prefix needed - it's added in the S3 key template)
           documentRecords.push({
-            documentId: `doc_${randomUUID()}`,
+            documentId: randomUUID(),
             documentType: doc.documentType,
             documentSide: 'SINGLE',
             relatedDocumentId: null,

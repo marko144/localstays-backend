@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { generateUploadUrl } from '../lib/s3-presigned';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import {
   SubmitListingIntentRequest,
   SubmitListingIntentResponse,
@@ -56,20 +57,39 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     assertCanAccessHost(auth, hostId);
 
-    // 2. Parse and validate request body
+    // 2. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'listing-submit-intent');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for listing submit-intent:', { userId, hostId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
+    }
+
+    console.log('Rate limit check passed:', {
+      userId,
+      hostId,
+      hourlyRemaining: rateLimitCheck.hourlyRemaining,
+      dailyRemaining: rateLimitCheck.dailyRemaining,
+    });
+
+    // 3. Parse and validate request body
     const body: SubmitListingIntentRequest = JSON.parse(event.body || '{}');
     const validationError = validateSubmitIntentRequest(body);
     if (validationError) {
       return response.badRequest(validationError);
     }
 
-    // 3. Check subscription limits
+    // 4. Check subscription limits
     const canCreateListing = await checkSubscriptionLimit(hostId);
     if (!canCreateListing) {
       return response.forbidden('Listing limit reached for your subscription plan. Please upgrade to add more listings.');
     }
 
-    // 4. Fetch bilingual translations for enums
+    // 5. Fetch bilingual translations for enums
     const [propertyTypeEnum, checkInTypeEnum, parkingTypeEnum, paymentTypeEnum, amenityEnums] = await Promise.all([
       fetchEnumTranslation('PROPERTY_TYPE', body.propertyType),
       fetchEnumTranslation('CHECKIN_TYPE', body.checkIn.type),
@@ -82,19 +102,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Invalid enum values provided');
     }
 
-    // 5. Generate IDs and timestamps
+    // 6. Generate IDs and timestamps
     const listingId = `listing_${randomUUID()}`;
     const now = new Date().toISOString();
     const s3Prefix = `${hostId}/listings/${listingId}/`;
 
-    // 6. Generate submission token (simple UUID-based token, like profile submission)
+    // 7. Generate submission token (simple UUID-based token, like profile submission)
     const tokenExpiresAt = new Date(Date.now() + SUBMISSION_TOKEN_EXPIRY_MINUTES * 60 * 1000);
     const submissionToken = `lst_sub_${randomUUID()}`;
 
-    // 7. Normalize address data
+    // 8. Normalize address data
     const normalizedAddress = normalizeAddress(body.address);
 
-    // 8. Create listing metadata record
+    // 9. Create listing metadata record
     await docClient.send(
       new PutCommand({
         TableName: TABLE_NAME,
@@ -156,7 +176,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Created listing metadata: ${listingId}`);
 
-    // 8. Create amenities record
+    // 10. Create amenities record
     if (body.amenities && body.amenities.length > 0) {
       await docClient.send(
         new PutCommand({
@@ -177,7 +197,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`✅ Created amenities record: ${body.amenities.length} amenities`);
     }
 
-    // 9. Create placeholder image records and generate pre-signed URLs
+    // 11. Create placeholder image records and generate pre-signed URLs
     // Images are uploaded to BUCKET ROOT with lstimg_ prefix for GuardDuty scanning
     // After passing scan, they are processed and moved to final destination by the image-processor Lambda
     const imageUploadUrls: SubmitListingIntentResponse['imageUploadUrls'] = [];
@@ -232,7 +252,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Created ${body.images.length} image placeholder records`);
 
-    // 10. Create placeholder document records and generate pre-signed URLs (if provided)
+    // 12. Create placeholder document records and generate pre-signed URLs (if provided)
     const documentUploadUrls: SubmitListingIntentResponse['documentUploadUrls'] = [];
     
     if (body.verificationDocuments && body.verificationDocuments.length > 0) {
@@ -282,7 +302,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`✅ Created ${body.verificationDocuments.length} document placeholder records`);
     }
 
-    // 11. Create submission tracking record
+    // 13. Create submission tracking record
     await docClient.send(
       new PutCommand({
         TableName: TABLE_NAME,
@@ -301,7 +321,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Created submission tracking record: ${submissionToken}`);
 
-    // 12. Build response
+    // 14. Build response
     const intentResponse: SubmitListingIntentResponse = {
       listingId,
       submissionToken,

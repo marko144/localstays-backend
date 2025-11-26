@@ -12,6 +12,7 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../../lib/write-operation-rate-limiter';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendHostProfileApprovedEmail } from '../../lib/email-service';
 import { syncHostVerificationStatus } from '../../../lib/host-verification-sync';
@@ -36,7 +37,27 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     const { user } = authResult;
 
-    // 2. Extract hostId from path
+    // 2. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return {
+        statusCode: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: 'User ID not found' } }),
+      };
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'admin-approve-host');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for admin approve-host:', { userId, adminEmail: user.email });
+      return {
+        statusCode: 429,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: rateLimitCheck.message || 'Rate limit exceeded' } }),
+      };
+    }
+
+    // 3. Extract hostId from path
     const hostId = event.pathParameters?.hostId;
 
     if (!hostId) {

@@ -20,6 +20,7 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dyn
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { generateUploadUrl } from '../lib/s3-presigned';
+import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { randomUUID } from 'crypto';
 import { SubmitImageUpdateRequest, SubmitImageUpdateResponse } from '../../types/request.types';
 import { ListingMetadata } from '../../types/listing.types';
@@ -69,14 +70,26 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     assertCanAccessHost(auth, hostId);
 
-    // 2. Parse request body
+    // 2. Check rate limit
+    const userId = extractUserId(event);
+    if (!userId) {
+      return response.unauthorized('User ID not found');
+    }
+
+    const rateLimitCheck = await checkAndIncrementWriteOperationRateLimit(userId, 'image-delete');
+    if (!rateLimitCheck.allowed) {
+      console.warn('Rate limit exceeded for image update/delete:', { userId, hostId, listingId });
+      return response.tooManyRequests(rateLimitCheck.message || 'Rate limit exceeded');
+    }
+
+    // 3. Parse request body
     if (!event.body) {
       return response.badRequest('Request body is required');
     }
 
     const body: SubmitImageUpdateRequest = JSON.parse(event.body);
 
-    // 3. Validate at least one change is requested
+    // 4. Validate at least one change is requested
     if ((!body.imagesToAdd || body.imagesToAdd.length === 0) && 
         (!body.imagesToDelete || body.imagesToDelete.length === 0) &&
         !body.newPrimaryImageId) {

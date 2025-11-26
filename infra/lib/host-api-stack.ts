@@ -33,6 +33,8 @@ export interface HostApiStackProps extends cdk.StackProps {
   bucket: s3.Bucket;
   /** Email templates DynamoDB table */
   emailTemplatesTable: dynamodb.Table;
+  /** Rate limit DynamoDB table */
+  rateLimitTable: dynamodb.Table;
   /** SSM parameter name for SendGrid API key */
   sendGridParamName: string;
   /** CloudFront distribution domain name (optional) */
@@ -77,6 +79,7 @@ export class HostApiStack extends cdk.Stack {
       table, 
       bucket, 
       emailTemplatesTable, 
+      rateLimitTable,
       sendGridParamName, 
       frontendUrl,
     } = props;
@@ -122,7 +125,7 @@ export class HostApiStack extends cdk.Stack {
       
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
-          ? ['https://app.localstays.com']
+          ? ['https://portal.localstays.me']
           : apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
@@ -201,6 +204,7 @@ export class HostApiStack extends cdk.Stack {
       AVAILABILITY_TABLE_NAME: props.availabilityTable.tableName,
       BUCKET_NAME: bucket.bucketName,
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
+      RATE_LIMIT_TABLE_NAME: rateLimitTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
       FROM_EMAIL: 'marko@localstays.me', // Same verified SendGrid sender as auth emails
       FRONTEND_URL: frontendUrl, // For deep links in notifications
@@ -250,6 +254,7 @@ export class HostApiStack extends cdk.Stack {
     // Grant DynamoDB permissions (read + write for all operations)
     table.grantReadWriteData(this.hostProfileHandlerLambda);
     emailTemplatesTable.grantReadData(this.hostProfileHandlerLambda); // For confirm-submission emails
+    rateLimitTable.grantReadWriteData(this.hostProfileHandlerLambda); // For write operation rate limiting
 
     // Grant S3 permissions (for pre-signed URLs and verification)
     this.hostProfileHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
@@ -313,6 +318,7 @@ export class HostApiStack extends cdk.Stack {
     // Grant DynamoDB permissions (read + write for all operations)
     table.grantReadWriteData(this.hostListingsHandlerLambda);
     props.publicListingsTable.grantWriteData(this.hostListingsHandlerLambda); // For syncing updates to PublicListings
+    rateLimitTable.grantReadWriteData(this.hostListingsHandlerLambda); // For write operation rate limiting
 
     // Grant S3 permissions (for pre-signed URLs and verification)
     this.hostListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
@@ -380,6 +386,7 @@ export class HostApiStack extends cdk.Stack {
     props.locationsTable.grantWriteData(this.unpublishListingLambda); // Locations table (decrement count only)
     props.publicListingsTable.grantWriteData(this.unpublishListingLambda); // PublicListings table (delete only)
     props.publicListingMediaTable.grantReadWriteData(this.unpublishListingLambda); // PublicListingMedia table (read for query, delete)
+    rateLimitTable.grantReadWriteData(this.unpublishListingLambda); // For write operation rate limiting
 
     // ========================================
     // HOST AVAILABILITY HANDLER LAMBDA (CONSOLIDATED)

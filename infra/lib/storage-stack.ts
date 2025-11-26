@@ -48,7 +48,7 @@ export class StorageStack extends cdk.Stack {
             s3.HttpMethods.DELETE,
           ],
           allowedOrigins: stage === 'prod'
-            ? ['https://*.localstays.com'] // Production only
+            ? ['https://portal.localstays.me', 'https://localstays.me', 'https://www.localstays.me'] // Production only
             : [
                 'http://localhost:3000',   // Next.js default
                 'http://localhost:5173',   // Vite default
