@@ -115,15 +115,56 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`Found ${documents.length} documents for host ${hostId}`);
 
-    // 4. Convert to admin format with pre-signed URLs
-    const adminDocuments = await Promise.all(
-      documents.map(doc => toAdminKycDocument(doc))
-    );
+    // 4. Group front/back documents and convert to admin format with pre-signed URLs
+    const groupedDocuments: any[] = [];
+    const processedIds = new Set<string>();
+
+    for (const doc of documents) {
+      if (processedIds.has(doc.documentId)) continue;
+
+      if (doc.documentSide === 'SINGLE' || !doc.documentSide) {
+        // Single-file document
+        const adminDoc = await toAdminKycDocument(doc);
+        groupedDocuments.push({
+          documentId: doc.documentId,
+          documentType: doc.documentType,
+          files: [adminDoc],
+          uploadedAt: doc.uploadedAt,
+        });
+        processedIds.add(doc.documentId);
+      } else {
+        // Multi-file document (front/back)
+        const relatedDoc = documents.find(d => d.documentId === doc.relatedDocumentId);
+        
+        const files = [await toAdminKycDocument(doc)];
+        if (relatedDoc) {
+          files.push(await toAdminKycDocument(relatedDoc));
+          processedIds.add(relatedDoc.documentId);
+        }
+
+        // Sort files: FRONT first, then BACK
+        files.sort((a, b) => {
+          const aIsFront = a.documentId.includes('_FRONT');
+          const bIsFront = b.documentId.includes('_FRONT');
+          return aIsFront ? -1 : bIsFront ? 1 : 0;
+        });
+
+        groupedDocuments.push({
+          documentId: doc.documentId.split('_')[0], // Base group ID
+          documentType: doc.documentType,
+          files,
+          uploadedAt: doc.uploadedAt,
+        });
+        processedIds.add(doc.documentId);
+      }
+    }
 
     // 5. Sort by upload date (newest first)
-    adminDocuments.sort((a, b) => 
+    groupedDocuments.sort((a, b) => 
       new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
     );
+
+    const adminDocuments = groupedDocuments;
 
     // 6. Log admin action
     logAdminAction(user, 'VIEW_DOCUMENTS', 'HOST', hostId, {

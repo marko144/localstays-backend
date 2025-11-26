@@ -226,13 +226,56 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const now = new Date().toISOString();
     const expiresAt = Math.floor(Date.now() / 1000) + (SUBMISSION_EXPIRY_MINUTES * 60);
 
-    const documentRecords = documents.map((doc) => ({
-      documentId: `doc_${randomUUID()}`,
-      documentType: doc.documentType,
-      fileName: doc.fileName,
-      fileSize: doc.fileSize,
-      mimeType: doc.mimeType,
-    }));
+    // Generate document records (handle multi-file documents)
+    const documentRecords: Array<{
+      documentId: string;
+      documentType: string;
+      documentSide: 'FRONT' | 'BACK' | 'SINGLE';
+      relatedDocumentId: string | null;
+      fileName: string;
+      fileSize: number;
+      mimeType: string;
+    }> = [];
+
+    for (const doc of documents) {
+      const requiresTwoSides = ['ID_CARD', 'DRIVERS_LICENSE'].includes(doc.documentType);
+      
+      if (requiresTwoSides && doc.frontFile && doc.backFile) {
+        // Create TWO records with shared group ID
+        const groupId = `doc_${randomUUID()}`;
+        
+        documentRecords.push({
+          documentId: `${groupId}_FRONT`,
+          documentType: doc.documentType,
+          documentSide: 'FRONT',
+          relatedDocumentId: `${groupId}_BACK`,
+          fileName: doc.frontFile.fileName,
+          fileSize: doc.frontFile.fileSize,
+          mimeType: doc.frontFile.mimeType,
+        });
+        
+        documentRecords.push({
+          documentId: `${groupId}_BACK`,
+          documentType: doc.documentType,
+          documentSide: 'BACK',
+          relatedDocumentId: `${groupId}_FRONT`,
+          fileName: doc.backFile.fileName,
+          fileSize: doc.backFile.fileSize,
+          mimeType: doc.backFile.mimeType,
+        });
+      } else {
+        // Single file document
+        documentRecords.push({
+          documentId: `doc_${randomUUID()}`,
+          documentType: doc.documentType,
+          documentSide: 'SINGLE',
+          relatedDocumentId: null,
+          fileName: doc.fileName!,
+          fileSize: doc.fileSize!,
+          mimeType: doc.mimeType!,
+        });
+      }
+    }
 
     // 10. Create document records in DynamoDB
     await createDocumentRecords(hostId, auth.userId, documentRecords);
@@ -240,7 +283,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 11. Generate pre-signed upload URLs (upload to BUCKET ROOT with veri_ prefix)
     const uploadUrls: DocumentUploadUrl[] = await Promise.all(
       documentRecords.map(async (doc) => {
-        const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
+        // Add side prefix for front/back documents
+        const sidePrefix = doc.documentSide === 'SINGLE' ? '' : `${doc.documentSide.toLowerCase()}_`;
+        const s3Key = `veri_profile-doc_${doc.documentId}_${sidePrefix}${doc.fileName}`;
         validateS3Key(s3Key);
         
         const uploadUrl = await generateUploadUrl(
@@ -361,6 +406,8 @@ async function createDocumentRecords(
   documents: Array<{
     documentId: string;
     documentType: string;
+    documentSide: 'FRONT' | 'BACK' | 'SINGLE';
+    relatedDocumentId: string | null;
     fileName: string;
     fileSize: number;
     mimeType: string;
@@ -370,8 +417,10 @@ async function createDocumentRecords(
   const expiresAtTimestamp = Math.floor(Date.now() / 1000) + (24 * 60 * 60); // 24 hours from now
 
   for (const doc of documents) {
-    const s3Key = `veri_profile-doc_${doc.documentId}_${doc.fileName}`;
-    const finalS3Key = `${hostId}/verification/${doc.documentId}_${doc.fileName}`;
+    // Add side prefix for front/back documents
+    const sidePrefix = doc.documentSide === 'SINGLE' ? '' : `${doc.documentSide.toLowerCase()}_`;
+    const s3Key = `veri_profile-doc_${doc.documentId}_${sidePrefix}${doc.fileName}`;
+    const finalS3Key = `${hostId}/verification/${doc.documentId}_${sidePrefix}${doc.fileName}`;
     
     await docClient.send(
       new PutCommand({
@@ -382,6 +431,8 @@ async function createDocumentRecords(
           documentId: doc.documentId,
           hostId,
           documentType: doc.documentType,
+          documentSide: doc.documentSide,           // NEW
+          relatedDocumentId: doc.relatedDocumentId, // NEW
           s3Key, // Root location with prefix
           finalS3Key, // Final destination after scan
           s3Bucket: BUCKET_NAME,

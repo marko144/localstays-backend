@@ -26,9 +26,13 @@ export interface Document {
   pk: string;                  // HOST#<hostId>
   sk: string;                  // DOCUMENT#<documentId>
   
-  documentId: string;          // doc_<uuid>
+  documentId: string;          // doc_<uuid> or doc_<uuid>_FRONT / doc_<uuid>_BACK
   hostId: string;              // Reference to host
   documentType: DocumentType;
+  
+  // Multi-file document support (for ID_CARD, DRIVERS_LICENSE)
+  documentSide?: 'FRONT' | 'BACK' | 'SINGLE';  // Which side this record represents
+  relatedDocumentId?: string;                    // Links front/back documents together
   
   // S3 reference
   s3Key: string;               // Full S3 key: "{hostId}/verification/{documentId}_{filename}"
@@ -60,12 +64,32 @@ export interface Document {
 
 /**
  * Document upload intent (from frontend)
+ * 
+ * For single-file documents (PASSPORT, PROOF_OF_ADDRESS, etc.):
+ *   - Use fileName, fileSize, mimeType
+ * 
+ * For two-sided documents (ID_CARD, DRIVERS_LICENSE):
+ *   - Use frontFile and backFile instead
  */
 export interface DocumentUploadIntent {
   documentType: DocumentType;
-  fileName: string;
-  fileSize: number;
-  mimeType: string;
+  
+  // For single-file documents
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  
+  // For two-sided documents (ID_CARD, DRIVERS_LICENSE)
+  frontFile?: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  };
+  backFile?: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  };
 }
 
 /**

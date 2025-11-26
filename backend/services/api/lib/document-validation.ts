@@ -84,38 +84,88 @@ export function validateDocumentTypes(
 export function validateDocumentIntent(document: DocumentUploadIntent): string[] {
   const errors: string[] = [];
   
-  // Validate file size
-  if (document.fileSize <= 0) {
-    errors.push(`Invalid file size for ${document.fileName}`);
+  const requiresTwoSides = ['ID_CARD', 'DRIVERS_LICENSE'].includes(document.documentType);
+  
+  if (requiresTwoSides) {
+    // Two-sided documents: must have frontFile and backFile
+    if (!document.frontFile || !document.backFile) {
+      errors.push(`${document.documentType} requires both frontFile and backFile`);
+      return errors; // Can't continue validation without files
+    }
+    
+    if (document.fileName || document.fileSize || document.mimeType) {
+      errors.push(`${document.documentType} should use frontFile/backFile, not single file fields`);
+    }
+    
+    // Validate front file
+    const frontErrors = validateFileDetails(document.frontFile, 'frontFile');
+    errors.push(...frontErrors);
+    
+    // Validate back file
+    const backErrors = validateFileDetails(document.backFile, 'backFile');
+    errors.push(...backErrors);
+    
+  } else {
+    // Single-file documents: must have fileName, fileSize, mimeType
+    if (!document.fileName || !document.fileSize || !document.mimeType) {
+      errors.push(`${document.documentType} requires fileName, fileSize, and mimeType`);
+      return errors;
+    }
+    
+    if (document.frontFile || document.backFile) {
+      errors.push(`${document.documentType} should not have frontFile/backFile`);
+    }
+    
+    // Validate single file
+    const fileErrors = validateFileDetails({
+      fileName: document.fileName,
+      fileSize: document.fileSize,
+      mimeType: document.mimeType,
+    }, 'file');
+    errors.push(...fileErrors);
   }
   
-  if (document.fileSize > MAX_FILE_SIZE) {
+  return errors;
+}
+
+/**
+ * Validate file details (size, mime type, filename)
+ */
+function validateFileDetails(file: { fileName: string; fileSize: number; mimeType: string }, context: string): string[] {
+  const errors: string[] = [];
+  
+  // Validate file size
+  if (file.fileSize <= 0) {
+    errors.push(`Invalid file size for ${context}: ${file.fileName}`);
+  }
+  
+  if (file.fileSize > MAX_FILE_SIZE) {
     errors.push(
-      `File ${document.fileName} exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024}MB`
+      `File ${file.fileName} (${context}) exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024}MB`
     );
   }
   
   // Validate MIME type
-  if (!ALLOWED_MIME_TYPES.includes(document.mimeType as any)) {
+  if (!ALLOWED_MIME_TYPES.includes(file.mimeType as any)) {
     errors.push(
-      `File ${document.fileName} has unsupported type: ${document.mimeType}. ` +
+      `File ${file.fileName} (${context}) has unsupported type: ${file.mimeType}. ` +
       `Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`
     );
   }
   
   // Validate filename
-  if (!document.fileName || document.fileName.length === 0) {
-    errors.push('Filename cannot be empty');
+  if (!file.fileName || file.fileName.length === 0) {
+    errors.push(`Filename cannot be empty for ${context}`);
   }
   
-  if (document.fileName.length > 255) {
-    errors.push(`Filename ${document.fileName} exceeds maximum length of 255 characters`);
+  if (file.fileName.length > 255) {
+    errors.push(`Filename ${file.fileName} (${context}) exceeds maximum length of 255 characters`);
   }
   
   // Check for potentially dangerous characters
   const dangerousChars = /[<>:"|?*\x00-\x1F]/;
-  if (dangerousChars.test(document.fileName)) {
-    errors.push(`Filename ${document.fileName} contains invalid characters`);
+  if (dangerousChars.test(file.fileName)) {
+    errors.push(`Filename ${file.fileName} (${context}) contains invalid characters`);
   }
   
   return errors;
@@ -136,8 +186,14 @@ export function validateAllDocumentIntents(documents: DocumentUploadIntent[]): {
     allErrors.push(...docErrors);
   }
   
-  // Validate total size
-  const totalSize = documents.reduce((sum, doc) => sum + doc.fileSize, 0);
+  // Validate total size (account for both single and multi-file documents)
+  const totalSize = documents.reduce((sum, doc) => {
+    if (doc.frontFile && doc.backFile) {
+      return sum + doc.frontFile.fileSize + doc.backFile.fileSize;
+    }
+    return sum + (doc.fileSize || 0);
+  }, 0);
+  
   if (totalSize > MAX_TOTAL_SIZE) {
     allErrors.push(
       `Total file size (${(totalSize / 1024 / 1024).toFixed(2)}MB) exceeds maximum of ${MAX_TOTAL_SIZE / 1024 / 1024}MB`
