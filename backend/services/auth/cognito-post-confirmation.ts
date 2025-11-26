@@ -247,6 +247,12 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
     email: event.request.userAttributes.email,
   });
 
+  // Only run initialization on signup, not on password reset or other events
+  if (event.triggerSource !== 'PostConfirmation_ConfirmSignUp') {
+    console.log('⏭️  Skipping PostConfirmation for non-signup event:', event.triggerSource);
+    return event;
+  }
+
   try {
     const { userName: userSub } = event;
     const email = event.request.userAttributes.email;
