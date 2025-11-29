@@ -16,6 +16,8 @@ const TABLE_NAME = process.env.TABLE_NAME!;
  * - Amenities (with categories)
  * - Check-in types
  * - Parking types
+ * - Advance booking options (NEW: 2025-11-29)
+ * - Max booking duration options (NEW: 2025-11-29)
  * - Verification document types
  * - Listing statuses
  * - Amenity categories
@@ -36,6 +38,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       checkInTypes,
       parkingTypes,
       paymentTypes,
+      advanceBookingOptions,
+      maxBookingDurationOptions,
       cancellationPolicyTypes,
       verificationDocTypes,
       listingStatuses,
@@ -46,6 +50,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       fetchEnumValues('CHECKIN_TYPE'),
       fetchEnumValues('PARKING_TYPE'),
       fetchEnumValues('PAYMENT_TYPE'),
+      fetchEnumValues('ADVANCE_BOOKING'),
+      fetchEnumValues('MAX_BOOKING_DURATION'),
       fetchEnumValues('CANCELLATION_POLICY'),
       fetchEnumValues('VERIFICATION_DOC_TYPE'),
       fetchEnumValues('LISTING_STATUS'),
@@ -92,6 +98,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         sortOrder: item.sortOrder,
       })),
       
+      advanceBookingOptions: advanceBookingOptions.map((item) => ({
+        key: item.enumValue,
+        en: item.translations.en,
+        sr: item.translations.sr,
+        days: item.metadata?.days || 0,
+        sortOrder: item.sortOrder,
+      })),
+      
+      maxBookingDurationOptions: maxBookingDurationOptions.map((item) => ({
+        key: item.enumValue,
+        en: item.translations.en,
+        sr: item.translations.sr,
+        nights: item.metadata?.nights || 0,
+        sortOrder: item.sortOrder,
+      })),
+      
       cancellationPolicyTypes: cancellationPolicyTypes.map((item) => ({
         key: item.enumValue,
         en: item.translations.en,
@@ -127,6 +149,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       amenities: metadata.amenities.length,
       checkInTypes: metadata.checkInTypes.length,
       parkingTypes: metadata.parkingTypes.length,
+      paymentTypes: metadata.paymentTypes.length,
+      advanceBookingOptions: metadata.advanceBookingOptions.length,
+      maxBookingDurationOptions: metadata.maxBookingDurationOptions.length,
       cancellationPolicyTypes: metadata.cancellationPolicyTypes.length,
       verificationDocTypes: metadata.verificationDocumentTypes.length,
       listingStatuses: metadata.listingStatuses.length,
@@ -143,17 +168,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
 /**
  * Fetch all values for a specific enum type
+ * Fixed: Removed isActive filter to return all enums
  */
 async function fetchEnumValues(enumType: string): Promise<any[]> {
   const result = await docClient.send(
     new QueryCommand({
       TableName: TABLE_NAME,
       KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-      FilterExpression: 'isActive = :active',
       ExpressionAttributeValues: {
         ':pk': `ENUM#${enumType}`,
         ':sk': 'VALUE#',
-        ':active': true,
       },
     })
   );

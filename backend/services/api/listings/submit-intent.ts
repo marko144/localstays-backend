@@ -90,15 +90,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 5. Fetch bilingual translations for enums
-    const [propertyTypeEnum, checkInTypeEnum, parkingTypeEnum, paymentTypeEnum, amenityEnums] = await Promise.all([
+    const [
+      propertyTypeEnum,
+      checkInTypeEnum,
+      parkingTypeEnum,
+      paymentTypeEnum,
+      advanceBookingEnum,
+      maxBookingDurationEnum,
+      amenityEnums,
+    ] = await Promise.all([
       fetchEnumTranslation('PROPERTY_TYPE', body.propertyType),
       fetchEnumTranslation('CHECKIN_TYPE', body.checkIn.type),
       fetchEnumTranslation('PARKING_TYPE', body.parking.type),
       fetchEnumTranslation('PAYMENT_TYPE', body.paymentType),
+      fetchEnumTranslation('ADVANCE_BOOKING', body.advanceBooking),
+      fetchEnumTranslation('MAX_BOOKING_DURATION', body.maxBookingDuration),
       fetchAmenityTranslations(body.amenities),
     ]);
 
-    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum) {
+    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum || !advanceBookingEnum || !maxBookingDurationEnum) {
       return response.badRequest('Invalid enum values provided');
     }
 
@@ -148,6 +158,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           },
           paymentType: paymentTypeEnum,
           smokingAllowed: body.smokingAllowed,
+          advanceBooking: advanceBookingEnum,
+          maxBookingDuration: maxBookingDurationEnum,
           cancellationPolicy: body.cancellationPolicy,
           
           s3Prefix,
@@ -358,12 +370,24 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.description || body.description.trim().length < 50) {
     return 'description is required (min 50 characters)';
   }
-  if (!body.address || !body.address.coordinates || 
-      !body.address.coordinates.latitude || !body.address.coordinates.longitude) {
-    return 'address with coordinates is required';
+  if (!body.address) {
+    return 'address is required';
   }
   if (!body.address.street || !body.address.city || !body.address.country || !body.address.countryCode) {
     return 'address must include street, city, country, and countryCode';
+  }
+  // Validate coordinates if provided
+  if (body.address.coordinates) {
+    if (typeof body.address.coordinates.latitude !== 'number' || 
+        typeof body.address.coordinates.longitude !== 'number') {
+      return 'coordinates must include valid latitude and longitude numbers';
+    }
+    if (body.address.coordinates.latitude < -90 || body.address.coordinates.latitude > 90) {
+      return 'latitude must be between -90 and 90';
+    }
+    if (body.address.coordinates.longitude < -180 || body.address.coordinates.longitude > 180) {
+      return 'longitude must be between -180 and 180';
+    }
   }
   if (!body.capacity || body.capacity.beds < 1 || body.capacity.bedrooms < 0 || body.capacity.bathrooms < 1 || body.capacity.sleeps < 1) {
     return 'capacity (beds, bedrooms, bathrooms, and sleeps) is required. beds, bathrooms, and sleeps must be > 0, bedrooms must be >= 0';
@@ -376,6 +400,12 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   }
   if (!body.paymentType) {
     return 'paymentType is required';
+  }
+  if (!body.advanceBooking) {
+    return 'advanceBooking is required';
+  }
+  if (!body.maxBookingDuration) {
+    return 'maxBookingDuration is required';
   }
 
   // Images validation
@@ -615,11 +645,17 @@ function normalizeAddress(address: any): any {
     postalCode: address.postalCode || '',
     country: address.country || '',
     countryCode: address.countryCode,
-    coordinates: {
+  };
+
+  // Only include coordinates if provided
+  if (address.coordinates && 
+      typeof address.coordinates.latitude === 'number' && 
+      typeof address.coordinates.longitude === 'number') {
+    normalized.coordinates = {
       latitude: address.coordinates.latitude,
       longitude: address.coordinates.longitude,
-    },
-  };
+    };
+  }
 
   // Only include optional fields if they have values
   if (address.apartmentNumber) {

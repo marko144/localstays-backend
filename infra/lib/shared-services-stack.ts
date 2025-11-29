@@ -223,7 +223,7 @@ export class SharedServicesStack extends cdk.Stack {
     // Connect SQS queue to Lambda (event source mapping)
     this.imageProcessorLambda.addEventSource(new SqsEventSource(this.imageProcessingQueue, {
       batchSize: 1, // Process one image at a time for predictable memory usage
-      maxBatchingWindow: cdk.Duration.seconds(0), // No batching delay
+      maxBatchingWindow: cdk.Duration.seconds(60), // Wait 60s between polls when queue is empty (reduces SQS costs by ~85%)
       reportBatchItemFailures: true, // Enable partial batch failure handling
     }));
 
@@ -378,7 +378,7 @@ export class SharedServicesStack extends cdk.Stack {
     // Connect SQS queue to Lambda
     this.verificationProcessorLambda.addEventSource(new SqsEventSource(this.verificationProcessingQueue, {
       batchSize: 1,
-      maxBatchingWindow: cdk.Duration.seconds(0),
+      maxBatchingWindow: cdk.Duration.seconds(60), // Wait 60s between polls when queue is empty (reduces SQS costs by ~85%)
       reportBatchItemFailures: true,
     }));
 

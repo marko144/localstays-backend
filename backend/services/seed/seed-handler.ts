@@ -539,6 +539,56 @@ async function seedListingEnums() {
     });
   });
 
+  // Advance Booking Options
+  const advanceBookingOptions = [
+    { key: 'DAYS_30', en: '30 days', sr: '30 dana', days: 30, sortOrder: 1 },
+    { key: 'DAYS_60', en: '60 days', sr: '60 dana', days: 60, sortOrder: 2 },
+    { key: 'DAYS_90', en: '90 days', sr: '90 dana', days: 90, sortOrder: 3 },
+    { key: 'DAYS_180', en: '6 months', sr: '6 meseci', days: 180, sortOrder: 4 },
+    { key: 'DAYS_240', en: '8 months', sr: '8 meseci', days: 240, sortOrder: 5 },
+    { key: 'DAYS_300', en: '10 months', sr: '10 meseci', days: 300, sortOrder: 6 },
+    { key: 'DAYS_365', en: '1 year', sr: '1 godina', days: 365, sortOrder: 7 },
+  ];
+
+  advanceBookingOptions.forEach((option) => {
+    enumRecords.push({
+      pk: 'ENUM#ADVANCE_BOOKING',
+      sk: `VALUE#${option.key}`,
+      enumType: 'ADVANCE_BOOKING',
+      enumValue: option.key,
+      translations: { en: option.en, sr: option.sr },
+      metadata: { days: option.days },
+      isActive: true,
+      sortOrder: option.sortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  // Max Booking Duration Options
+  const maxBookingDurationOptions = [
+    { key: 'NIGHTS_7', en: '1 week', sr: '1 nedelja', nights: 7, sortOrder: 1 },
+    { key: 'NIGHTS_14', en: '2 weeks', sr: '2 nedelje', nights: 14, sortOrder: 2 },
+    { key: 'NIGHTS_30', en: '1 month', sr: '1 mesec', nights: 30, sortOrder: 3 },
+    { key: 'NIGHTS_60', en: '2 months', sr: '2 meseca', nights: 60, sortOrder: 4 },
+    { key: 'NIGHTS_90', en: '3 months', sr: '3 meseca', nights: 90, sortOrder: 5 },
+  ];
+
+  maxBookingDurationOptions.forEach((option) => {
+    enumRecords.push({
+      pk: 'ENUM#MAX_BOOKING_DURATION',
+      sk: `VALUE#${option.key}`,
+      enumType: 'MAX_BOOKING_DURATION',
+      enumValue: option.key,
+      translations: { en: option.en, sr: option.sr },
+      metadata: { nights: option.nights },
+      isActive: true,
+      sortOrder: option.sortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
   // Amenity Categories
   const amenityCategories = [
     { key: 'BASICS', en: 'Basics', sr: 'Osnovno', sortOrder: 1 },

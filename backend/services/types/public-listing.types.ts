@@ -58,6 +58,10 @@ export interface PublicListingRecord {
   checkInType: string; // From listing.checkIn.type
   propertyType: string; // From listing.propertyType (APARTMENT, HOUSE, VILLA, STUDIO, ROOM)
 
+  // Booking terms (stored as numerical values for filtering/sorting)
+  advanceBookingDays: number;      // How far in advance guests can book (e.g., 180)
+  maxBookingNights: number;        // Maximum nights per booking (e.g., 30)
+
   // Booking behaviour
   instantBook: boolean;
 
@@ -135,6 +139,8 @@ export interface PublicListingResponse {
   parkingType: string;
   checkInType: string;
   propertyType: string;
+  advanceBookingDays: number;
+  maxBookingNights: number;
   instantBook: boolean;
   hostVerified: boolean;
   listingVerified: boolean;
@@ -178,6 +184,8 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     parkingType: record.parkingType,
     checkInType: record.checkInType,
     propertyType: record.propertyType,
+    advanceBookingDays: record.advanceBookingDays,
+    maxBookingNights: record.maxBookingNights,
     instantBook: record.instantBook,
     hostVerified: record.hostVerified,
     listingVerified: record.listingVerified,

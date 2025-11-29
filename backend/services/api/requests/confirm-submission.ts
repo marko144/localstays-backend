@@ -7,8 +7,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import {
@@ -18,13 +17,8 @@ import {
 
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 const TABLE_NAME = process.env.TABLE_NAME!;
-const BUCKET_NAME = process.env.BUCKET_NAME!;
-
-// Constants
-const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 
 /**
  * Main Lambda handler
@@ -101,55 +95,40 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Submission token has expired');
     }
 
-    // 7. Determine S3 key based on content type stored during intent
-    // We need to check which file was uploaded at BUCKET ROOT with veri_ prefix
-    const possibleExtensions = ['mp4', 'mov', 'webm'];
-    let s3Key: string | null = null;
-    let fileMetadata: any = null;
+    // 7. Fetch all file records (following listing confirm pattern)
+    const filesResult = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `REQUEST#${requestId}`,
+          ':sk': 'FILE#',
+        },
+      })
+    );
 
-    for (const ext of possibleExtensions) {
-      const testKey = `veri_live-id-check_${requestId}.${ext}`;
-      try {
-        const headResult = await s3Client.send(
-          new HeadObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: testKey,
-          })
-        );
+    const fileRecords = filesResult.Items || [];
 
-        // File found!
-        s3Key = testKey;
-        fileMetadata = headResult;
-        break;
-      } catch (error: any) {
-        // File not found, try next extension
-        if (error.name !== 'NotFound') {
-          throw error; // Re-throw if it's not a "not found" error
-        }
-      }
+    if (fileRecords.length !== 2) {
+      return response.badRequest('Expected 2 files (1 video + 1 image)');
     }
 
-    // 8. Verify file exists in S3 at bucket root
-    if (!s3Key || !fileMetadata) {
-      return response.badRequest('Video file not found in S3. Please upload the file first.');
+    // Note: Like listing submission, we DON'T check S3 existence
+    // Because GuardDuty + verification processor are very fast (3-5 seconds)
+    // By the time confirm is called, files may already be processed and moved
+    // DynamoDB record existence is sufficient proof of upload
+
+    // 8. Verify we have both video and image
+    const hasVideo = fileRecords.some((f) => f.fileType === 'VIDEO');
+    const hasImage = fileRecords.some((f) => f.fileType === 'IMAGE');
+
+    if (!hasVideo || !hasImage) {
+      return response.badRequest('Must upload both video and image files');
     }
 
-    // 9. Validate file size
-    const fileSize = fileMetadata.ContentLength || 0;
-    if (fileSize > MAX_FILE_SIZE_BYTES) {
-      return response.badRequest(
-        `File size (${Math.round(fileSize / 1024 / 1024)}MB) exceeds maximum allowed size (200MB)`
-      );
-    }
+    console.log(`✅ Verified ${fileRecords.length} files uploaded for request ${requestId}`);
 
-    if (fileSize === 0) {
-      return response.badRequest('Uploaded file is empty');
-    }
-
-    // 10. Generate S3 URL for viewing (not pre-signed, just the path)
-    const s3Url = `s3://${BUCKET_NAME}/${s3Key}`;
-
-    // 11. Update request status to RECEIVED
+    // 9. Update request status to RECEIVED
     const now = new Date().toISOString();
 
     await docClient.send(
@@ -160,19 +139,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression:
-          'SET #status = :status, s3Key = :s3Key, s3Url = :s3Url, fileSize = :fileSize, ' +
-          'contentType = :contentType, uploadedAt = :uploadedAt, updatedAt = :updatedAt, ' +
-          'gsi2sk = :gsi2sk ' +
+          'SET #status = :status, uploadedAt = :uploadedAt, updatedAt = :updatedAt, gsi2sk = :gsi2sk ' +
           'REMOVE submissionToken, submissionTokenExpiresAt',
         ExpressionAttributeNames: {
           '#status': 'status',
         },
         ExpressionAttributeValues: {
           ':status': 'RECEIVED',
-          ':s3Key': s3Key,
-          ':s3Url': s3Url,
-          ':fileSize': fileSize,
-          ':contentType': fileMetadata.ContentType,
           ':uploadedAt': now,
           ':updatedAt': now,
           ':gsi2sk': `STATUS#RECEIVED#${now}`, // Update GSI2 for admin queries
@@ -182,11 +155,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Request ${requestId} marked as RECEIVED`);
 
-    // 12. Build response
+    // 10. Build response
     const confirmResponse: ConfirmRequestSubmissionResponse = {
       requestId,
       status: 'RECEIVED',
-      message: 'Live ID check video received successfully',
+      message: 'Live ID check files received successfully',
     };
 
     return response.success(confirmResponse);

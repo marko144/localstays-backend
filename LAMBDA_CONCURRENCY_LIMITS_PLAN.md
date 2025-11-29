@@ -1,7 +1,7 @@
 # Lambda Concurrency Limits - Production Readiness Plan
 
-**Date:** November 26, 2025  
-**Status:** 📋 Planning
+**Date:** November 27, 2025  
+**Status:** ✅ Approved - Ready for Implementation
 
 ---
 
@@ -104,75 +104,68 @@ Functions without reserved concurrency share the remaining pool and compete for 
 
 ---
 
-## Proposed Concurrency Limits
+## Final Approved Concurrency Limits
 
 ### Strategy
 
 1. **High-traffic public endpoints** - Reserve capacity to ensure availability
 2. **Write operations** - Limit to protect DynamoDB and prevent cost spikes
 3. **External API calls** - Limit to control costs (SendGrid, Mapbox)
-4. **Admin functions** - Lower limits (low traffic, but need guaranteed capacity)
-5. **Background processors** - Moderate limits (SQS provides backpressure)
+4. **Admin functions** - Minimal limits (low traffic)
+5. **Background processors** - Higher limits for longer-running operations (image/document processing)
+6. **Staging** - Minimal allocation for testing only
 
-### Recommended Limits (Production)
+### Final Allocation Table (Shared Account Limit: 1,000)
 
-| Function                      | Reserved Concurrency | Reasoning                            |
-| ----------------------------- | -------------------- | ------------------------------------ |
-| **Guest API (Public-facing)** |
-| search-listings               | 200                  | Critical path, high traffic expected |
-| search-locations              | 50                   | Lower traffic than listings          |
-| **Public API**                |
-| check-increment-rate-limit    | 100                  | Used by geocoding, moderate traffic  |
-| **Host API (Authenticated)**  |
-| host-listings-handler         | 100                  | High usage (CRUD operations)         |
-| host-profile-handler          | 50                   | Moderate usage                       |
-| host-availability-handler     | 50                   | Moderate usage                       |
-| host-requests-handler         | 50                   | Moderate usage                       |
-| publish-listing               | 20                   | Rate-limited, but needs capacity     |
-| unpublish-listing             | 20                   | Rate-limited                         |
-| get-subscription              | 10                   | Low traffic                          |
-| subscribe-notification        | 10                   | Low traffic                          |
-| unsubscribe-notification      | 10                   | Low traffic                          |
-| check-notification-status     | 10                   | Low traffic                          |
-| **Admin API (Internal)**      |
-| admin-hosts-handler           | 20                   | Low traffic, but critical            |
-| admin-listings-handler        | 20                   | Low traffic, but critical            |
-| admin-requests-handler        | 20                   | Low traffic, but critical            |
-| send-notification             | 10                   | Low traffic                          |
-| **Shared Services**           |
-| image-processor               | 20                   | SQS-driven, memory-intensive         |
-| verification-processor        | 10                   | SQS-driven, low traffic              |
-| **Auth Triggers**             |
-| pre-token-generation          | 50                   | Every authenticated request          |
-| custom-email-sender           | 20                   | Signup/password reset flow           |
-| pre-signup                    | 20                   | Signup flow                          |
-| post-confirmation             | 10                   | One-time per user                    |
-| **Data Seeding**              |
-| seed-handler                  | Unreserved           | One-time use                         |
-| seed-location-variants        | Unreserved           | One-time use                         |
+| Function                   | Staging | Production | Notes                             |
+| -------------------------- | ------- | ---------- | --------------------------------- |
+| **Guest API (Public)**     |
+| search-listings            | 2       | 200        | Critical, high traffic            |
+| search-locations           | 2       | 50         | Public search                     |
+| **Public API**             |
+| check-increment-rate-limit | 2       | 25         | Host listing creation             |
+| **Host API**               |
+| host-listings-handler      | 3       | 100        | High usage CRUD                   |
+| host-profile-handler       | 2       | 50         | Profile operations                |
+| host-availability-handler  | 2       | 50         | Availability management           |
+| host-requests-handler      | 2       | 50         | Request management                |
+| publish-listing            | 2       | 20         | Rate-limited publish              |
+| unpublish-listing          | 2       | 20         | Rate-limited unpublish            |
+| get-subscription           | 2       | 10         | Subscription queries              |
+| subscribe-notification     | 2       | 10         | Notification subscription         |
+| unsubscribe-notification   | 2       | 10         | Notification unsubscribe          |
+| check-notification-status  | 2       | 10         | Notification status               |
+| **Admin API**              |
+| admin-hosts-handler        | 2       | 5          | Admin host management             |
+| admin-listings-handler     | 2       | 5          | Admin listing management          |
+| admin-requests-handler     | 2       | 5          | Admin request management          |
+| send-notification          | 2       | 5          | Admin notifications               |
+| **Shared Services**        |
+| image-processor            | 3       | 50         | Memory-intensive, longer duration |
+| verification-processor     | 3       | 30         | Document processing               |
+| **Auth Triggers**          |
+| pre-token-generation       | 2       | 50         | Login/token refresh               |
+| custom-email-sender        | 2       | 20         | Email sending                     |
+| pre-signup                 | 2       | 20         | Signup validation                 |
+| post-confirmation          | 2       | 10         | Post-signup initialization        |
+| **Data Seeding**           |
+| seed-handler               | 0       | 0          | Unreserved (one-time use)         |
+| seed-location-variants     | 0       | 0          | Unreserved (one-time use)         |
+| **TOTAL RESERVED**         | **56**  | **815**    | **871 total**                     |
+| **UNRESERVED POOL**        |         |            | **129 remaining**                 |
 
-**Total Reserved:** 900 concurrent executions  
-**Remaining Pool:** 100 for unreserved functions and burst capacity
+**Account Limit:** 1,000  
+**Total Reserved (Staging + Production):** 871  
+**Remaining Unreserved:** 129
 
----
+**Key Decisions:**
 
-## Staging Environment Limits
-
-For staging, use lower limits to save capacity:
-
-| Function Category          | Production | Staging |
-| -------------------------- | ---------- | ------- |
-| search-listings            | 200        | 20      |
-| search-locations           | 50         | 10      |
-| check-increment-rate-limit | 100        | 10      |
-| host-listings-handler      | 100        | 20      |
-| Other Host API             | 10-50      | 5-10    |
-| Admin API                  | 10-20      | 5       |
-| Shared Services            | 10-20      | 5       |
-| Auth Triggers              | 10-50      | 5-10    |
-
-**Total Reserved (Staging):** ~150  
-**Remaining Pool:** 850
+- Staging kept minimal (56 total) for testing only
+- Production prioritizes public-facing APIs (search: 250 total)
+- Image/verification processors get higher limits due to longer execution times
+- Admin APIs kept low (5 each) - low traffic, can use unreserved pool if needed
+- Geocoding rate limit reduced to 25 (infrequent operation during listing creation)
+- 129 unreserved for burst capacity and flexibility
 
 ---
 

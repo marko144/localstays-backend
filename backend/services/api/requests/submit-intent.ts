@@ -7,7 +7,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
@@ -25,8 +25,10 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 
 // Constants
 const SUBMISSION_TOKEN_EXPIRY_MINUTES = 30;
-const MAX_FILE_SIZE_MB = 100;
+const MAX_VIDEO_SIZE_MB = 100;
+const MAX_IMAGE_SIZE_MB = 10;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/mov', 'video/webm'];
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 /**
  * Main Lambda handler
@@ -64,15 +66,31 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Invalid JSON in request body');
     }
 
-    const { contentType } = requestBody;
+    const { files } = requestBody;
 
-    if (!contentType) {
-      return response.badRequest('contentType is required');
+    // Validate files array
+    if (!files || files.length !== 2) {
+      return response.badRequest('Exactly 2 files required (1 video + 1 image)');
     }
 
-    if (!ALLOWED_VIDEO_TYPES.includes(contentType)) {
+    // Find video and image
+    const videoFile = files.find((f) => f.fileType === 'VIDEO');
+    const imageFile = files.find((f) => f.fileType === 'IMAGE');
+
+    if (!videoFile || !imageFile) {
+      return response.badRequest('Must include 1 VIDEO and 1 IMAGE file');
+    }
+
+    // Validate content types
+    if (!ALLOWED_VIDEO_TYPES.includes(videoFile.contentType)) {
       return response.badRequest(
-        `Invalid content type. Allowed types: ${ALLOWED_VIDEO_TYPES.join(', ')}`
+        `Invalid video content type. Allowed: ${ALLOWED_VIDEO_TYPES.join(', ')}`
+      );
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.includes(imageFile.contentType)) {
+      return response.badRequest(
+        `Invalid image content type. Allowed: ${ALLOWED_IMAGE_TYPES.join(', ')}`
       );
     }
 
@@ -106,21 +124,68 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 6. Generate submission token
     const submissionToken = `req_sub_${randomUUID()}`;
     const tokenExpiresAt = new Date(Date.now() + SUBMISSION_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+    const now = new Date().toISOString();
 
-    // 7. Determine file extension
-    const fileExtension = getFileExtension(contentType);
+    // 7. Create file records and generate upload URLs (following listing pattern)
+    const uploadUrls: SubmitRequestIntentResponse['uploadUrls'] = [];
 
-    // 8. Generate S3 key at BUCKET ROOT with veri_ prefix for GuardDuty scanning
-    const s3Key = `veri_live-id-check_${requestId}.${fileExtension}`;
-    const finalS3Key = `${hostId}/requests/${requestId}/live-id-check.${fileExtension}`;
+    for (const file of files) {
+      const extension = getFileExtension(file.contentType);
+      const fileTypeLower = file.fileType.toLowerCase(); // 'video' or 'image'
+      const s3Key = `veri_live-id-check-${fileTypeLower}_${requestId}_${file.fileId}.${extension}`;
+      const finalS3Key = `${hostId}/requests/${requestId}/live-id-check-${fileTypeLower}.${extension}`;
 
-    // 9. Generate pre-signed URL for upload with metadata (expires in 30 minutes)
-    const uploadUrl = await generateUploadUrl(s3Key, contentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60, {
-      hostId,
-      requestId,
-    });
+      // Create placeholder file record (following listing image pattern)
+      await docClient.send(
+        new PutCommand({
+          TableName: TABLE_NAME,
+          Item: {
+            pk: `REQUEST#${requestId}`,
+            sk: `FILE#${file.fileId}`,
 
-    // 10. Update request with submission token and S3 keys
+            requestId,
+            hostId,
+            fileId: file.fileId,
+            fileType: file.fileType,
+
+            s3Key, // Root location with veri_ prefix
+            finalS3Key, // Final destination after scan
+
+            contentType: file.contentType,
+            fileSize: 0, // Will be updated after upload
+
+            status: 'PENDING_UPLOAD',
+
+            uploadedAt: now,
+            isDeleted: false,
+          },
+        })
+      );
+
+      // Generate pre-signed URL with metadata
+      const uploadUrl = await generateUploadUrl(
+        s3Key,
+        file.contentType,
+        SUBMISSION_TOKEN_EXPIRY_MINUTES * 60,
+        {
+          hostId,
+          requestId,
+          fileId: file.fileId,
+          fileType: file.fileType,
+        }
+      );
+
+      uploadUrls.push({
+        fileId: file.fileId,
+        fileType: file.fileType,
+        uploadUrl,
+        expiresAt: tokenExpiresAt.toISOString(),
+      });
+    }
+
+    console.log(`✅ Created ${files.length} file records and generated upload URLs for request ${requestId}`);
+
+    // 8. Update request with submission token
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -129,26 +194,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           sk: `REQUEST#${requestId}`,
         },
         UpdateExpression:
-          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, s3Key = :s3Key, finalS3Key = :finalS3Key, updatedAt = :now',
+          'SET submissionToken = :token, submissionTokenExpiresAt = :expiresAt, updatedAt = :now',
         ExpressionAttributeValues: {
           ':token': submissionToken,
           ':expiresAt': tokenExpiresAt.toISOString(),
-          ':s3Key': s3Key,
-          ':finalS3Key': finalS3Key,
-          ':now': new Date().toISOString(),
+          ':now': now,
         },
       })
     );
 
-    console.log(`✅ Generated upload URL for request ${requestId}`);
-
-    // 11. Build response
+    // 9. Build response
     const intentResponse: SubmitRequestIntentResponse = {
       requestId,
       submissionToken,
-      uploadUrl,
-      expiresAt: tokenExpiresAt.toISOString(),
-      maxFileSizeMB: MAX_FILE_SIZE_MB,
+      uploadUrls,
+      maxVideoSizeMB: MAX_VIDEO_SIZE_MB,
+      maxImageSizeMB: MAX_IMAGE_SIZE_MB,
     };
 
     return response.success(intentResponse);
@@ -166,6 +227,9 @@ function getFileExtension(contentType: string): string {
     'video/mp4': 'mp4',
     'video/mov': 'mov',
     'video/webm': 'webm',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
   };
 
   return map[contentType.toLowerCase()] || 'mp4';

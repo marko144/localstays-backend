@@ -617,7 +617,7 @@ export class HostApiStack extends cdk.Stack {
     // API Gateway Routes - Listings
     // ========================================
 
-    // GET /api/v1/listings/metadata (authenticated - hosts can see unpublished enum values)
+    // GET /api/v1/listings/metadata (authenticated - hosts only)
     const listingsResource = v1.addResource('listings');
     const metadataResource = listingsResource.addResource('metadata');
     metadataResource.addMethod(

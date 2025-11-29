@@ -202,6 +202,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       checkInType: listing.checkIn.type.key, // Store enum key only
       propertyType: listing.propertyType.key, // Store enum key only (APARTMENT, HOUSE, VILLA, STUDIO, ROOM)
 
+      advanceBookingDays: listing.advanceBooking.days, // Store numerical value for filtering
+      maxBookingNights: listing.maxBookingDuration.nights, // Store numerical value for filtering
+
       instantBook: false, // Default to false
       hostVerified: hostVerified, // Sync from host profile
       listingVerified: listing.listingVerified || false, // Sync from listing metadata
@@ -412,6 +415,11 @@ function validateListingForPublish(listing: any, images: any[]): string | null {
   // Address check
   if (!listing.address?.country || !listing.address?.countryCode) {
     return 'Missing country information';
+  }
+
+  // Coordinates check
+  if (!listing.address?.coordinates?.latitude || !listing.address?.coordinates?.longitude) {
+    return 'Missing coordinates (latitude and longitude required for publishing)';
   }
 
   // Capacity check

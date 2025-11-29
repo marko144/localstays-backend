@@ -29,6 +29,8 @@ import {
   CheckInType,
   ParkingType,
   PaymentType,
+  AdvanceBookingType,
+  MaxBookingDurationType,
   CancellationPolicyType,
   ListingMetadata,
   BilingualEnum,
@@ -50,6 +52,12 @@ const VALID_PROPERTY_TYPES: PropertyType[] = ['APARTMENT', 'HOUSE', 'VILLA', 'ST
 const VALID_CHECKIN_TYPES: CheckInType[] = ['SELF_CHECKIN', 'HOST_GREETING', 'LOCKBOX', 'DOORMAN'];
 const VALID_PARKING_TYPES: ParkingType[] = ['NO_PARKING', 'FREE', 'PAID'];
 const VALID_PAYMENT_TYPES: PaymentType[] = ['PAY_LATER', 'PAY_LATER_CASH_ONLY'];
+const VALID_ADVANCE_BOOKING: AdvanceBookingType[] = [
+  'DAYS_30', 'DAYS_60', 'DAYS_90', 'DAYS_180', 'DAYS_240', 'DAYS_300', 'DAYS_365'
+];
+const VALID_MAX_BOOKING_DURATION: MaxBookingDurationType[] = [
+  'NIGHTS_7', 'NIGHTS_14', 'NIGHTS_30', 'NIGHTS_60', 'NIGHTS_90'
+];
 const VALID_CANCELLATION_TYPES: CancellationPolicyType[] = [
   'NO_CANCELLATION',
   '24_HOURS',
@@ -314,6 +322,30 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('smokingAllowed');
     }
 
+    // advanceBooking
+    if (updates.advanceBooking !== undefined) {
+      const advanceBookingEnum = await fetchEnumTranslation('ADVANCE_BOOKING', updates.advanceBooking);
+      if (!advanceBookingEnum) {
+        return response.badRequest(`Invalid advance booking option: ${updates.advanceBooking}`, 'VALIDATION_ERROR');
+      }
+      updateExpressionParts.push('#advanceBooking = :advanceBooking');
+      expressionAttributeNames['#advanceBooking'] = 'advanceBooking';
+      expressionAttributeValues[':advanceBooking'] = advanceBookingEnum;
+      updatedFields.push('advanceBooking');
+    }
+
+    // maxBookingDuration
+    if (updates.maxBookingDuration !== undefined) {
+      const maxBookingDurationEnum = await fetchEnumTranslation('MAX_BOOKING_DURATION', updates.maxBookingDuration);
+      if (!maxBookingDurationEnum) {
+        return response.badRequest(`Invalid max booking duration option: ${updates.maxBookingDuration}`, 'VALIDATION_ERROR');
+      }
+      updateExpressionParts.push('#maxBookingDuration = :maxBookingDuration');
+      expressionAttributeNames['#maxBookingDuration'] = 'maxBookingDuration';
+      expressionAttributeValues[':maxBookingDuration'] = maxBookingDurationEnum;
+      updatedFields.push('maxBookingDuration');
+    }
+
     // cancellationPolicy
     if (updates.cancellationPolicy !== undefined) {
       const cancellationTypeEnum = await fetchEnumTranslation(
@@ -467,11 +499,6 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
 
   // address
   if (updates.address !== undefined) {
-    if (!updates.address.coordinates || 
-        typeof updates.address.coordinates.latitude !== 'number' || 
-        typeof updates.address.coordinates.longitude !== 'number') {
-      return 'Address must include valid coordinates (latitude and longitude)';
-    }
     if (!updates.address.street || typeof updates.address.street !== 'string') {
       return 'Address must include street';
     }
@@ -484,11 +511,18 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     if (!updates.address.countryCode || typeof updates.address.countryCode !== 'string') {
       return 'Address must include countryCode';
     }
-    if (updates.address.coordinates.latitude < -90 || updates.address.coordinates.latitude > 90) {
-      return 'Latitude must be between -90 and 90';
-    }
-    if (updates.address.coordinates.longitude < -180 || updates.address.coordinates.longitude > 180) {
-      return 'Longitude must be between -180 and 180';
+    // Validate coordinates if provided
+    if (updates.address.coordinates) {
+      if (typeof updates.address.coordinates.latitude !== 'number' || 
+          typeof updates.address.coordinates.longitude !== 'number') {
+        return 'coordinates must include valid latitude and longitude numbers';
+      }
+      if (updates.address.coordinates.latitude < -90 || updates.address.coordinates.latitude > 90) {
+        return 'latitude must be between -90 and 90';
+      }
+      if (updates.address.coordinates.longitude < -180 || updates.address.coordinates.longitude > 180) {
+        return 'longitude must be between -180 and 180';
+      }
     }
   }
 
@@ -601,6 +635,20 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
   if (updates.paymentType !== undefined) {
     if (!VALID_PAYMENT_TYPES.includes(updates.paymentType)) {
       return `Invalid payment type: ${updates.paymentType}`;
+    }
+  }
+
+  // advanceBooking
+  if (updates.advanceBooking !== undefined) {
+    if (!VALID_ADVANCE_BOOKING.includes(updates.advanceBooking)) {
+      return `Invalid advance booking option: ${updates.advanceBooking}`;
+    }
+  }
+
+  // maxBookingDuration
+  if (updates.maxBookingDuration !== undefined) {
+    if (!VALID_MAX_BOOKING_DURATION.includes(updates.maxBookingDuration)) {
+      return `Invalid max booking duration option: ${updates.maxBookingDuration}`;
     }
   }
 
@@ -750,11 +798,17 @@ function normalizeAddress(address: UpdateListingMetadataRequest['updates']['addr
     postalCode: address.postalCode || '',
     country: address.country || '',
     countryCode: address.countryCode,
-    coordinates: {
+  };
+
+  // Only include coordinates if provided
+  if (address.coordinates && 
+      typeof address.coordinates.latitude === 'number' && 
+      typeof address.coordinates.longitude === 'number') {
+    normalized.coordinates = {
       latitude: address.coordinates.latitude,
       longitude: address.coordinates.longitude,
-    },
-  };
+    };
+  }
 
   // Only include optional fields if they have values (not undefined)
   if (address.apartmentNumber !== undefined) {
@@ -924,8 +978,8 @@ async function updateListingWithTransaction(
 
     thumbnailUrl: buildCloudFrontUrl(primaryImage.webpUrls.thumbnail, primaryImage.updatedAt),
 
-    latitude: updatedListing.address.coordinates.latitude,
-    longitude: updatedListing.address.coordinates.longitude,
+    latitude: updatedListing.address.coordinates!.latitude,
+    longitude: updatedListing.address.coordinates!.longitude,
 
     petsAllowed: filters.petsAllowed,
     hasWIFI: filters.hasWIFI,

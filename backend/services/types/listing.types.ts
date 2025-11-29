@@ -27,6 +27,22 @@ export type VerificationDocType =
   | 'PROOF_OF_RIGHT_TO_LIST' 
   | 'EXISTING_PROFILE_PROOF';
 
+export type AdvanceBookingType = 
+  | 'DAYS_30'
+  | 'DAYS_60'
+  | 'DAYS_90'
+  | 'DAYS_180'
+  | 'DAYS_240'
+  | 'DAYS_300'
+  | 'DAYS_365';
+
+export type MaxBookingDurationType =
+  | 'NIGHTS_7'
+  | 'NIGHTS_14'
+  | 'NIGHTS_30'
+  | 'NIGHTS_60'
+  | 'NIGHTS_90';
+
 export type ListingStatus = 
   | 'DRAFT'           // Being created by host
   | 'IN_REVIEW'       // Submitted, waiting for admin approval
@@ -158,7 +174,7 @@ export interface ListingMetadata {
     postalCode: string;
     country: string;
     countryCode: string;
-    coordinates: {
+    coordinates?: {
       latitude: number;
       longitude: number;
     };
@@ -227,6 +243,10 @@ export interface ListingMetadata {
   
   // Smoking Policy
   smokingAllowed: boolean;
+  
+  // Booking Terms
+  advanceBooking: BilingualEnum & { days: number };        // How far in advance guests can book
+  maxBookingDuration: BilingualEnum & { nights: number };  // Maximum nights per booking
   
   // Cancellation Policy
   cancellationPolicy: {
@@ -422,7 +442,7 @@ export interface SubmitListingIntentRequest {
     postalCode: string;
     country: string;
     countryCode: string;
-    coordinates: {
+    coordinates?: {
       latitude: number;
       longitude: number;
     };
@@ -472,6 +492,8 @@ export interface SubmitListingIntentRequest {
   };
   paymentType: PaymentType;
   smokingAllowed: boolean;
+  advanceBooking: AdvanceBookingType;
+  maxBookingDuration: MaxBookingDurationType;
   cancellationPolicy: {
     type: CancellationPolicyType;
     customText?: string;           // Required if type === 'OTHER'
@@ -560,6 +582,8 @@ export interface GetListingResponse {
     };
     paymentType: BilingualEnum;
     smokingAllowed: boolean;
+    advanceBooking: BilingualEnum & { days: number };
+    maxBookingDuration: BilingualEnum & { nights: number };
     cancellationPolicy: {
       type: BilingualEnum;
       customText?: string;
@@ -724,6 +748,8 @@ export interface UpdateListingMetadataRequest {
     };
     paymentType?: PaymentType;
     smokingAllowed?: boolean;
+    advanceBooking?: AdvanceBookingType;
+    maxBookingDuration?: MaxBookingDurationType;
     cancellationPolicy?: {
       type: CancellationPolicyType;
       customText?: string;
@@ -752,6 +778,8 @@ export interface ListingMetadataResponse {
   checkInTypes: Array<BilingualEnum & { sortOrder: number }>;
   parkingTypes: Array<BilingualEnum & { sortOrder: number }>;
   paymentTypes: Array<BilingualEnum & { sortOrder: number }>;
+  advanceBookingOptions: Array<BilingualEnum & { days: number; sortOrder: number }>;
+  maxBookingDurationOptions: Array<BilingualEnum & { nights: number; sortOrder: number }>;
   cancellationPolicyTypes: Array<BilingualEnum & { sortOrder: number }>;
   verificationDocumentTypes: Array<BilingualEnum & { 
     description: BilingualText;
