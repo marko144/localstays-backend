@@ -346,6 +346,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('maxBookingDuration');
     }
 
+    // minBookingNights
+    if (updates.minBookingNights !== undefined) {
+      if (!Number.isInteger(updates.minBookingNights) || updates.minBookingNights < 1 || updates.minBookingNights > 6) {
+        return response.badRequest('minBookingNights must be an integer between 1 and 6', 'VALIDATION_ERROR');
+      }
+      updateExpressionParts.push('#minBookingNights = :minBookingNights');
+      expressionAttributeNames['#minBookingNights'] = 'minBookingNights';
+      expressionAttributeValues[':minBookingNights'] = updates.minBookingNights;
+      updatedFields.push('minBookingNights');
+    }
+
     // cancellationPolicy
     if (updates.cancellationPolicy !== undefined) {
       const cancellationTypeEnum = await fetchEnumTranslation(
@@ -649,6 +660,13 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
   if (updates.maxBookingDuration !== undefined) {
     if (!VALID_MAX_BOOKING_DURATION.includes(updates.maxBookingDuration)) {
       return `Invalid max booking duration option: ${updates.maxBookingDuration}`;
+    }
+  }
+
+  // minBookingNights
+  if (updates.minBookingNights !== undefined) {
+    if (!Number.isInteger(updates.minBookingNights) || updates.minBookingNights < 1 || updates.minBookingNights > 6) {
+      return 'minBookingNights must be an integer between 1 and 6';
     }
   }
 
@@ -992,6 +1010,10 @@ async function updateListingWithTransaction(
     parkingType: updatedListing.parking.type.key,
     checkInType: updatedListing.checkIn.type.key,
     propertyType: updatedListing.propertyType.key,
+
+    advanceBookingDays: updatedListing.advanceBooking.days, // Store numerical value for filtering
+    maxBookingNights: updatedListing.maxBookingDuration.nights, // Store numerical value for filtering
+    minBookingNights: updatedListing.minBookingNights || 1, // Store numerical value for filtering (default 1)
 
     instantBook: false, // Default to false
     hostVerified: hostVerified, // Sync from host profile

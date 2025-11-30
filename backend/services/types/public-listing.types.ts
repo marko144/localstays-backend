@@ -61,6 +61,7 @@ export interface PublicListingRecord {
   // Booking terms (stored as numerical values for filtering/sorting)
   advanceBookingDays: number;      // How far in advance guests can book (e.g., 180)
   maxBookingNights: number;        // Maximum nights per booking (e.g., 30)
+  minBookingNights: number;        // Minimum nights per booking (1-6)
 
   // Booking behaviour
   instantBook: boolean;
@@ -141,6 +142,7 @@ export interface PublicListingResponse {
   propertyType: string;
   advanceBookingDays: number;
   maxBookingNights: number;
+  minBookingNights: number;
   instantBook: boolean;
   hostVerified: boolean;
   listingVerified: boolean;
@@ -186,6 +188,7 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     propertyType: record.propertyType,
     advanceBookingDays: record.advanceBookingDays,
     maxBookingNights: record.maxBookingNights,
+    minBookingNights: record.minBookingNights,
     instantBook: record.instantBook,
     hostVerified: record.hostVerified,
     listingVerified: record.listingVerified,

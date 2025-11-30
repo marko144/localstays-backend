@@ -177,6 +177,7 @@ export interface PricingMatrixRecord {
   // Note: Always stored and returned as per-night amounts
   // Frontend can calculate total based on number of nights and guests
   touristTax?: TouristTax;
+  taxesIncludedInPrice: boolean;    // True if tourist tax is included in accommodation price
   
   // Metadata
   lastCalculatedAt: string;
@@ -235,6 +236,7 @@ export interface SetPricingRequest {
       };
     }>;
   };
+  taxesIncludedInPrice?: boolean;     // True if tourist tax is included in accommodation price (default: false)
 }
 
 // Response: Get/Set Pricing
@@ -272,6 +274,7 @@ export interface PricingConfiguration {
     adultAmount: number;              // Amount per adult per night
     childRates: ChildTouristTaxRate[]; // Age-based child rates
   };
+  taxesIncludedInPrice: boolean;     // True if tourist tax is included in accommodation price
 }
 
 export interface GetPricingResponse {

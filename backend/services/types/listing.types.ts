@@ -247,6 +247,7 @@ export interface ListingMetadata {
   // Booking Terms
   advanceBooking: BilingualEnum & { days: number };        // How far in advance guests can book
   maxBookingDuration: BilingualEnum & { nights: number };  // Maximum nights per booking
+  minBookingNights: number;                                 // Minimum nights per booking (1-6)
   
   // Cancellation Policy
   cancellationPolicy: {
@@ -494,6 +495,7 @@ export interface SubmitListingIntentRequest {
   smokingAllowed: boolean;
   advanceBooking: AdvanceBookingType;
   maxBookingDuration: MaxBookingDurationType;
+  minBookingNights?: number;        // Minimum nights per booking (1-6), defaults to 1
   cancellationPolicy: {
     type: CancellationPolicyType;
     customText?: string;           // Required if type === 'OTHER'
@@ -584,6 +586,7 @@ export interface GetListingResponse {
     smokingAllowed: boolean;
     advanceBooking: BilingualEnum & { days: number };
     maxBookingDuration: BilingualEnum & { nights: number };
+    minBookingNights: number;
     cancellationPolicy: {
       type: BilingualEnum;
       customText?: string;
@@ -750,6 +753,7 @@ export interface UpdateListingMetadataRequest {
     smokingAllowed?: boolean;
     advanceBooking?: AdvanceBookingType;
     maxBookingDuration?: MaxBookingDurationType;
+    minBookingNights?: number;      // Minimum nights per booking (1-6)
     cancellationPolicy?: {
       type: CancellationPolicyType;
       customText?: string;

@@ -97,6 +97,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       paymentTypeEnum,
       advanceBookingEnum,
       maxBookingDurationEnum,
+      cancellationPolicyEnum,
       amenityEnums,
     ] = await Promise.all([
       fetchEnumTranslation('PROPERTY_TYPE', body.propertyType),
@@ -105,10 +106,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       fetchEnumTranslation('PAYMENT_TYPE', body.paymentType),
       fetchEnumTranslation('ADVANCE_BOOKING', body.advanceBooking),
       fetchEnumTranslation('MAX_BOOKING_DURATION', body.maxBookingDuration),
+      fetchEnumTranslation('CANCELLATION_POLICY', body.cancellationPolicy.type),
       fetchAmenityTranslations(body.amenities),
     ]);
 
-    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum || !advanceBookingEnum || !maxBookingDurationEnum) {
+    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum || !advanceBookingEnum || !maxBookingDurationEnum || !cancellationPolicyEnum) {
       return response.badRequest('Invalid enum values provided');
     }
 
@@ -160,7 +162,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           smokingAllowed: body.smokingAllowed,
           advanceBooking: advanceBookingEnum,
           maxBookingDuration: maxBookingDurationEnum,
-          cancellationPolicy: body.cancellationPolicy,
+          minBookingNights: body.minBookingNights ?? 1, // Default to 1 if not provided
+          cancellationPolicy: {
+            type: cancellationPolicyEnum,
+            customText: body.cancellationPolicy.customText,
+          },
           
           s3Prefix,
           
@@ -406,6 +412,13 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   }
   if (!body.maxBookingDuration) {
     return 'maxBookingDuration is required';
+  }
+  
+  // Validate minBookingNights if provided
+  if (body.minBookingNights !== undefined) {
+    if (!Number.isInteger(body.minBookingNights) || body.minBookingNights < 1 || body.minBookingNights > 6) {
+      return 'minBookingNights must be an integer between 1 and 6';
+    }
   }
 
   // Images validation

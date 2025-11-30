@@ -86,8 +86,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 8. Calculate pricing matrix
     const matrix = calculatePricingMatrix(basePriceRecords, losRecords);
 
-    // 9. Store pricing matrix (including tourist tax and currency from request)
-    await storePricingMatrix(hostId, listingId, matrix, body.currency, body.touristTax);
+    // 9. Store pricing matrix (including tourist tax, flag, and currency from request)
+    await storePricingMatrix(
+      hostId,
+      listingId,
+      matrix,
+      body.currency,
+      body.touristTax,
+      body.taxesIncludedInPrice ?? false  // Default to false if not provided
+    );
 
     // 10. Update listing metadata to set hasPricing flag
     await updateListingPricingFlag(hostId, listingId);
@@ -132,6 +139,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         discountAbsolute: los.discountAbsolute,
       })),
       touristTax: body.touristTax || undefined,
+      taxesIncludedInPrice: body.taxesIncludedInPrice ?? false,
     };
 
     // 12. Return complete configuration + matrix
@@ -618,7 +626,8 @@ async function storePricingMatrix(
   listingId: string,
   matrix: PricingMatrix,
   currency: string,
-  touristTax?: any
+  touristTax?: any,
+  taxesIncludedInPrice: boolean = false
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -628,6 +637,7 @@ async function storePricingMatrix(
     listingId,
     currency,
     matrix,
+    taxesIncludedInPrice,  // Always store the flag
     lastCalculatedAt: now,
     updatedAt: now,
     gsi3pk: `LISTING#${listingId}`,
@@ -646,7 +656,7 @@ async function storePricingMatrix(
     })
   );
 
-  console.log('Stored pricing matrix', touristTax ? 'with tourist tax' : '');
+  console.log('Stored pricing matrix', touristTax ? 'with tourist tax' : '', taxesIncludedInPrice ? '(taxes included in price)' : '');
 }
 
 async function updateListingPricingFlag(hostId: string, listingId: string): Promise<void> {

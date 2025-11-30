@@ -71,6 +71,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const losDiscounts: LengthOfStayRecord[] = [];
     let matrix: PricingMatrix | null = null;
     let touristTax: any = null;
+    let taxesIncludedInPrice: boolean = false;
     let currency: string | null = null;
 
     for (const item of result.Items) {
@@ -81,6 +82,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       } else if (item.sk.includes('#MATRIX')) {
         matrix = item.matrix as PricingMatrix;
         touristTax = item.touristTax || null;
+        taxesIncludedInPrice = item.taxesIncludedInPrice ?? false;
         currency = item.currency;  // Get currency from pricing matrix
       }
     }
@@ -133,6 +135,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         discountAbsolute: los.discountAbsolute,
       })),
       touristTax: touristTax || undefined,
+      taxesIncludedInPrice,
     };
 
     // 6. Return configuration + matrix

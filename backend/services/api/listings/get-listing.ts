@@ -151,6 +151,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         smokingAllowed: listing.smokingAllowed,
         advanceBooking: listing.advanceBooking,
         maxBookingDuration: listing.maxBookingDuration,
+        minBookingNights: listing.minBookingNights || 1,
         cancellationPolicy: listing.cancellationPolicy,
         createdAt: listing.createdAt,
         updatedAt: listing.updatedAt,

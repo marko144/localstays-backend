@@ -204,6 +204,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       advanceBookingDays: listing.advanceBooking.days, // Store numerical value for filtering
       maxBookingNights: listing.maxBookingDuration.nights, // Store numerical value for filtering
+      minBookingNights: listing.minBookingNights || 1, // Store numerical value for filtering (default 1)
 
       instantBook: false, // Default to false
       hostVerified: hostVerified, // Sync from host profile
