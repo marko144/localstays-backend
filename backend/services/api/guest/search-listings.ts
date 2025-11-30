@@ -29,7 +29,6 @@ const MAX_RESULTS_LIMIT = parseInt(process.env.MAX_RESULTS_LIMIT || '100');
 const AVAILABILITY_BATCH_SIZE = parseInt(process.env.AVAILABILITY_BATCH_SIZE || '40');
 const PRICING_BATCH_SIZE = parseInt(process.env.PRICING_BATCH_SIZE || '40');
 const RATE_LIMIT_REQUESTS = 60;
-const RATE_LIMIT_WINDOW = 60; // seconds
 
 // ============================================================================
 // TYPES
@@ -59,7 +58,7 @@ interface NightlyPriceBreakdown {
 
 interface ListingPricing {
   currency: string;
-  totalPrice: number;
+  totalPrice: number; // Base price (without tax)
   pricePerNight: number;
   breakdown: NightlyPriceBreakdown[];
   lengthOfStayDiscount: {
@@ -70,20 +69,31 @@ interface ListingPricing {
     totalSavings: number;
   } | null;
   membersPricingApplied: boolean;
-  touristTax: {
-    type: 'PER_NIGHT' | 'PER_STAY';
-    adultAmount: number;
-    childRates: Array<{
-      childRateId: string;
+  
+  // When taxesIncludedInPrice = false
+  totalPriceWithTax?: number; // Total including tourist tax
+  touristTaxAmount?: number;
+  touristTaxBreakdown?: {
+    adults: {
+      count: number;
+      perNight: number;
+      total: number;
+    };
+    children: Array<{
+      count: number;
       ageFrom: number;
       ageTo: number;
-      amount: number;
+      perNight: number;
+      total: number;
       displayLabel: {
         en: string;
         sr: string;
       };
     }>;
-  } | null;
+  };
+  
+  // When taxesIncludedInPrice = true
+  taxesIncludedInPrice?: boolean;
 }
 
 interface SearchResult {
@@ -156,9 +166,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       checkIn,
       checkOut,
       adults,
-      children,
+      childAges,
       totalGuests,
       daysDiff,
+      daysUntilCheckIn,
       filters,
       decodedCursor,
     } = validationResult.data!;
@@ -230,17 +241,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           checkOut,
           nights: daysDiff,
           adults,
-          children,
+          children: childAges.length,
           totalGuests,
         },
       });
     }
 
     // ========================================
-    // 5. APPLY OPTIONAL FILTERS (IN LAMBDA)
+    // 5. APPLY BOOKING TERMS FILTERS (IN LAMBDA)
     // ========================================
-    candidateListings = applyFilters(candidateListings, filters);
-    console.log(`After filtering: ${candidateListings.length} listings`);
+    candidateListings = applyBookingTermFilters(candidateListings, daysDiff, daysUntilCheckIn);
+    console.log(`After booking terms filtering: ${candidateListings.length} listings`);
 
     if (candidateListings.length === 0) {
       return successResponse({
@@ -258,14 +269,42 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           checkOut,
           nights: daysDiff,
           adults,
-          children,
+          children: childAges.length,
           totalGuests,
         },
       });
     }
 
     // ========================================
-    // 6. CHECK AVAILABILITY (PARALLEL BATCHES)
+    // 6. APPLY OPTIONAL FILTERS (IN LAMBDA)
+    // ========================================
+    candidateListings = applyFilters(candidateListings, filters);
+    console.log(`After amenity filtering: ${candidateListings.length} listings`);
+
+    if (candidateListings.length === 0) {
+      return successResponse({
+        listings: [],
+        pagination: {
+          hasMore: !!publicListingsResult.LastEvaluatedKey,
+          nextCursor: publicListingsResult.LastEvaluatedKey 
+            ? encodeCursor(publicListingsResult.LastEvaluatedKey) 
+            : null,
+          totalReturned: 0,
+        },
+        searchMeta: {
+          locationId,
+          checkIn,
+          checkOut,
+          nights: daysDiff,
+          adults,
+          children: childAges.length,
+          totalGuests,
+        },
+      });
+    }
+
+    // ========================================
+    // 7. CHECK AVAILABILITY (PARALLEL BATCHES)
     // ========================================
     const nightDates = generateNightDates(checkIn, checkOut);
     const lastNight = nightDates[nightDates.length - 1];
@@ -293,22 +332,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           checkOut,
           nights: daysDiff,
           adults,
-          children,
+          children: childAges.length,
           totalGuests,
         },
       });
     }
 
     // ========================================
-    // 7. FETCH PRICING (PARALLEL BATCHES)
+    // 8. FETCH PRICING (PARALLEL BATCHES)
     // ========================================
     const pricingMap = await fetchPricingBatch(availableListings);
     console.log(`Fetched pricing for ${pricingMap.size} listings`);
 
     // ========================================
-    // 8. CALCULATE PRICING & BUILD RESULTS
+    // 9. CALCULATE PRICING & BUILD RESULTS
     // ========================================
-    const results: SearchResult[] = availableListings
+    const results = availableListings
       .map((listing) => {
         const pricing = pricingMap.get(listing.listingId);
         
@@ -320,10 +359,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const calculatedPricing = calculateListingPrice(
           pricing,
           nightDates,
-          isAuthenticated
+          isAuthenticated,
+          adults,
+          childAges
         );
 
-        return {
+        const result: SearchResult = {
           listingId: listing.listingId,
           hostId: listing.hostId,
           name: listing.name,
@@ -346,22 +387,23 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           hasGym: listing.hasGym,
           hasPool: listing.hasPool,
           hasWorkspace: listing.hasWorkspace,
-        parkingType: listing.parkingType,
-        checkInType: listing.checkInType,
-        propertyType: listing.propertyType,
-        instantBook: listing.instantBook,
-        hostVerified: listing.hostVerified,
-        listingVerified: listing.listingVerified,
-        officialStarRating: listing.officialStarRating,
-        pricing: calculatedPricing,
-      };
+          parkingType: listing.parkingType,
+          checkInType: listing.checkInType,
+          propertyType: listing.propertyType,
+          instantBook: listing.instantBook,
+          hostVerified: listing.hostVerified,
+          listingVerified: listing.listingVerified,
+          officialStarRating: listing.officialStarRating,
+          pricing: calculatedPricing,
+        };
+        return result;
       })
       .filter((l): l is SearchResult => l !== null);
 
     console.log(`Final results: ${results.length} listings`);
 
     // ========================================
-    // 9. RETURN RESPONSE
+    // 10. RETURN RESPONSE
     // ========================================
     return successResponse({
       listings: results,
@@ -378,7 +420,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         checkOut,
         nights: daysDiff,
         adults,
-        children,
+        children: childAges.length,
         totalGuests,
       },
     });
@@ -402,9 +444,10 @@ interface ValidationResult {
     checkIn: string;
     checkOut: string;
     adults: number;
-    children: number;
+    childAges: number[]; // Array of child ages (0-17)
     totalGuests: number;
     daysDiff: number;
+    daysUntilCheckIn: number; // Days from today until check-in
     filters: SearchFilters;
     decodedCursor?: any;
   };
@@ -457,9 +500,6 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
   if (locationId && !/^[A-Za-z0-9_-]{10,50}$/.test(locationId)) {
     return { valid: false, error: 'Invalid locationId format' };
   }
-  
-  // Prefer slug over locationId
-  const locationIdentifier = locationSlug || locationId;
 
   // 2. checkIn validation
   const checkIn = event.queryStringParameters?.checkIn?.trim();
@@ -473,9 +513,9 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
   if (isNaN(checkInDate.getTime())) {
     return { valid: false, error: 'Invalid checkIn date' };
   }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (checkInDate < today) {
+  const todayForCheckIn = new Date();
+  todayForCheckIn.setHours(0, 0, 0, 0);
+  if (checkInDate < todayForCheckIn) {
     return { valid: false, error: 'checkIn cannot be in the past' };
   }
 
@@ -514,23 +554,42 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
     return { valid: false, error: 'adults must be between 1 and 50' };
   }
 
-  // 5. children validation (optional)
-  let children = 0;
-  if (event.queryStringParameters?.children) {
-    const childrenStr = event.queryStringParameters.children.trim();
-    children = parseInt(childrenStr, 10);
-    if (isNaN(children) || children < 0 || children > 50) {
-      return { valid: false, error: 'children must be between 0 and 50' };
+  // 5. childAges validation (optional, comma-separated list of ages)
+  const childAges: number[] = [];
+  if (event.queryStringParameters?.childAges) {
+    const childAgesStr = event.queryStringParameters.childAges.trim();
+    
+    if (childAgesStr.length > 0) {
+      const agesArray = childAgesStr.split(',');
+      
+      if (agesArray.length > 50) {
+        return { valid: false, error: 'Maximum 50 children allowed' };
+      }
+      
+      for (const ageStr of agesArray) {
+        const age = parseInt(ageStr.trim(), 10);
+        if (isNaN(age) || age < 0 || age > 17) {
+          return { valid: false, error: 'Each child age must be between 0 and 17' };
+        }
+        childAges.push(age);
+      }
     }
   }
 
   // 6. Total guests validation
-  const totalGuests = adults + children;
+  const totalGuests = adults + childAges.length;
   if (totalGuests > 50) {
     return { valid: false, error: 'Total guests cannot exceed 50' };
   }
 
-  // 7. cursor validation (optional)
+  // 7. Calculate days until check-in (for advance booking filter)
+  const todayForAdvance = new Date();
+  todayForAdvance.setHours(0, 0, 0, 0);
+  const daysUntilCheckIn = Math.floor(
+    (checkInDate.getTime() - todayForAdvance.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // 8. cursor validation (optional)
   let decodedCursor = undefined;
   if (event.queryStringParameters?.cursor) {
     try {
@@ -548,7 +607,7 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
     }
   }
 
-  // 8. Boolean filter validation
+  // 9. Boolean filter validation
   const filters: SearchFilters = {};
   const booleanFilters = [
     'petsAllowed',
@@ -567,18 +626,18 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
       if (value !== 'true' && value !== 'false') {
         return { valid: false, error: `${filterName} must be 'true' or 'false'` };
       }
-      filters[filterName as keyof SearchFilters] = value === 'true';
+      (filters as any)[filterName] = value === 'true';
     }
   }
 
-  // 9. Categorical filter validation
+  // 10. Categorical filter validation
   const parkingType = event.queryStringParameters?.parkingType?.trim().toUpperCase();
   if (parkingType) {
     const validParkingTypes = ['NO_PARKING', 'FREE', 'PAID'];
     if (!validParkingTypes.includes(parkingType)) {
       return { valid: false, error: 'Invalid parkingType' };
     }
-    filters.parkingType = parkingType;
+    filters.parkingType = parkingType as any;
   }
 
   const checkInType = event.queryStringParameters?.checkInType?.trim().toUpperCase();
@@ -602,14 +661,15 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
   return {
     valid: true,
     data: {
-      locationIdentifier, // Either slug or locationId
+      locationIdentifier: locationSlug || locationId!, // Either slug or locationId
       isSlug: !!locationSlug, // Flag to indicate if we need to resolve slug
       checkIn,
       checkOut,
       adults,
-      children,
+      childAges,
       totalGuests,
       daysDiff,
+      daysUntilCheckIn,
       filters,
       decodedCursor,
     },
@@ -619,6 +679,38 @@ function validateInputs(event: APIGatewayProxyEvent): ValidationResult {
 // ============================================================================
 // FILTERING
 // ============================================================================
+
+/**
+ * Apply booking terms filters (cheapest filters first)
+ * Filters based on:
+ * - minBookingNights: Listing's minimum stay requirement
+ * - maxBookingNights: Listing's maximum stay allowance
+ * - advanceBookingDays: How far in advance the listing can be booked
+ */
+function applyBookingTermFilters(
+  listings: PublicListingRecord[],
+  requestedNights: number,
+  daysUntilCheckIn: number
+): PublicListingRecord[] {
+  return listings.filter((listing) => {
+    // 1. Check minimum nights requirement
+    if (listing.minBookingNights > requestedNights) {
+      return false;
+    }
+
+    // 2. Check maximum nights allowance
+    if (listing.maxBookingNights < requestedNights) {
+      return false;
+    }
+
+    // 3. Check advance booking requirement
+    if (listing.advanceBookingDays < daysUntilCheckIn) {
+      return false;
+    }
+
+    return true;
+  });
+}
 
 function applyFilters(
   listings: PublicListingRecord[],
@@ -764,15 +856,143 @@ async function fetchPricingBatch(
 }
 
 // ============================================================================
+// TOURIST TAX CALCULATION
+// ============================================================================
+
+interface TouristTaxCalculation {
+  touristTaxAmount: number;
+  touristTaxBreakdown: {
+    adults: {
+      count: number;
+      perNight: number;
+      total: number;
+    };
+    children: Array<{
+      count: number;
+      ageFrom: number;
+      ageTo: number;
+      perNight: number;
+      total: number;
+      displayLabel: {
+        en: string;
+        sr: string;
+      };
+    }>;
+  };
+}
+
+/**
+ * Calculate tourist tax based on guest ages and pricing configuration
+ * Tourist tax is always calculated per night for each guest
+ */
+function calculateTouristTax(
+  touristTax: {
+    adultAmount: number;
+    childRates: Array<{
+      childRateId: string;
+      ageFrom: number;
+      ageTo: number;
+      amount: number;
+      displayLabel: {
+        en: string;
+        sr: string;
+      };
+    }>;
+  } | null,
+  adults: number,
+  childAges: number[],
+  nights: number
+): TouristTaxCalculation {
+  // If no tourist tax configured, return zeros
+  if (!touristTax) {
+    return {
+      touristTaxAmount: 0,
+      touristTaxBreakdown: {
+        adults: {
+          count: adults,
+          perNight: 0,
+          total: 0,
+        },
+        children: [],
+      },
+    };
+  }
+
+  // Calculate adult tourist tax
+  const adultTax = adults * touristTax.adultAmount * nights;
+
+  // Group children by tax rate
+  const childTaxGroups = new Map<
+    string,
+    {
+      rate: typeof touristTax.childRates[0];
+      count: number;
+    }
+  >();
+
+  // Match each child age to the appropriate rate
+  for (const childAge of childAges) {
+    // Find the rate that covers this child's age
+    const matchingRate = touristTax.childRates.find(
+      (rate) => childAge >= rate.ageFrom && childAge <= rate.ageTo
+    );
+
+    if (matchingRate) {
+      const existing = childTaxGroups.get(matchingRate.childRateId);
+      if (existing) {
+        existing.count++;
+      } else {
+        childTaxGroups.set(matchingRate.childRateId, {
+          rate: matchingRate,
+          count: 1,
+        });
+      }
+    }
+  }
+
+  // Calculate child tax breakdown
+  const childBreakdown = Array.from(childTaxGroups.values()).map((group) => {
+    const perNight = group.rate.amount;
+    const total = group.count * perNight * nights;
+
+    return {
+      count: group.count,
+      ageFrom: group.rate.ageFrom,
+      ageTo: group.rate.ageTo,
+      perNight,
+      total: Math.round(total * 100) / 100,
+      displayLabel: group.rate.displayLabel,
+    };
+  });
+
+  const totalChildTax = childBreakdown.reduce((sum, item) => sum + item.total, 0);
+  const totalTax = adultTax + totalChildTax;
+
+  return {
+    touristTaxAmount: Math.round(totalTax * 100) / 100,
+    touristTaxBreakdown: {
+      adults: {
+        count: adults,
+        perNight: touristTax.adultAmount,
+        total: Math.round(adultTax * 100) / 100,
+      },
+      children: childBreakdown,
+    },
+  };
+}
+
+// ============================================================================
 // PRICING CALCULATION
 // ============================================================================
 
 function calculateListingPrice(
   pricingMatrix: PricingMatrixRecord,
   nightDates: string[],
-  isAuthenticated: boolean
+  isAuthenticated: boolean,
+  adults: number,
+  childAges: number[]
 ): ListingPricing {
-  const { matrix, currency, touristTax } = pricingMatrix;
+  const { matrix, currency, touristTax, taxesIncludedInPrice } = pricingMatrix;
   const nights = nightDates.length;
 
   // Step 1: Determine base price for each night
@@ -823,9 +1043,10 @@ function calculateListingPrice(
     };
   });
 
-  return {
+  // Build base response
+  const baseResponse: ListingPricing = {
     currency,
-    totalPrice: Math.round(totalPrice * 100) / 100, // Round to 2 decimals
+    totalPrice: Math.round(totalPrice * 100) / 100,
     pricePerNight: Math.round((totalPrice / nights) * 100) / 100,
     breakdown: finalBreakdown,
     lengthOfStayDiscount: losDiscount
@@ -838,13 +1059,32 @@ function calculateListingPrice(
         }
       : null,
     membersPricingApplied: isAuthenticated && nightlyBreakdown.some((n) => n.isMembersPrice),
-    touristTax: touristTax
-      ? {
-          type: touristTax.type,
-          adultAmount: touristTax.adultAmount,
-          childRates: touristTax.childRates,
-        }
-      : null,
+  };
+
+  // Step 3: Calculate tourist tax ONLY if NOT included in price
+  if (taxesIncludedInPrice === true) {
+    // Taxes included - return flag so frontend knows
+    return {
+      ...baseResponse,
+      taxesIncludedInPrice: true,
+    };
+  }
+
+  // Taxes NOT included - calculate and return both prices
+  const taxCalculation = calculateTouristTax(
+    touristTax ?? null,
+    adults,
+    childAges,
+    nights
+  );
+
+  const totalWithTax = totalPrice + taxCalculation.touristTaxAmount;
+
+  return {
+    ...baseResponse,
+    totalPriceWithTax: Math.round(totalWithTax * 100) / 100,
+    touristTaxAmount: taxCalculation.touristTaxAmount,
+    touristTaxBreakdown: taxCalculation.touristTaxBreakdown,
   };
 }
 

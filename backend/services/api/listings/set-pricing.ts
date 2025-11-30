@@ -27,6 +27,7 @@ import type {
   LengthOfStayRecord,
   PricingMatrix,
   MembersDiscount,
+  PricingConfiguration,
 } from '../../types/pricing.types';
 
 const dynamoClient = new DynamoDBClient({});
@@ -119,7 +120,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           : null,
       }));
 
-    const configuration = {
+    const configuration: PricingConfiguration = {
       basePrice: {
         standardPrice: defaultBasePrice.standardPrice,
         membersDiscount: defaultBasePrice.membersDiscount
@@ -138,7 +139,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         discountPercentage: los.discountPercentage,
         discountAbsolute: los.discountAbsolute,
       })),
-      touristTax: body.touristTax || undefined,
+      touristTax: body.touristTax ? {
+        type: body.touristTax.type,
+        adultAmount: body.touristTax.adultAmount,
+        childRates: body.touristTax.childRates.map((rate: any) => ({
+          childRateId: rate.childRateId || `rate_${uuidv4().substring(0, 8)}`,
+          ageFrom: rate.ageFrom,
+          ageTo: rate.ageTo,
+          amount: rate.amount,
+          displayLabel: rate.displayLabel,
+        })),
+      } : undefined,
       taxesIncludedInPrice: body.taxesIncludedInPrice ?? false,
     };
 
@@ -216,10 +227,22 @@ function validatePricingConfiguration(body: SetPricingRequest): string | null {
     if (losError) return losError;
   }
 
-  // 8. Validate tourist tax (if present)
-  if (body.touristTax) {
+  // 8. Validate tourist tax based on taxesIncludedInPrice flag
+  const taxesIncluded = body.taxesIncludedInPrice ?? false;
+  
+  if (taxesIncluded === false) {
+    // Taxes NOT included - tourist tax configuration is REQUIRED
+    if (!body.touristTax) {
+      return 'Tourist tax configuration is required when taxesIncludedInPrice is false';
+    }
     const touristTaxError = validateTouristTax(body.touristTax);
     if (touristTaxError) return touristTaxError;
+  } else {
+    // Taxes included - tourist tax is OPTIONAL (will be ignored if provided)
+    if (body.touristTax) {
+      const touristTaxError = validateTouristTax(body.touristTax);
+      if (touristTaxError) return touristTaxError;
+    }
   }
 
   return null;
@@ -644,9 +667,15 @@ async function storePricingMatrix(
     gsi3sk: 'PRICING_MATRIX',
   };
 
-  // Add tourist tax if provided
+  // Add tourist tax if provided (generate childRateIds if missing)
   if (touristTax) {
-    item.touristTax = touristTax;
+    item.touristTax = {
+      ...touristTax,
+      childRates: touristTax.childRates.map((rate: any) => ({
+        ...rate,
+        childRateId: rate.childRateId || `rate_${uuidv4().substring(0, 8)}`,
+      })),
+    };
   }
 
   await docClient.send(

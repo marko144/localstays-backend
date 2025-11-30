@@ -9,7 +9,8 @@ The tourist tax system now supports **age-based child rates** instead of a singl
 - ✅ **Adults:** Single rate (unchanged)
 - ✅ **Children:** Multiple age-based rates (0-17 years)
 - ✅ **Inclusive Age Ranges:** `ageFrom: 0, ageTo: 7` includes ages 0, 1, 2, 3, 4, 5, 6, **and 7**
-- ✅ **Validation:** No overlaps, at least 1 child rate required
+- ✅ **Conditional Validation:** Tourist tax is **required** when `taxesIncludedInPrice = false`, **optional** when `true`
+- ✅ **Validation:** No overlaps, at least 1 child rate required (when tourist tax is provided)
 
 ---
 
@@ -26,7 +27,8 @@ The tourist tax system now supports **age-based child rates** instead of a singl
   currency: "EUR",
   basePrices: { /* ... */ },
   lengthOfStayDiscounts: [ /* ... */ ],
-  touristTax: {
+  taxesIncludedInPrice: boolean,     // Default: false
+  touristTax?: {                     // REQUIRED if taxesIncludedInPrice = false
     type: "PER_NIGHT" | "PER_STAY",
     adultAmount: number,
     childRates: [
@@ -229,7 +231,12 @@ interface TouristTax {
 
 ### Backend Validation
 
-The backend enforces these rules:
+**Conditional Requirement:**
+
+- When `taxesIncludedInPrice = false` (or not provided): Tourist tax configuration **IS REQUIRED**
+- When `taxesIncludedInPrice = true`: Tourist tax is **OPTIONAL** (can be omitted entirely)
+
+**When tourist tax IS provided, the backend enforces these rules:**
 
 1. ✅ **At least 1 child rate required**
 2. ✅ **Maximum 10 child rates**

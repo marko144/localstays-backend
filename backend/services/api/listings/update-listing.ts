@@ -722,7 +722,7 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
 async function fetchEnumTranslation(
   enumType: string,
   enumValue: string
-): Promise<BilingualEnum & { isEntirePlace?: boolean } | null> {
+): Promise<BilingualEnum & { isEntirePlace?: boolean; days?: number; nights?: number } | null> {
   try {
     const result = await docClient.send(
       new GetCommand({
@@ -744,6 +744,12 @@ async function fetchEnumTranslation(
       sr: result.Item.translations.sr,
       ...(result.Item.metadata?.isEntirePlace !== undefined && {
         isEntirePlace: result.Item.metadata.isEntirePlace,
+      }),
+      ...(result.Item.metadata?.days !== undefined && {
+        days: result.Item.metadata.days,
+      }),
+      ...(result.Item.metadata?.nights !== undefined && {
+        nights: result.Item.metadata.nights,
       }),
     };
   } catch (error) {
