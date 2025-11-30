@@ -347,12 +347,91 @@ function validateTouristTax(touristTax: any): string | null {
     return 'Tourist tax adult amount must be a non-negative number';
   }
 
-  // Validate child amount
-  if (
-    typeof touristTax.childAmount !== 'number' ||
-    touristTax.childAmount < 0
-  ) {
-    return 'Tourist tax child amount must be a non-negative number';
+  // Validate child rates (required)
+  if (!touristTax.childRates || !Array.isArray(touristTax.childRates)) {
+    return 'Tourist tax must include childRates array';
+  }
+
+  if (touristTax.childRates.length === 0) {
+    return 'At least one child tax rate is required';
+  }
+
+  if (touristTax.childRates.length > 10) {
+    return 'Maximum 10 child tax rates allowed';
+  }
+
+  // Validate each child rate
+  const childRatesError = validateChildTouristTaxRates(touristTax.childRates);
+  if (childRatesError) return childRatesError;
+
+  return null;
+}
+
+function validateChildTouristTaxRates(childRates: any[]): string | null {
+  const ageRanges: Array<{ from: number; to: number }> = [];
+
+  for (let i = 0; i < childRates.length; i++) {
+    const rate = childRates[i];
+
+    // Validate ageFrom
+    if (
+      typeof rate.ageFrom !== 'number' ||
+      rate.ageFrom < 0 ||
+      rate.ageFrom > 16
+    ) {
+      return `Child rate ${i + 1}: ageFrom must be between 0 and 16`;
+    }
+
+    // Validate ageTo
+    if (
+      typeof rate.ageTo !== 'number' ||
+      rate.ageTo < 1 ||
+      rate.ageTo > 17
+    ) {
+      return `Child rate ${i + 1}: ageTo must be between 1 and 17`;
+    }
+
+    // Validate ageTo > ageFrom
+    if (rate.ageTo <= rate.ageFrom) {
+      return `Child rate ${i + 1}: ageTo must be greater than ageFrom`;
+    }
+
+    // Validate amount
+    if (typeof rate.amount !== 'number' || rate.amount < 0) {
+      return `Child rate ${i + 1}: amount must be a non-negative number`;
+    }
+
+    // Validate display labels
+    if (!rate.displayLabel || typeof rate.displayLabel !== 'object') {
+      return `Child rate ${i + 1}: displayLabel is required`;
+    }
+
+    if (
+      typeof rate.displayLabel.en !== 'string' ||
+      rate.displayLabel.en.trim() === ''
+    ) {
+      return `Child rate ${i + 1}: displayLabel.en is required`;
+    }
+
+    if (
+      typeof rate.displayLabel.sr !== 'string' ||
+      rate.displayLabel.sr.trim() === ''
+    ) {
+      return `Child rate ${i + 1}: displayLabel.sr is required`;
+    }
+
+    // Check for overlapping age ranges
+    for (const existingRange of ageRanges) {
+      // Check if ranges overlap (inclusive)
+      // Range 1: [ageFrom, ageTo] (inclusive on both ends)
+      // Range 2: [existingRange.from, existingRange.to] (inclusive on both ends)
+      // Overlap exists if: ageFrom <= existingRange.to AND ageTo >= existingRange.from
+      if (rate.ageFrom <= existingRange.to && rate.ageTo >= existingRange.from) {
+        return `Child rate ${i + 1}: age range ${rate.ageFrom}-${rate.ageTo} overlaps with existing range ${existingRange.from}-${existingRange.to}`;
+      }
+    }
+
+    ageRanges.push({ from: rate.ageFrom, to: rate.ageTo });
   }
 
   return null;

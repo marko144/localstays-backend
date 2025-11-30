@@ -524,5 +524,3 @@ const handleCreateListing = async (formData) => {
 ---
 
 **Questions?** Contact the backend team for clarification.
-
-

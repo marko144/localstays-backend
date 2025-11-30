@@ -71,8 +71,18 @@ interface ListingPricing {
   } | null;
   membersPricingApplied: boolean;
   touristTax: {
-    perNightAdult: number;
-    perNightChild: number;
+    type: 'PER_NIGHT' | 'PER_STAY';
+    adultAmount: number;
+    childRates: Array<{
+      childRateId: string;
+      ageFrom: number;
+      ageTo: number;
+      amount: number;
+      displayLabel: {
+        en: string;
+        sr: string;
+      };
+    }>;
   } | null;
 }
 
@@ -830,8 +840,9 @@ function calculateListingPrice(
     membersPricingApplied: isAuthenticated && nightlyBreakdown.some((n) => n.isMembersPrice),
     touristTax: touristTax
       ? {
-          perNightAdult: touristTax.adultAmount,
-          perNightChild: touristTax.childAmount,
+          type: touristTax.type,
+          adultAmount: touristTax.adultAmount,
+          childRates: touristTax.childRates,
         }
       : null,
   };

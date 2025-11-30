@@ -178,8 +178,18 @@ GET /api/v1/public/listings/search
       } | null;
       membersPricingApplied: boolean;  // Whether user got members pricing
       touristTax: {
-        perNightAdult: number;         // Per adult per night
-        perNightChild: number;         // Per child per night
+        type: "PER_NIGHT" | "PER_STAY";  // How the tax is charged
+        adultAmount: number;             // Amount per adult per night
+        childRates: Array<{              // Age-based child rates
+          childRateId: string;
+          ageFrom: number;               // 0-17 (inclusive)
+          ageTo: number;                 // 0-17 (inclusive)
+          amount: number;
+          displayLabel: {
+            en: string;
+            sr: string;
+          };
+        }>;
       } | null;
     };
   }>;
