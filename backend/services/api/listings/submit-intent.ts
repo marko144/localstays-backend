@@ -6,6 +6,7 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { generateUploadUrl } from '../lib/s3-presigned';
 import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
+import { validateGoogleMapsLink } from '../lib/url-validation';
 import {
   SubmitListingIntentRequest,
   SubmitListingIntentResponse,
@@ -415,6 +416,12 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
       return 'longitude must be between -180 and 180';
     }
   }
+  // Validate Google Maps link if provided
+  if (body.address.googleMapsLink) {
+    if (!validateGoogleMapsLink(body.address.googleMapsLink)) {
+      return 'Google Maps link must be a valid HTTPS URL from maps.google.com or google.com/maps';
+    }
+  }
   if (!body.capacity || body.capacity.beds < 1 || body.capacity.bedrooms < 0 || body.capacity.bathrooms < 1 || body.capacity.sleeps < 1) {
     return 'capacity (beds, bedrooms, bathrooms, and sleeps) is required. beds, bathrooms, and sleeps must be > 0, bedrooms must be >= 0';
   }
@@ -744,6 +751,9 @@ function normalizeAddress(address: any): any {
   }
   if (address.mapboxPlaceId) {
     normalized.mapboxPlaceId = address.mapboxPlaceId;
+  }
+  if (address.googleMapsLink) {
+    normalized.googleMapsLink = address.googleMapsLink.trim();
   }
 
   return normalized;

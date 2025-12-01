@@ -56,37 +56,37 @@ function isValidLanguageCode(code: string): boolean {
 /**
  * Validate address
  */
-function validateAddress(address: Address, errors: ValidationError[]): void {
+function validateAddress(address: Address, errors: ValidationError[], fieldPrefix: string = 'address'): void {
   if (!address.addressLine1 || address.addressLine1.trim().length === 0) {
-    errors.push({ field: 'address.addressLine1', message: 'Address line 1 is required' });
+    errors.push({ field: `${fieldPrefix}.addressLine1`, message: 'Address line 1 is required' });
   } else if (address.addressLine1.length > 200) {
-    errors.push({ field: 'address.addressLine1', message: 'Address line 1 must be 200 characters or less' });
+    errors.push({ field: `${fieldPrefix}.addressLine1`, message: 'Address line 1 must be 200 characters or less' });
   }
   
   if (address.addressLine2 && address.addressLine2.length > 200) {
-    errors.push({ field: 'address.addressLine2', message: 'Address line 2 must be 200 characters or less' });
+    errors.push({ field: `${fieldPrefix}.addressLine2`, message: 'Address line 2 must be 200 characters or less' });
   }
   
   if (!address.locality || address.locality.trim().length === 0) {
-    errors.push({ field: 'address.locality', message: 'City is required' });
+    errors.push({ field: `${fieldPrefix}.locality`, message: 'City is required' });
   } else if (address.locality.length > 100) {
-    errors.push({ field: 'address.locality', message: 'City must be 100 characters or less' });
+    errors.push({ field: `${fieldPrefix}.locality`, message: 'City must be 100 characters or less' });
   }
   
   if (!address.administrativeArea || address.administrativeArea.trim().length === 0) {
-    errors.push({ field: 'address.administrativeArea', message: 'State/Province is required' });
+    errors.push({ field: `${fieldPrefix}.administrativeArea`, message: 'State/Province is required' });
   } else if (address.administrativeArea.length > 100) {
-    errors.push({ field: 'address.administrativeArea', message: 'State/Province must be 100 characters or less' });
+    errors.push({ field: `${fieldPrefix}.administrativeArea`, message: 'State/Province must be 100 characters or less' });
   }
   
   if (!address.postalCode || address.postalCode.trim().length === 0) {
-    errors.push({ field: 'address.postalCode', message: 'Postal code is required' });
+    errors.push({ field: `${fieldPrefix}.postalCode`, message: 'Postal code is required' });
   } else if (address.postalCode.length > 20) {
-    errors.push({ field: 'address.postalCode', message: 'Postal code must be 20 characters or less' });
+    errors.push({ field: `${fieldPrefix}.postalCode`, message: 'Postal code must be 20 characters or less' });
   }
   
   if (!address.countryCode || !isValidCountryCode(address.countryCode)) {
-    errors.push({ field: 'address.countryCode', message: 'Valid ISO country code is required (e.g., "RS", "GB")' });
+    errors.push({ field: `${fieldPrefix}.countryCode`, message: 'Valid ISO country code is required (e.g., "RS", "GB")' });
   }
 }
 
@@ -118,7 +118,26 @@ function validateCommonFields(profile: ProfileData, errors: ValidationError[]): 
   if (!profile.address) {
     errors.push({ field: 'address', message: 'Address is required' });
   } else {
-    validateAddress(profile.address, errors);
+    validateAddress(profile.address, errors, 'address');
+  }
+  
+  // Billing address validation
+  if (typeof profile.billingAddressSameAsPhysical !== 'boolean') {
+    errors.push({ field: 'billingAddressSameAsPhysical', message: 'Billing address flag is required' });
+  } else {
+    if (profile.billingAddressSameAsPhysical === false) {
+      // If flag is false, billingAddress must be provided
+      if (!profile.billingAddress) {
+        errors.push({ field: 'billingAddress', message: 'Billing address is required when different from physical address' });
+      } else {
+        validateAddress(profile.billingAddress, errors, 'billingAddress');
+      }
+    } else {
+      // If flag is true, billingAddress should not be provided
+      if (profile.billingAddress) {
+        errors.push({ field: 'billingAddress', message: 'Billing address should not be provided when same as physical address' });
+      }
+    }
   }
 }
 
@@ -269,6 +288,15 @@ export function sanitizeProfileData(profile: ProfileData): ProfileData {
       postalCode: sanitizeString(profile.address.postalCode),
       countryCode: sanitizeString(profile.address.countryCode).toUpperCase(),
     },
+    billingAddressSameAsPhysical: profile.billingAddressSameAsPhysical,
+    billingAddress: profile.billingAddress ? {
+      addressLine1: sanitizeString(profile.billingAddress.addressLine1),
+      addressLine2: profile.billingAddress.addressLine2 ? sanitizeString(profile.billingAddress.addressLine2) : null,
+      locality: sanitizeString(profile.billingAddress.locality),
+      administrativeArea: sanitizeString(profile.billingAddress.administrativeArea),
+      postalCode: sanitizeString(profile.billingAddress.postalCode),
+      countryCode: sanitizeString(profile.billingAddress.countryCode).toUpperCase(),
+    } : null,
   };
   
   if (isIndividualProfile(profile)) {

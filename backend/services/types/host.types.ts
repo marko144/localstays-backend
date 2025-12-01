@@ -113,6 +113,10 @@ export interface BaseHost {
   countryCode: string;         // ISO-3166-1 alpha-2
   address: Address;
   
+  // Billing address
+  billingAddressSameAsPhysical: boolean;  // Default: true
+  billingAddress: Address | null;         // null if billingAddressSameAsPhysical = true
+  
   // Submission tracking
   submission: SubmissionTracking;
   
@@ -193,6 +197,8 @@ export interface IndividualProfileData {
   preferredLanguage: string;
   countryCode: string;
   address: Address;
+  billingAddressSameAsPhysical: boolean;
+  billingAddress?: Address | null;  // Optional in submission
   forename: string;
   surname: string;
 }
@@ -204,6 +210,8 @@ export interface BusinessProfileData {
   preferredLanguage: string;
   countryCode: string;
   address: Address;
+  billingAddressSameAsPhysical: boolean;
+  billingAddress?: Address | null;  // Optional in submission
   legalName: string;
   registrationNumber: string;
   vatRegistered: boolean;

@@ -179,6 +179,7 @@ export interface ListingMetadata {
       longitude: number;
     };
     mapboxPlaceId?: string;
+    googleMapsLink?: string;
   };
   
   // Mapbox Location Metadata (optional, for internal use)
@@ -448,6 +449,7 @@ export interface SubmitListingIntentRequest {
       longitude: number;
     };
     mapboxPlaceId?: string;
+    googleMapsLink?: string;
   };
   mapboxMetadata?: {
     country?: {
@@ -708,6 +710,7 @@ export interface UpdateListingMetadataRequest {
         longitude: number;
       };
       mapboxPlaceId?: string;
+      googleMapsLink?: string;
     };
     mapboxMetadata?: {
       country?: {

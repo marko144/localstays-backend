@@ -22,6 +22,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { requireAuth } from '../lib/auth-middleware';
 import * as response from '../lib/response';
+import { validateGoogleMapsLink } from '../lib/url-validation';
 import {
   UpdateListingMetadataRequest,
   UpdateListingMetadataResponse,
@@ -535,6 +536,12 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
         return 'longitude must be between -180 and 180';
       }
     }
+    // Validate Google Maps link if provided
+    if (updates.address.googleMapsLink !== undefined) {
+      if (updates.address.googleMapsLink && !validateGoogleMapsLink(updates.address.googleMapsLink)) {
+        return 'Google Maps link must be a valid HTTPS URL from maps.google.com or google.com/maps';
+      }
+    }
   }
 
   // mapboxMetadata
@@ -843,6 +850,9 @@ function normalizeAddress(address: UpdateListingMetadataRequest['updates']['addr
   }
   if (address.mapboxPlaceId !== undefined) {
     normalized.mapboxPlaceId = address.mapboxPlaceId;
+  }
+  if (address.googleMapsLink !== undefined) {
+    normalized.googleMapsLink = address.googleMapsLink ? address.googleMapsLink.trim() : address.googleMapsLink;
   }
 
   return normalized;

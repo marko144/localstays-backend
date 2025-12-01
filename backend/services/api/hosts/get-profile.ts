@@ -110,6 +110,8 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     preferredLanguage: host.preferredLanguage,
     countryCode: host.countryCode,
     address: host.address,
+    billingAddressSameAsPhysical: host.billingAddressSameAsPhysical,
+    billingAddress: host.billingAddress,
     
     // Profile photo (optional)
     profilePhoto: host.profilePhoto ? {
