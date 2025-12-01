@@ -15,7 +15,7 @@ import { generateUploadUrl, validateS3Key } from '../lib/s3-presigned';
 import { validateDocumentTypes, validateAllDocumentIntents } from '../lib/document-validation';
 import { validateProfileData, sanitizeProfileData } from '../lib/profile-validation';
 import { ProfileData } from '../../types/host.types';
-import { DocumentUploadIntent, DocumentUploadUrl } from '../../types/document.types';
+import { DocumentUploadIntent, DocumentUploadUrl, MAX_FILE_SIZE } from '../../types/document.types';
 import { SubmissionToken } from '../../types/submission.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -258,6 +258,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const s3Key = `veri_profile-doc_${doc.documentId}_${sidePrefix}${doc.fileName}`;
         validateS3Key(s3Key);
         
+        // Generate pre-signed URL with S3 size enforcement
         const uploadUrl = await generateUploadUrl(
           s3Key,
           doc.mimeType,
@@ -265,7 +266,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           {
             hostId,
             documentId: doc.documentId,
-          }
+          },
+          doc.fileSize,      // Exact size required by S3
+          MAX_FILE_SIZE      // Maximum allowed size (20MB)
         );
 
         return {

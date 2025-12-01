@@ -167,6 +167,6 @@ export const ALLOWED_MIME_TYPES = [
 /**
  * Maximum file sizes
  */
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
-export const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total per submission
+export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB per file
+export const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB total per submission
 

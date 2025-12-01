@@ -25,8 +25,8 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 
 // Constants
 const SUBMISSION_TOKEN_EXPIRY_MINUTES = 30;
-const MAX_VIDEO_SIZE_MB = 100;
-const MAX_IMAGE_SIZE_MB = 10;
+const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/mov', 'video/webm'];
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -91,6 +91,27 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (!ALLOWED_IMAGE_TYPES.includes(imageFile.contentType)) {
       return response.badRequest(
         `Invalid image content type. Allowed: ${ALLOWED_IMAGE_TYPES.join(', ')}`
+      );
+    }
+
+    // Validate file sizes
+    if (!videoFile.fileSize || videoFile.fileSize <= 0) {
+      return response.badRequest('Video fileSize is required and must be greater than 0');
+    }
+
+    if (videoFile.fileSize > MAX_VIDEO_SIZE) {
+      return response.badRequest(
+        `Video file size ${(videoFile.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_VIDEO_SIZE / 1024 / 1024}MB`
+      );
+    }
+
+    if (!imageFile.fileSize || imageFile.fileSize <= 0) {
+      return response.badRequest('Image fileSize is required and must be greater than 0');
+    }
+
+    if (imageFile.fileSize > MAX_IMAGE_SIZE) {
+      return response.badRequest(
+        `Image file size ${(imageFile.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`
       );
     }
 
@@ -162,7 +183,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         })
       );
 
-      // Generate pre-signed URL with metadata
+      // Generate pre-signed URL with metadata and S3 size enforcement
+      const maxSize = file.fileType === 'VIDEO' ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
       const uploadUrl = await generateUploadUrl(
         s3Key,
         file.contentType,
@@ -172,7 +194,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           requestId,
           fileId: file.fileId,
           fileType: file.fileType,
-        }
+        },
+        file.fileSize,  // Exact size required by S3
+        maxSize         // Maximum allowed size
       );
 
       uploadUrls.push({
@@ -208,8 +232,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       requestId,
       submissionToken,
       uploadUrls,
-      maxVideoSizeMB: MAX_VIDEO_SIZE_MB,
-      maxImageSizeMB: MAX_IMAGE_SIZE_MB,
+      maxVideoSizeMB: MAX_VIDEO_SIZE / 1024 / 1024,
+      maxImageSizeMB: MAX_IMAGE_SIZE / 1024 / 1024,
     };
 
     return response.success(intentResponse);

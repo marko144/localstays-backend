@@ -130,12 +130,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const s3Key = `veri_property-video_${requestId}.${fileExtension}`;
     const finalS3Key = `${hostId}/listings/${listingId}/verification/property-video-${requestId}.${fileExtension}`;
 
-    // 12. Generate pre-signed URL for upload with metadata (expires in 1 hour)
-    const uploadUrl = await generateUploadUrl(s3Key, videoContentType, SUBMISSION_TOKEN_EXPIRY_MINUTES * 60, {
-      hostId,
-      listingId,
-      requestId,
-    });
+    // 12. Generate pre-signed URL for upload with metadata and S3 size enforcement (expires in 1 hour)
+    const uploadUrl = await generateUploadUrl(
+      s3Key, 
+      videoContentType, 
+      SUBMISSION_TOKEN_EXPIRY_MINUTES * 60, 
+      {
+        hostId,
+        listingId,
+        requestId,
+      },
+      videoFileSize,         // Exact size required by S3
+      MAX_FILE_SIZE_BYTES    // Maximum allowed size (200MB)
+    );
 
     // 13. Update request with submission token and S3 keys
     await docClient.send(

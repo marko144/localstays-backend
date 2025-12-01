@@ -16,19 +16,30 @@ const BUCKET_NAME = process.env.BUCKET_NAME!;
  * @param contentType - MIME type of the file
  * @param expiresIn - URL expiration time in seconds (default: 600 = 10 minutes)
  * @param metadata - Optional metadata to attach to the object (for Lambda processing)
+ * @param contentLength - Optional exact file size in bytes (enforced by S3)
+ * @param maxSizeBytes - Optional maximum file size in bytes (validation only, not enforced by S3)
  * @returns Pre-signed upload URL
  */
 export async function generateUploadUrl(
   key: string,
   contentType: string,
   expiresIn: number = 600,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
+  contentLength?: number,
+  maxSizeBytes?: number
 ): Promise<string> {
+  // Validate max size if provided (backend validation)
+  if (maxSizeBytes && contentLength && contentLength > maxSizeBytes) {
+    throw new Error(`File size ${contentLength} bytes exceeds maximum allowed size of ${maxSizeBytes} bytes`);
+  }
+  
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
     ContentType: contentType,
     Metadata: metadata,
+    // If contentLength is provided, S3 will REQUIRE the upload to be exactly this size
+    ...(contentLength && { ContentLength: contentLength }),
     // Note: ServerSideEncryption is NOT included here because it would require
     // the frontend to send the x-amz-server-side-encryption header.
     // The bucket has default encryption enabled, so objects will still be encrypted.
@@ -41,6 +52,8 @@ export async function generateUploadUrl(
     contentType,
     expiresIn,
     metadata,
+    contentLength,
+    maxSizeBytes,
     bucket: BUCKET_NAME,
   });
   

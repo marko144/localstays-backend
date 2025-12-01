@@ -504,6 +504,7 @@ export interface SubmitListingIntentRequest {
   images: Array<{
     imageId: string;
     contentType: string;
+    fileSize: number;           // File size in bytes (enforced by S3)
     isPrimary: boolean;
     displayOrder: number;
     caption?: string;
@@ -513,6 +514,7 @@ export interface SubmitListingIntentRequest {
   verificationDocuments?: Array<{
     documentType: VerificationDocType;
     contentType: string;
+    fileSize: number;           // File size in bytes (enforced by S3)
   }>;
 }
 

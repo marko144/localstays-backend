@@ -32,6 +32,8 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 // const MAX_IMAGES_PER_LISTING = 15; // Reserved for future validation
 const UPLOAD_URL_EXPIRY_SECONDS = 600; // 10 minutes
 const SUBMISSION_TOKEN_EXPIRY_SECONDS = 1800; // 30 minutes
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB per image
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
 /**
  * Helper: Get file extension from content type
@@ -144,11 +146,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return response.badRequest('Cannot specify both isPrimary in imagesToAdd and newPrimaryImageId. Use one method to set primary image.');
       }
 
-      // Validate content types
-      const validContentTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      // Validate content types and file sizes
       for (const img of body.imagesToAdd) {
-        if (!validContentTypes.includes(img.contentType.toLowerCase())) {
-          return response.badRequest(`Invalid content type: ${img.contentType}. Must be JPEG, PNG, WebP, or HEIC.`);
+        // Validate content type
+        if (!ALLOWED_IMAGE_TYPES.includes(img.contentType.toLowerCase())) {
+          return response.badRequest(`Invalid content type: ${img.contentType}. Allowed types: ${ALLOWED_IMAGE_TYPES.join(', ')}`);
+        }
+
+        // Validate file size
+        if (!img.fileSize || img.fileSize <= 0) {
+          return response.badRequest(`Image ${img.imageId}: fileSize is required and must be greater than 0`);
+        }
+
+        if (img.fileSize > MAX_IMAGE_SIZE) {
+          return response.badRequest(`Image ${img.imageId}: file size ${(img.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
         }
       }
     }
@@ -212,7 +223,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       // Store image IDs for tracking
       imagesToAdd: body.imagesToAdd?.map(img => img.imageId) || [],
       imagesToDelete: body.imagesToDelete || [],
-      newPrimaryImageId: body.newPrimaryImageId || undefined,
+      ...(body.newPrimaryImageId && { newPrimaryImageId: body.newPrimaryImageId }),
       
       createdAt: now,
       updatedAt: now,
@@ -314,12 +325,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           })
         );
 
-        // Generate pre-signed URL
-        const uploadUrl = await generateUploadUrl(s3Key, img.contentType, UPLOAD_URL_EXPIRY_SECONDS, {
-          hostId,
-          listingId,
-          imageId: img.imageId,
-        });
+        // Generate pre-signed URL with metadata for Lambda processing
+        // S3 will enforce the exact file size - upload will fail if size doesn't match
+        const uploadUrl = await generateUploadUrl(
+          s3Key, 
+          img.contentType, 
+          UPLOAD_URL_EXPIRY_SECONDS, 
+          {
+            hostId,
+            listingId,
+            imageId: img.imageId,
+          },
+          img.fileSize,      // Exact size required by S3
+          MAX_IMAGE_SIZE     // Maximum allowed size (10MB)
+        );
         
         imageUploadUrls.push({
           imageId: img.imageId,

@@ -209,7 +209,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       instantBook: false, // Default to false
       hostVerified: hostVerified, // Sync from host profile
       listingVerified: listing.listingVerified || false, // Sync from listing metadata
-      officialStarRating: listing.officialStarRating || undefined, // Sync from listing metadata
+      ...(listing.officialStarRating && { officialStarRating: listing.officialStarRating }),
 
       createdAt: now,
       updatedAt: now,
@@ -266,7 +266,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         url: buildCloudFrontUrl(image.webpUrls.full, image.updatedAt),
         thumbnailUrl: buildCloudFrontUrl(image.webpUrls.thumbnail, image.updatedAt),
 
-        caption: image.caption || undefined,
+        ...(image.caption && { caption: image.caption }),
         isCoverImage: index === 0, // First image is cover
 
         createdAt: now,

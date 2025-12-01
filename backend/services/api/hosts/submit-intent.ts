@@ -15,7 +15,7 @@ import { validateDocumentTypes, validateAllDocumentIntents } from '../lib/docume
 import { validateProfileData, sanitizeProfileData } from '../lib/profile-validation';
 import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { ProfileData } from '../../types/host.types';
-import { DocumentUploadIntent, DocumentUploadUrl, DocumentType } from '../../types/document.types';
+import { DocumentUploadIntent, DocumentUploadUrl, DocumentType, MAX_FILE_SIZE } from '../../types/document.types';
 import { SubmissionToken } from '../../types/submission.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -25,6 +25,8 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 const BUCKET_NAME = process.env.BUCKET_NAME!;
 const SUBMISSION_EXPIRY_MINUTES = 15;
 const UPLOAD_URL_EXPIRY_SECONDS = 600; // 10 minutes
+const MAX_PROFILE_PHOTO_SIZE = 20 * 1024 * 1024; // 20MB
+const ALLOWED_PROFILE_PHOTO_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
 interface ProfilePhotoIntent {
   photoId: string;
@@ -308,6 +310,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const s3Key = `veri_profile-doc_${doc.documentId}_${sidePrefix}${doc.fileName}`;
         validateS3Key(s3Key);
         
+        // Generate pre-signed URL with S3 size enforcement
         const uploadUrl = await generateUploadUrl(
           s3Key,
           doc.mimeType,
@@ -315,7 +318,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           {
             hostId,
             documentId: doc.documentId,
-          }
+          },
+          doc.fileSize,      // Exact size required by S3
+          MAX_FILE_SIZE      // Maximum allowed size (20MB)
         );
 
         return {
@@ -343,6 +348,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const s3Key = `lstimg_${profilePhoto.photoId}.${photoExtension}`;
       validateS3Key(s3Key);
 
+      // Generate pre-signed URL with S3 size enforcement
       const uploadUrl = await generateUploadUrl(
         s3Key,
         profilePhoto.contentType,
@@ -351,7 +357,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           hostId,
           photoId: profilePhoto.photoId,
           entityType: 'PROFILE_PHOTO',
-        }
+        },
+        profilePhoto.fileSize,      // Exact size required by S3
+        MAX_PROFILE_PHOTO_SIZE      // Maximum allowed size (20MB)
       );
 
       profilePhotoUploadUrl = {
@@ -569,15 +577,17 @@ function validateProfilePhoto(photo: ProfilePhotoIntent): string | null {
   }
 
   // Validate contentType is image
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  if (!allowedTypes.includes(photo.contentType.toLowerCase())) {
-    return `contentType must be one of: ${allowedTypes.join(', ')}`;
+  if (!ALLOWED_PROFILE_PHOTO_TYPES.includes(photo.contentType.toLowerCase())) {
+    return `contentType must be one of: ${ALLOWED_PROFILE_PHOTO_TYPES.join(', ')}`;
   }
 
-  // Validate fileSize (max 10MB)
-  const maxSize = 10 * 1024 * 1024; // 10MB
-  if (photo.fileSize <= 0 || photo.fileSize > maxSize) {
-    return `fileSize must be between 1 byte and ${maxSize} bytes (10MB)`;
+  // Validate fileSize (max 20MB)
+  if (!photo.fileSize || photo.fileSize <= 0) {
+    return 'fileSize is required and must be greater than 0';
+  }
+
+  if (photo.fileSize > MAX_PROFILE_PHOTO_SIZE) {
+    return `fileSize ${(photo.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_PROFILE_PHOTO_SIZE / 1024 / 1024}MB`;
   }
 
   return null; // Valid

@@ -23,6 +23,10 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 const SUBMISSION_TOKEN_EXPIRY_MINUTES = 30;
 const MAX_IMAGES = 15;
 const MIN_IMAGES = 1;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB per image
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB per document
+const ALLOWED_DOCUMENT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
 
 /**
  * POST /api/v1/hosts/{hostId}/listings/submit-intent
@@ -143,20 +147,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           description: body.description,
           
           address: normalizedAddress,
-          mapboxMetadata: body.mapboxMetadata,  // Optional: Mapbox region/place metadata
+          ...(body.mapboxMetadata && { mapboxMetadata: body.mapboxMetadata }),
           capacity: body.capacity,
-          pricing: body.pricing,       // Optional: can be undefined
+          ...(body.pricing && { pricing: body.pricing }),
           hasPricing: false,           // Will be set to true when detailed pricing is configured
           pets: body.pets,
           checkIn: {
             type: checkInTypeEnum,
-            description: body.checkIn.description,
+            ...(body.checkIn.description && { description: body.checkIn.description }),
             checkInFrom: body.checkIn.checkInFrom,
             checkOutBy: body.checkIn.checkOutBy,
           },
           parking: {
             type: parkingTypeEnum,
-            description: body.parking.description,
+            ...(body.parking.description && { description: body.parking.description }),
           },
           paymentType: paymentTypeEnum,
           smokingAllowed: body.smokingAllowed,
@@ -165,14 +169,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           minBookingNights: body.minBookingNights ?? 1, // Default to 1 if not provided
           cancellationPolicy: {
             type: cancellationPolicyEnum,
-            customText: body.cancellationPolicy.customText,
+            ...(body.cancellationPolicy.customText && { customText: body.cancellationPolicy.customText }),
           },
           
           s3Prefix,
           
-          // Optional document reference number and star rating
-          rightToListDocumentNumber: body.rightToListDocumentNumber?.trim() || undefined,
-          officialStarRating: body.officialStarRating || undefined,
+          // Optional document reference number and star rating (only include if provided)
+          ...(body.rightToListDocumentNumber?.trim() && { rightToListDocumentNumber: body.rightToListDocumentNumber.trim() }),
+          ...(body.officialStarRating && { officialStarRating: body.officialStarRating }),
           
           submissionToken,
           submissionTokenExpiresAt: tokenExpiresAt.toISOString(),
@@ -255,11 +259,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       );
 
       // Generate pre-signed URL with metadata for Lambda processing
-      const uploadUrl = await generateUploadUrl(s3Key, img.contentType, 600, {
-        hostId,
-        listingId,
-        imageId: img.imageId,
-      });
+      // S3 will enforce the exact file size - upload will fail if size doesn't match
+      const uploadUrl = await generateUploadUrl(
+        s3Key, 
+        img.contentType, 
+        600, 
+        {
+          hostId,
+          listingId,
+          imageId: img.imageId,
+        },
+        img.fileSize,      // Exact size required by S3
+        MAX_IMAGE_SIZE     // Maximum allowed size
+      );
       
       imageUploadUrls.push({
         imageId: img.imageId,
@@ -304,11 +316,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         );
 
         // Generate pre-signed URL with metadata for Lambda processing
-        const uploadUrl = await generateUploadUrl(s3Key, doc.contentType, 600, {
-          hostId,
-          listingId,
-          documentType: doc.documentType,
-        });
+        // S3 will enforce the exact file size - upload will fail if size doesn't match
+        const uploadUrl = await generateUploadUrl(
+          s3Key, 
+          doc.contentType, 
+          600, 
+          {
+            hostId,
+            listingId,
+            documentType: doc.documentType,
+          },
+          doc.fileSize,      // Exact size required by S3
+          MAX_DOCUMENT_SIZE  // Maximum allowed size
+        );
         
         documentUploadUrls.push({
           documentType: doc.documentType,
@@ -421,6 +441,24 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
     }
   }
 
+  // Optional: rightToListDocumentNumber validation
+  if (body.rightToListDocumentNumber) {
+    const trimmed = body.rightToListDocumentNumber.trim();
+    if (trimmed.length === 0 || trimmed.length > 30) {
+      return 'rightToListDocumentNumber must be between 1 and 30 characters';
+    }
+  }
+
+  // Optional: officialStarRating validation (only allowed with registration document)
+  if (body.officialStarRating !== undefined) {
+    if (!body.rightToListDocumentNumber || body.rightToListDocumentNumber.trim().length === 0) {
+      return 'officialStarRating requires rightToListDocumentNumber to be provided';
+    }
+    if (!Number.isInteger(body.officialStarRating) || body.officialStarRating < 1 || body.officialStarRating > 5) {
+      return 'officialStarRating must be an integer between 1 and 5';
+    }
+  }
+
   // Images validation
   if (!body.images || body.images.length < MIN_IMAGES) {
     return `At least ${MIN_IMAGES} image is required`;
@@ -441,21 +479,39 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
     return 'Image IDs must be unique';
   }
 
-  // Optional: rightToListDocumentNumber validation
-  if (body.rightToListDocumentNumber) {
-    const trimmed = body.rightToListDocumentNumber.trim();
-    if (trimmed.length === 0 || trimmed.length > 30) {
-      return 'rightToListDocumentNumber must be between 1 and 30 characters';
+  // Validate each image
+  for (const img of body.images) {
+    // Validate content type
+    if (!ALLOWED_IMAGE_TYPES.includes(img.contentType.toLowerCase())) {
+      return `Invalid image content type: ${img.contentType}. Allowed types: ${ALLOWED_IMAGE_TYPES.join(', ')}`;
+    }
+
+    // Validate file size
+    if (!img.fileSize || img.fileSize <= 0) {
+      return `Image ${img.imageId}: fileSize is required and must be greater than 0`;
+    }
+
+    if (img.fileSize > MAX_IMAGE_SIZE) {
+      return `Image ${img.imageId}: file size ${(img.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`;
     }
   }
 
-  // Optional: officialStarRating validation (only allowed with registration document)
-  if (body.officialStarRating !== undefined) {
-    if (!body.rightToListDocumentNumber || body.rightToListDocumentNumber.trim().length === 0) {
-      return 'officialStarRating requires rightToListDocumentNumber to be provided';
-    }
-    if (!Number.isInteger(body.officialStarRating) || body.officialStarRating < 1 || body.officialStarRating > 5) {
-      return 'officialStarRating must be an integer between 1 and 5';
+  // Validate verification documents (optional)
+  if (body.verificationDocuments && body.verificationDocuments.length > 0) {
+    for (const doc of body.verificationDocuments) {
+      // Validate content type
+      if (!ALLOWED_DOCUMENT_TYPES.includes(doc.contentType.toLowerCase())) {
+        return `Invalid document content type: ${doc.contentType}. Allowed types: ${ALLOWED_DOCUMENT_TYPES.join(', ')}`;
+      }
+
+      // Validate file size
+      if (!doc.fileSize || doc.fileSize <= 0) {
+        return `Document ${doc.documentType}: fileSize is required and must be greater than 0`;
+      }
+
+      if (doc.fileSize > MAX_DOCUMENT_SIZE) {
+        return `Document ${doc.documentType}: file size ${(doc.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB`;
+      }
     }
   }
 
