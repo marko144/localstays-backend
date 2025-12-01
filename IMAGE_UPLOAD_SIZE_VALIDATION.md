@@ -333,5 +333,3 @@ if (file.size > MAX_SIZE) {
 ✅ **Clear error messages** for debugging
 
 This approach provides **defense in depth** with validation at multiple layers, but the final enforcement happens at the S3 level where it cannot be circumvented.
-
-

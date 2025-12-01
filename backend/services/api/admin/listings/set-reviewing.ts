@@ -3,8 +3,9 @@
  * 
  * PUT /api/v1/admin/listings/{listingId}/reviewing
  * 
- * Sets a listing to REVIEWING status (IN_REVIEW → REVIEWING).
+ * Sets a listing to REVIEWING status (IN_REVIEW → REVIEWING or LOCKED → REVIEWING).
  * Indicates an admin is actively reviewing this listing.
+ * If transitioning from LOCKED, clears suspension fields (lockedAt, lockedBy, lockReason).
  * Permission required: ADMIN_LISTING_REVIEW
  */
 
@@ -100,8 +101,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 4. Validate current status (only IN_REVIEW can transition to REVIEWING)
-    if (listing.status !== 'IN_REVIEW') {
+    // 4. Validate current status (IN_REVIEW or LOCKED can transition to REVIEWING)
+    if (listing.status !== 'IN_REVIEW' && listing.status !== 'LOCKED') {
       return {
         statusCode: 400,
         headers: {
@@ -112,7 +113,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           success: false,
           error: {
             code: 'INVALID_STATUS_TRANSITION',
-            message: `Cannot set listing to REVIEWING with current status ${listing.status}. Expected IN_REVIEW.`,
+            message: `Cannot set listing to REVIEWING with current status ${listing.status}. Expected IN_REVIEW or LOCKED.`,
           },
         }),
       };
@@ -120,6 +121,54 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     // 5. Update listing status
     const now = new Date().toISOString();
+    const wasLocked = listing.status === 'LOCKED';
+
+    // Build update expression - clear suspension fields if transitioning from LOCKED
+    const updateExpression = wasLocked
+      ? `
+          SET #status = :status,
+              #reviewStartedAt = :reviewStartedAt,
+              #reviewedBy = :reviewedBy,
+              #updatedAt = :updatedAt,
+              #gsi2pk = :gsi2pk,
+              #gsi2sk = :gsi2sk,
+              #lockedAt = :null,
+              #lockedBy = :null,
+              #lockReason = :null
+        `
+      : `
+          SET #status = :status,
+              #reviewStartedAt = :reviewStartedAt,
+              #reviewedBy = :reviewedBy,
+              #updatedAt = :updatedAt,
+              #gsi2pk = :gsi2pk,
+              #gsi2sk = :gsi2sk
+        `;
+
+    const attributeNames: Record<string, string> = {
+      '#status': 'status',
+      '#reviewStartedAt': 'reviewStartedAt',
+      '#reviewedBy': 'reviewedBy',
+      '#updatedAt': 'updatedAt',
+      '#gsi2pk': 'gsi2pk',
+      '#gsi2sk': 'gsi2sk',
+    };
+
+    const attributeValues: Record<string, any> = {
+      ':status': 'REVIEWING',
+      ':reviewStartedAt': now,
+      ':reviewedBy': user.email,
+      ':updatedAt': now,
+      ':gsi2pk': 'LISTING_STATUS#REVIEWING',
+      ':gsi2sk': now,
+    };
+
+    if (wasLocked) {
+      attributeNames['#lockedAt'] = 'lockedAt';
+      attributeNames['#lockedBy'] = 'lockedBy';
+      attributeNames['#lockReason'] = 'lockReason';
+      attributeValues[':null'] = null;
+    }
 
     await docClient.send(
       new UpdateCommand({
@@ -128,39 +177,20 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           pk: `HOST#${listing.hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: `
-          SET #status = :status,
-              #reviewStartedAt = :reviewStartedAt,
-              #reviewedBy = :reviewedBy,
-              #updatedAt = :updatedAt,
-              #gsi2pk = :gsi2pk,
-              #gsi2sk = :gsi2sk
-        `,
-        ExpressionAttributeNames: {
-          '#status': 'status',
-          '#reviewStartedAt': 'reviewStartedAt',
-          '#reviewedBy': 'reviewedBy',
-          '#updatedAt': 'updatedAt',
-          '#gsi2pk': 'gsi2pk',
-          '#gsi2sk': 'gsi2sk',
-        },
-        ExpressionAttributeValues: {
-          ':status': 'REVIEWING',
-          ':reviewStartedAt': now,
-          ':reviewedBy': user.email,
-          ':updatedAt': now,
-          ':gsi2pk': 'LISTING_STATUS#REVIEWING',
-          ':gsi2sk': now,
-        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: attributeNames,
+        ExpressionAttributeValues: attributeValues,
       })
     );
 
-    console.log(`✅ Listing ${listingId} set to REVIEWING by ${user.email}`);
+    console.log(`✅ Listing ${listingId} set to REVIEWING by ${user.email}${wasLocked ? ' (reinstated from LOCKED)' : ''}`);
 
     // 6. Log admin action
     logAdminAction(user, 'SET_LISTING_REVIEWING', 'LISTING', listingId, {
       hostId: listing.hostId,
       reviewedBy: user.email,
+      previousStatus: listing.status,
+      wasReinstated: wasLocked,
     });
 
     // 7. Return success response
