@@ -71,11 +71,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const scanResult = await docClient.send(
       new ScanCommand({
         TableName: TABLE_NAME,
-        FilterExpression: 'begins_with(pk, :pkPrefix) AND sk = :sk AND isDeleted = :isDeleted',
+        FilterExpression: 'begins_with(pk, :pkPrefix) AND sk = :sk',
         ExpressionAttributeValues: {
           ':pkPrefix': 'HOST#',
           ':sk': 'META',
-          ':isDeleted': false,
         },
       })
     );

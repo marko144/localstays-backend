@@ -230,7 +230,3 @@ interface Address {
 - Both `billingAddressSameAsPhysical` and `billingAddress` are now **required** in all profile submissions
 - Existing hosts already have these fields set (migrated with `billingAddressSameAsPhysical: true`)
 - The same validation applies to profile updates after rejection
-
-
-
-

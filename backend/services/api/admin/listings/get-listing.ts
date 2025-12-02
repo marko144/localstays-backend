@@ -119,34 +119,16 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const listing = queryResult.Items[0] as ListingMetadata;
     const hostId = listing.hostId;
 
-    // Check if deleted
-    if (listing.isDeleted) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-        body: JSON.stringify({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Listing not found',
-          },
-        }),
-      };
-    }
+    // Note: Admins can view deleted/archived listings - no isDeleted check
 
-    // 4. Fetch images
+    // 4. Fetch images (including soft-deleted for archived listings - admins see everything)
     const imagesResult = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
           ':pk': `LISTING#${listingId}`,
           ':sk': 'IMAGE#',
-          ':isDeleted': false,
         },
       })
     );
@@ -225,16 +207,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const amenitiesData = amenitiesResult.Item as ListingAmenities | undefined;
     const amenities = amenitiesData?.amenities || [];
 
-    // 6. Fetch verification documents
+    // 6. Fetch verification documents (including soft-deleted for archived listings)
     const docsResult = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
           ':pk': `HOST#${hostId}`,
           ':sk': `LISTING_DOC#${listingId}#`,
-          ':isDeleted': false,
         },
       })
     );

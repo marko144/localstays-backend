@@ -102,11 +102,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
           ':pk': `HOST#${hostId}`,
           ':sk': 'DOCUMENT#',
-          ':isDeleted': false,
         },
       })
     );

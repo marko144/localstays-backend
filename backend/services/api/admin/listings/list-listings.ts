@@ -94,14 +94,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
     const statusFilter = event.queryStringParameters?.status;
 
-    // 3. Scan for all listing records
+    // 3. Scan for all listing records (including deleted - admins see everything)
     const scanParams: any = {
       TableName: TABLE_NAME,
-      FilterExpression: 'begins_with(pk, :pkPrefix) AND begins_with(sk, :sk) AND isDeleted = :isDeleted',
+      FilterExpression: 'begins_with(pk, :pkPrefix) AND begins_with(sk, :sk)',
       ExpressionAttributeValues: {
         ':pkPrefix': 'HOST#',
         ':sk': 'LISTING_META#',
-        ':isDeleted': false,
       },
     };
 

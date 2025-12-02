@@ -124,10 +124,8 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         TableName: TABLE_NAME,
         IndexName: 'EmailIndex',
         KeyConditionExpression: 'gsi6pk = :email',
-        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
           ':email': normalizedEmail,
-          ':isDeleted': false,
         },
       })
     );

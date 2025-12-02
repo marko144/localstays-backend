@@ -65,11 +65,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const requests = (result.Items || []) as Request[];
 
-    // 5. Filter out sensitive fields (verificationCode)
-    const sanitizedRequests = requests.map((req) => {
-      const { verificationCode, ...safeRequest } = req;
-      return safeRequest;
-    });
+    // 5. Filter out soft-deleted requests and sensitive fields (verificationCode)
+    const sanitizedRequests = requests
+      .filter((req) => !req.isDeleted)
+      .map((req) => {
+        const { verificationCode, ...safeRequest } = req;
+        return safeRequest;
+      });
 
     // 6. Sort by createdAt (newest first)
     sanitizedRequests.sort((a, b) => {

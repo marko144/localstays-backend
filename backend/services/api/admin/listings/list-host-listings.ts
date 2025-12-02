@@ -114,16 +114,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 3. Parse pagination params
     const { page, limit } = parsePaginationParams(event.queryStringParameters || {});
 
-    // 4. Query all listings for this host
+    // 4. Query all listings for this host (including deleted - admins see everything)
     const result = await docClient.send(
       new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
-        FilterExpression: 'isDeleted = :isDeleted',
         ExpressionAttributeValues: {
           ':pk': `HOST#${hostId}`,
           ':sk': 'LISTING_META#',
-          ':isDeleted': false,
         },
       })
     );

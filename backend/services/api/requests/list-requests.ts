@@ -55,10 +55,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const results = await Promise.all(queryPromises);
     
-    // Combine all requests from all types and filter by hostId
+    // Combine all requests from all types, filter by hostId, and exclude soft-deleted requests
     const allRequests = results
       .flatMap(result => (result.Items || []))
-      .filter(item => item.hostId === hostId) as Request[];
+      .filter(item => item.hostId === hostId && !item.isDeleted) as Request[];
 
     console.log(`Found ${allRequests.length} requests for host ${hostId}`);
 

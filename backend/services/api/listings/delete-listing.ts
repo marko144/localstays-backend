@@ -1,12 +1,15 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME!;
+const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
+const PUBLIC_LISTING_MEDIA_TABLE_NAME = process.env.PUBLIC_LISTING_MEDIA_TABLE_NAME!;
+const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 
 /**
  * DELETE /api/v1/hosts/{hostId}/listings/{listingId}
@@ -19,6 +22,12 @@ const TABLE_NAME = process.env.TABLE_NAME!;
  * - Set deletedAt timestamp
  * - Set deletedBy (hostId)
  * - Cascade soft delete to all child records (images, documents, amenities)
+ * - Hard delete all pricing records
+ * - Soft delete all requests for this listing
+ * - If listing was ONLINE:
+ *   - Delete PublicListing records
+ *   - Delete PublicListingMedia records
+ *   - Decrement location listingsCount
  * - S3 files remain (for audit purposes)
  */
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
@@ -62,8 +71,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Listing is already deleted');
     }
 
-    // 3. Fetch all child records (images, documents, amenities)
-    const [imagesResult, documentsResult, amenitiesResult] = await Promise.all([
+    const wasOnline = listing.status === 'ONLINE';
+
+    // 3. Fetch all child records (images, documents, amenities, pricing, requests)
+    const [imagesResult, documentsResult, amenitiesResult, pricingResult, requestsResult] = await Promise.all([
+      // Images
       docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
@@ -74,6 +86,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           },
         })
       ),
+      // Documents
       docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
@@ -84,6 +97,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           },
         })
       ),
+      // Amenities
       docClient.send(
         new GetCommand({
           TableName: TABLE_NAME,
@@ -93,11 +107,35 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           },
         })
       ),
+      // Pricing records
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `HOST#${hostId}`,
+            ':sk': `LISTING_PRICING#${listingId}#`,
+          },
+        })
+      ),
+      // Requests for this listing
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `LISTING#${listingId}`,
+            ':sk': 'REQUEST#',
+          },
+        })
+      ),
     ]);
 
     const images = imagesResult.Items || [];
     const documents = documentsResult.Items || [];
     const amenities = amenitiesResult.Item;
+    const pricingRecords = pricingResult.Items || [];
+    const requests = requestsResult.Items || [];
 
     // 4. Build transaction to soft delete all records
     const now = new Date().toISOString();
@@ -178,13 +216,29 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
-    // 5. Execute transaction (max 100 items, we should be well under)
+    // Soft delete all requests for this listing
+    for (const req of requests) {
+      transactItems.push({
+        Update: {
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `LISTING#${listingId}`,
+            sk: req.sk,
+          },
+          UpdateExpression: 'SET isDeleted = :deleted, deletedAt = :now',
+          ExpressionAttributeValues: {
+            ':deleted': true,
+            ':now': now,
+          },
+        },
+      });
+    }
+
+    // 5. Execute main transaction (max 100 items)
     // DynamoDB TransactWrite limit is 100 items
     const MAX_TRANSACT_ITEMS = 100;
     
     if (transactItems.length > MAX_TRANSACT_ITEMS) {
-      // If we somehow exceed 100 items, we'd need to batch
-      // For now, log a warning (unlikely with max 15 images + 4 docs + 1 amenity + 1 listing = 21 items)
       console.warn(`Transaction has ${transactItems.length} items, may need batching`);
     }
 
@@ -194,11 +248,125 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       })
     );
 
-    console.log('Listing soft deleted successfully:', {
+    console.log('Main transaction completed:', {
       listingId,
       imagesDeleted: images.length,
       documentsDeleted: documents.length,
       amenitiesDeleted: amenities ? 1 : 0,
+      requestsDeleted: requests.length,
+    });
+
+    // 6. Hard delete pricing records (outside transaction to avoid size limits)
+    if (pricingRecords.length > 0) {
+      console.log(`Hard deleting ${pricingRecords.length} pricing records...`);
+      for (const pricing of pricingRecords) {
+        try {
+          await docClient.send(
+            new DeleteCommand({
+              TableName: TABLE_NAME,
+              Key: {
+                pk: pricing.pk,
+                sk: pricing.sk,
+              },
+            })
+          );
+        } catch (err) {
+          console.error(`Failed to delete pricing record ${pricing.sk}:`, err);
+          // Continue with other deletions
+        }
+      }
+      console.log(`Deleted ${pricingRecords.length} pricing records`);
+    }
+
+    // 7. If listing was ONLINE, clean up public listings and decrement location counts
+    if (wasOnline) {
+      console.log('Listing was ONLINE, cleaning up public records...');
+
+      const placeId = listing.mapboxMetadata?.place?.mapbox_id;
+      const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
+      const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+
+      // Delete PublicListing records
+      if (placeId) {
+        try {
+          await docClient.send(
+            new DeleteCommand({
+              TableName: PUBLIC_LISTINGS_TABLE_NAME,
+              Key: {
+                pk: `LOCATION#${placeId}`,
+                sk: `LISTING#${listingId}`,
+              },
+            })
+          );
+          console.log(`Deleted PublicListing record for PLACE: ${placeId}`);
+        } catch (err) {
+          console.error(`Failed to delete PublicListing for PLACE:`, err);
+        }
+
+        // Decrement location count for PLACE
+        await decrementLocationListingsCount(placeId, now);
+      }
+
+      if (localityId) {
+        try {
+          await docClient.send(
+            new DeleteCommand({
+              TableName: PUBLIC_LISTINGS_TABLE_NAME,
+              Key: {
+                pk: `LOCATION#${localityId}`,
+                sk: `LISTING#${listingId}`,
+              },
+            })
+          );
+          console.log(`Deleted PublicListing record for LOCALITY: ${localityId}`);
+        } catch (err) {
+          console.error(`Failed to delete PublicListing for LOCALITY:`, err);
+        }
+
+        // Decrement location count for LOCALITY
+        await decrementLocationListingsCount(localityId, now);
+      }
+
+      // Delete PublicListingMedia records
+      try {
+        const mediaRecords = await docClient.send(
+          new QueryCommand({
+            TableName: PUBLIC_LISTING_MEDIA_TABLE_NAME,
+            KeyConditionExpression: 'pk = :pk',
+            ExpressionAttributeValues: {
+              ':pk': `LISTING#${listingId}`,
+            },
+          })
+        );
+
+        if (mediaRecords.Items && mediaRecords.Items.length > 0) {
+          console.log(`Deleting ${mediaRecords.Items.length} PublicListingMedia records...`);
+          for (const media of mediaRecords.Items) {
+            await docClient.send(
+              new DeleteCommand({
+                TableName: PUBLIC_LISTING_MEDIA_TABLE_NAME,
+                Key: {
+                  pk: media.pk,
+                  sk: media.sk,
+                },
+              })
+            );
+          }
+          console.log(`Deleted ${mediaRecords.Items.length} PublicListingMedia records`);
+        }
+      } catch (err) {
+        console.error('Failed to delete PublicListingMedia records:', err);
+      }
+    }
+
+    console.log('Listing deleted successfully:', {
+      listingId,
+      wasOnline,
+      imagesDeleted: images.length,
+      documentsDeleted: documents.length,
+      amenitiesDeleted: amenities ? 1 : 0,
+      pricingDeleted: pricingRecords.length,
+      requestsDeleted: requests.length,
     });
 
     return response.success({
@@ -214,9 +382,51 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 }
 
+/**
+ * Decrement listingsCount for ALL name variants of a location
+ * This ensures all variants (e.g., "Belgrade" and "Beograd") have the same count
+ */
+async function decrementLocationListingsCount(placeId: string, timestamp: string): Promise<void> {
+  try {
+    // Query all name variants for this location
+    const variants = await docClient.send(
+      new QueryCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk',
+        ExpressionAttributeValues: {
+          ':pk': `LOCATION#${placeId}`,
+        },
+      })
+    );
 
+    if (!variants.Items || variants.Items.length === 0) {
+      console.warn(`No location variants found for placeId: ${placeId}`);
+      return;
+    }
 
+    console.log(`Decrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
 
+    // Update each variant
+    for (const variant of variants.Items) {
+      await docClient.send(
+        new UpdateCommand({
+          TableName: LOCATIONS_TABLE_NAME,
+          Key: {
+            pk: variant.pk,
+            sk: variant.sk,
+          },
+          UpdateExpression: 'ADD listingsCount :dec SET updatedAt = :now',
+          ExpressionAttributeValues: {
+            ':dec': -1,
+            ':now': timestamp,
+          },
+        })
+      );
+    }
 
-
-
+    console.log(`Successfully decremented listingsCount for all variants of ${placeId}`);
+  } catch (error) {
+    console.error(`Failed to decrement location listings count for ${placeId}:`, error);
+    // Don't throw - this is not critical
+  }
+}
