@@ -22,7 +22,7 @@ const USE_CLOUDFRONT = process.env.USE_CLOUDFRONT === 'true';
  */
 export function buildCloudFrontUrl(
   s3Key: string | undefined | null,
-  updatedAt?: string | Date
+  _updatedAt?: string | Date
 ): string {
   if (!s3Key) return '';
   

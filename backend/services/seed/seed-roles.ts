@@ -55,6 +55,7 @@ const ROLES = [
       'ADMIN_REQUEST_VIEW_ALL',
       'ADMIN_REQUEST_APPROVE',
       'ADMIN_REQUEST_REJECT',
+      'ADMIN_SUBSCRIPTION_MANAGE',
     ],
     isActive: true,
   },

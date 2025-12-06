@@ -322,8 +322,11 @@ The Localstays Team`,
 // Import admin email templates
 import { adminEmailTemplates } from './admin-email-templates';
 
+// Import subscription email templates
+import { subscriptionEmailTemplates } from './subscription-email-templates';
+
 // Combine all templates
-const ALL_EMAIL_TEMPLATES = [...EMAIL_TEMPLATES, ...adminEmailTemplates];
+const ALL_EMAIL_TEMPLATES = [...EMAIL_TEMPLATES, ...adminEmailTemplates, ...subscriptionEmailTemplates];
 
 /**
  * Seed email templates into DynamoDB

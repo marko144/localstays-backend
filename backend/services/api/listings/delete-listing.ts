@@ -282,6 +282,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (wasOnline) {
       console.log('Listing was ONLINE, cleaning up public records...');
 
+      const countryId = listing.mapboxMetadata?.country?.mapbox_id;
       const placeId = listing.mapboxMetadata?.place?.mapbox_id;
       const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
       const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
@@ -325,6 +326,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Decrement location count for LOCALITY
         await decrementLocationListingsCount(localityId, now);
+      }
+
+      // Decrement location count for COUNTRY
+      if (countryId) {
+        await decrementLocationListingsCount(countryId, now);
+        console.log(`Decremented listings count for COUNTRY: ${countryId}`);
       }
 
       // Delete PublicListingMedia records

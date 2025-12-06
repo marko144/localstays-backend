@@ -141,6 +141,7 @@ export interface AdminListingDetails {
     uploadedAt: string;
     status: string;
   }>;
+  hasMapboxLocationData: boolean;  // true if address was entered via Mapbox autocomplete
 }
 
 /**

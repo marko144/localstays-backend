@@ -556,11 +556,20 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   return null;
 }
 
+// Default listing creation limit for hosts without a subscription
+// Hosts can create listings without a subscription, but cannot publish them
+const DEFAULT_MAX_LISTINGS = 100;
+
 /**
- * Check if host can create more listings based on subscription
+ * Check if host can create more listings based on subscription or default limit
+ * 
+ * With our new model:
+ * - Hosts without a subscription can create listings (up to DEFAULT_MAX_LISTINGS)
+ * - They just cannot publish until they have a subscription with tokens
+ * - Hosts with a subscription use their plan's maxListings limit
  */
 async function checkSubscriptionLimit(hostId: string): Promise<boolean> {
-  // Fetch host subscription
+  // Fetch host subscription (may not exist for new hosts)
   const subResult = await docClient.send(
     new GetCommand({
       TableName: TABLE_NAME,
@@ -571,12 +580,9 @@ async function checkSubscriptionLimit(hostId: string): Promise<boolean> {
     })
   );
 
-  if (!subResult.Item) {
-    console.error('No subscription found for host:', hostId);
-    return false;
-  }
-
-  const maxListings = subResult.Item.maxListings || 0;
+  // Use subscription's maxListings if available, otherwise use default
+  // This allows hosts without subscriptions to still create listings
+  const maxListings = subResult.Item?.maxListings || DEFAULT_MAX_LISTINGS;
 
   // Count current active listings (not deleted, not archived)
   const listingsResult = await docClient.send(
@@ -598,8 +604,9 @@ async function checkSubscriptionLimit(hostId: string): Promise<boolean> {
 
   const currentListings = listingsResult.Items?.length || 0;
 
-  console.log('Subscription check:', {
+  console.log('Listing limit check:', {
     hostId,
+    hasSubscription: !!subResult.Item,
     maxListings,
     currentListings,
     canCreate: currentListings < maxListings,

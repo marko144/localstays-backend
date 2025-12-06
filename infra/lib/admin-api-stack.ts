@@ -37,6 +37,10 @@ export interface AdminApiStackProps extends cdk.StackProps {
   publicListingMediaTable: dynamodb.Table;
   /** Locations table */
   locationsTable: dynamodb.Table;
+  /** Subscription Plans table */
+  subscriptionPlansTable: dynamodb.Table;
+  /** Advertising Slots table */
+  advertisingSlotsTable: dynamodb.Table;
 }
 
 /**
@@ -56,6 +60,7 @@ export class AdminApiStack extends cdk.Stack {
   public readonly adminHostsHandlerLambda: nodejs.NodejsFunction;
   public readonly adminListingsHandlerLambda: nodejs.NodejsFunction;
   public readonly adminRequestsHandlerLambda: nodejs.NodejsFunction;
+  public readonly adminSubscriptionsHandlerLambda: nodejs.NodejsFunction;
   public readonly sendNotificationLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: AdminApiStackProps) {
@@ -118,7 +123,11 @@ export class AdminApiStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
           ? ['https://portal.localstays.me']
-          : apigateway.Cors.ALL_ORIGINS,
+          : [
+              'http://localhost:3000',
+              'http://192.168.4.54:3000',
+              'https://staging.portal.localstays.me',
+            ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
         allowCredentials: true,
@@ -199,6 +208,12 @@ export class AdminApiStack extends cdk.Stack {
       USE_CLOUDFRONT: props.cloudFrontDomain ? 'true' : 'false',
       PUBLIC_LISTINGS_TABLE_NAME: props.publicListingsTable.tableName,
       PUBLIC_LISTING_MEDIA_TABLE_NAME: props.publicListingMediaTable.tableName,
+      LOCATIONS_TABLE_NAME: locationsTable.tableName,
+      SUBSCRIPTION_PLANS_TABLE_NAME: props.subscriptionPlansTable.tableName,
+      ADVERTISING_SLOTS_TABLE_NAME: props.advertisingSlotsTable.tableName,
+      // Auto-publish is controlled via SSM Parameter: /localstays/{stage}/config/auto-publish-on-approval
+      // Review compensation is controlled via SSM Parameter: /localstays/{stage}/config/review-compensation-enabled
+      // Both can be changed via AWS Console/CLI without redeploying (cached for 5 minutes)
     };
 
     // Common Lambda configuration
@@ -272,6 +287,10 @@ export class AdminApiStack extends cdk.Stack {
     publicListingMediaTable.grantReadWriteData(this.adminListingsHandlerLambda);
     locationsTable.grantReadWriteData(this.adminListingsHandlerLambda); // For decrementing listings count
     
+    // Grant access to subscription tables (for approve operation - auto-publish)
+    props.subscriptionPlansTable.grantReadData(this.adminListingsHandlerLambda);
+    props.advertisingSlotsTable.grantReadWriteData(this.adminListingsHandlerLambda);
+    
     // Grant SSM parameter access for email operations (approve/reject)
     this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -287,6 +306,16 @@ export class AdminApiStack extends cdk.Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/publicKey`,
         `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/privateKey`,
         `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/subject`,
+      ],
+    }));
+
+    // Grant SSM parameter access for auto-publish config
+    this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/auto-publish-on-approval`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/review-compensation-enabled`,
       ],
     }));
 
@@ -342,6 +371,23 @@ export class AdminApiStack extends cdk.Stack {
       actions: ['ssm:GetParameter'],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/vapid/*`],
     }));
+
+    // ========================================
+    // ADMIN SUBSCRIPTIONS LAMBDA (Consolidated)
+    // ========================================
+
+    this.adminSubscriptionsHandlerLambda = new nodejs.NodejsFunction(this, 'AdminSubscriptionsHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-subscriptions-handler`,
+      entry: 'backend/services/api/admin/subscriptions/handler.ts',
+      handler: 'handler',
+      description: 'Admin: Consolidated handler for subscription plan management',
+      environment: commonEnvironment,
+    });
+    
+    // Grant permissions for subscription plan operations
+    table.grantReadData(this.adminSubscriptionsHandlerLambda); // For reading admin user permissions
+    props.subscriptionPlansTable.grantReadWriteData(this.adminSubscriptionsHandlerLambda);
 
     // ========================================
     // SEND NOTIFICATION LAMBDA (Admin only)
@@ -583,6 +629,39 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // PUT /api/v1/admin/listings/{listingId}/manual-locations
+    const adminManualLocationsResource = adminListingIdParam.addResource('manual-locations');
+    adminManualLocationsResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/listings/bulk-approve
+    const adminBulkApproveResource = adminListingsResource.addResource('bulk-approve');
+    adminBulkApproveResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/listings/{listingId}/pre-approve (mark ready without approving)
+    const adminPreApproveListingResource = adminListingIdParam.addResource('pre-approve');
+    adminPreApproveListingResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // ========================================
     // Admin Listing Requests Routes
     // ========================================
@@ -614,6 +693,22 @@ export class AdminApiStack extends cdk.Stack {
     adminAddressVerificationResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // Admin Locations Routes (for manual location association)
+    // ========================================
+    const adminLocationsResource = adminResource.addResource('locations');
+
+    // GET /api/v1/admin/locations/search
+    const adminLocationsSearchResource = adminLocationsResource.addResource('search');
+    adminLocationsSearchResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
@@ -673,6 +768,68 @@ export class AdminApiStack extends cdk.Stack {
     adminRejectRequestResource.addMethod(
       'PUT',
       new apigateway.LambdaIntegration(this.adminRequestsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // Admin Subscription Plan Routes
+    // ========================================
+    const adminSubscriptionPlansResource = adminResource.addResource('subscription-plans');
+
+    // GET /api/v1/admin/subscription-plans
+    adminSubscriptionPlansResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/subscription-plans
+    adminSubscriptionPlansResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // GET /api/v1/admin/subscription-plans/{planId}
+    const adminSubscriptionPlanIdParam = adminSubscriptionPlansResource.addResource('{planId}');
+    adminSubscriptionPlanIdParam.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/subscription-plans/{planId}
+    adminSubscriptionPlanIdParam.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // DELETE /api/v1/admin/subscription-plans/{planId}
+    adminSubscriptionPlanIdParam.addMethod(
+      'DELETE',
+      new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

@@ -336,6 +336,29 @@ export async function sendListingApprovedEmail(
 }
 
 /**
+ * Send listing published email (auto-published after admin approval)
+ */
+export async function sendListingPublishedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listingName: string,
+  expiresAt?: string
+): Promise<void> {
+  const expiryDate = expiresAt ? new Date(expiresAt).toLocaleDateString(
+    preferredLanguage === 'sr' ? 'sr-Latn-RS' : 'en-US',
+    { year: 'numeric', month: 'long', day: 'numeric' }
+  ) : '';
+  
+  await sendTemplatedEmail(
+    'LISTING_PUBLISHED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingName, expiryDate }
+  );
+}
+
+/**
  * Send listing rejected email
  */
 export async function sendListingRejectedEmail(
@@ -566,6 +589,148 @@ export async function sendListingImageUpdateRejectedEmail(
     recipientEmail,
     preferredLanguage,
     { name, listingName, reason }
+  );
+}
+
+// ============================================================================
+// SUBSCRIPTION & SLOT EMAILS
+// ============================================================================
+
+/**
+ * Send ads expiring soon warning email
+ * Groups multiple expiring listings into a single email
+ */
+export async function sendAdsExpiringSoonEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listings: Array<{ listingName: string; expiresAt: string }>,
+  subscriptionUrl: string
+): Promise<void> {
+  // Format listings for plain text
+  const listingsList = listings
+    .map(l => `• ${l.listingName} (expires: ${formatDate(l.expiresAt, preferredLanguage)})`)
+    .join('\n');
+
+  // Format listings for HTML
+  const listingsListHtml = listings
+    .map(l => `<p style="margin: 5px 0;">• <strong>${l.listingName}</strong> (expires: ${formatDate(l.expiresAt, preferredLanguage)})</p>`)
+    .join('');
+
+  await sendTemplatedEmail(
+    'ADS_EXPIRING_SOON',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingsList, listingsListHtml, subscriptionUrl }
+  );
+}
+
+/**
+ * Send ads expired notification email
+ * Groups multiple expired listings into a single email
+ */
+export async function sendAdsExpiredEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  listings: Array<{ listingName: string }>,
+  subscriptionUrl: string
+): Promise<void> {
+  // Format listings for plain text
+  const listingsList = listings
+    .map(l => `• ${l.listingName}`)
+    .join('\n');
+
+  // Format listings for HTML
+  const listingsListHtml = listings
+    .map(l => `<p style="margin: 5px 0;">• <strong>${l.listingName}</strong></p>`)
+    .join('');
+
+  await sendTemplatedEmail(
+    'ADS_EXPIRED',
+    recipientEmail,
+    preferredLanguage,
+    { name, listingsList, listingsListHtml, subscriptionUrl }
+  );
+}
+
+/**
+ * Send payment failed notification email
+ */
+export async function sendPaymentFailedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  customerPortalUrl: string
+): Promise<void> {
+  await sendTemplatedEmail(
+    'PAYMENT_FAILED',
+    recipientEmail,
+    preferredLanguage,
+    { name, customerPortalUrl }
+  );
+}
+
+/**
+ * Send subscription cancelled confirmation email
+ */
+export async function sendSubscriptionCancelledEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  periodEndDate: string
+): Promise<void> {
+  const formattedDate = formatDate(periodEndDate, preferredLanguage);
+  
+  await sendTemplatedEmail(
+    'SUBSCRIPTION_CANCELLED',
+    recipientEmail,
+    preferredLanguage,
+    { name, periodEndDate: formattedDate }
+  );
+}
+
+/**
+ * Send subscription welcome email
+ */
+export async function sendSubscriptionWelcomeEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  planName: string,
+  tokenCount: number,
+  billingPeriod: string,
+  nextBillingDate: string,
+  subscriptionUrl: string
+): Promise<void> {
+  const formattedBillingDate = formatDate(nextBillingDate, preferredLanguage);
+  const localizedBillingPeriod = preferredLanguage === 'sr' 
+    ? billingPeriod === 'MONTHLY' ? 'Mesečno' : billingPeriod === 'SEMI_ANNUAL' ? 'Polugodišnje' : 'Godišnje'
+    : billingPeriod === 'MONTHLY' ? 'Monthly' : billingPeriod === 'SEMI_ANNUAL' ? 'Semi-Annual' : 'Annual';
+
+  await sendTemplatedEmail(
+    'SUBSCRIPTION_WELCOME',
+    recipientEmail,
+    preferredLanguage,
+    { 
+      name, 
+      planName, 
+      tokenCount: tokenCount.toString(), 
+      billingPeriod: localizedBillingPeriod,
+      nextBillingDate: formattedBillingDate, 
+      subscriptionUrl 
+    }
+  );
+}
+
+/**
+ * Helper: Format date for display based on language
+ */
+function formatDate(isoDate: string, language: string): string {
+  const date = new Date(isoDate);
+  return date.toLocaleDateString(
+    language === 'sr' ? 'sr-Latn-RS' : 'en-US',
+    { year: 'numeric', month: 'long', day: 'numeric' }
   );
 }
 

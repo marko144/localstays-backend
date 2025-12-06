@@ -266,7 +266,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       }
 
       const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
-      const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+      const localityId = hasLocality && listing.mapboxMetadata?.locality ? listing.mapboxMetadata.locality.mapbox_id : null;
 
       // Fetch all media records
       const mediaRecords = await fetchPublicListingMedia(listingId);

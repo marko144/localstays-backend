@@ -214,7 +214,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           pk: `HOST#${hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: 'SET #status = :status, submittedAt = :now, updatedAt = :now, gsi2pk = :gsi2pk, gsi2sk = :gsi2sk REMOVE submissionToken, submissionTokenExpiresAt',
+        UpdateExpression: 'SET #status = :status, submittedAt = :now, submittedForReviewAt = :now, updatedAt = :now, gsi2pk = :gsi2pk, gsi2sk = :gsi2sk REMOVE submissionToken, submissionTokenExpiresAt',
         ExpressionAttributeNames: {
           '#status': 'status',
         },

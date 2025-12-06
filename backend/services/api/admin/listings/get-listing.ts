@@ -301,11 +301,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     // 8. Build response
+    // Check if listing has location data for publishing (either mapbox metadata OR manual location IDs)
+    const hasMapboxData = !!(listing.mapboxMetadata?.place?.mapbox_id);
+    const hasManualLocationIds = !!(listing.manualLocationIds && listing.manualLocationIds.length > 0);
+    const hasLocationData = hasMapboxData || hasManualLocationIds;
+    
     const response: AdminListingDetails = {
       listing,
       images: imageDetails,
       amenities,
       verificationDocuments: documentDetails,
+      hasMapboxLocationData: hasLocationData, // true if listing has location data (mapbox OR manual)
       ...(pendingImageChanges && { pendingImageChanges }),
     };
 

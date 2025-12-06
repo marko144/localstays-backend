@@ -17,6 +17,7 @@
     "@aws-sdk/s3-request-presigner": "^3.917.0",
     "@sendgrid/mail": "^8.1.6",
     "pdfkit": "^0.17.2",
+    "stripe": "^19.0.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

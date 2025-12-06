@@ -5,6 +5,8 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { GetListingResponse } from '../../types/listing.types';
 import { buildListingImageUrls } from '../lib/cloudfront-urls';
+import { getSlotByListingId } from '../../lib/subscription-service';
+import { calculateDaysRemaining, getSlotDisplayStatus, getSlotDisplayLabel } from '../../types/advertising-slot.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -130,7 +132,32 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       uploadedAt: doc.uploadedAt,
     }));
 
-    // 6. Build response
+    // 6. Fetch slot information if listing is ONLINE or OFFLINE (has active slot)
+    let slotInfo: any = undefined;
+    if (listing.status === 'ONLINE' || listing.status === 'OFFLINE') {
+      const slot = await getSlotByListingId(listingId);
+      if (slot) {
+        // We need to check if subscription is cancelled to show correct status
+        // For now, assume not cancelled (we'd need to fetch subscription to know)
+        const cancelAtPeriodEnd = false; // TODO: fetch from subscription if needed
+        const displayStatus = getSlotDisplayStatus(slot, cancelAtPeriodEnd);
+        
+        slotInfo = {
+          slotId: slot.slotId,
+          activatedAt: slot.activatedAt,
+          expiresAt: slot.expiresAt,
+          daysRemaining: calculateDaysRemaining(slot.expiresAt),
+          doNotRenew: slot.doNotRenew,
+          isPastDue: slot.isPastDue,
+          reviewCompensationDays: slot.reviewCompensationDays,
+          displayStatus,
+          displayLabel: getSlotDisplayLabel(displayStatus, slot.expiresAt, 'en'),
+          displayLabel_sr: getSlotDisplayLabel(displayStatus, slot.expiresAt, 'sr'),
+        };
+      }
+    }
+
+    // 7. Build response
     const listingResponse: GetListingResponse = {
       listing: {
         listingId: listing.listingId,
@@ -161,10 +188,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         rejectionReason: listing.rejectionReason,
         rightToListDocumentNumber: listing.rightToListDocumentNumber,
         officialStarRating: listing.officialStarRating,
+        // Slot info from listing metadata (quick access)
+        activeSlotId: listing.activeSlotId,
+        slotExpiresAt: listing.slotExpiresAt,
+        slotDoNotRenew: listing.slotDoNotRenew,
       },
       images,
       amenities,
       verificationDocuments: documents.length > 0 ? documents : undefined,
+      // Detailed slot information (if available)
+      slot: slotInfo,
     };
 
     console.log('Listing fetched successfully:', {

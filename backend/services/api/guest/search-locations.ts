@@ -136,13 +136,27 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       .slice(0, 10);
 
     // 6. Map to response format
-    const results: LocationSearchResult[] = sortedLocations.map((loc) => ({
-      locationId: loc.locationId,
-      slug: loc.slug,
-      name: loc.name,
-      displayName: loc.displayName || loc.name, // Fallback to name for backward compatibility
-      locationType: loc.locationType || 'PLACE', // Fallback to PLACE for backward compatibility
-    }));
+    const results: LocationSearchResult[] = sortedLocations.map((loc) => {
+      const result: LocationSearchResult = {
+        locationId: loc.locationId,
+        slug: loc.slug,
+        name: loc.name,
+        displayName: loc.displayName || loc.name, // Fallback to name for backward compatibility
+        locationType: loc.locationType || 'PLACE', // Fallback to PLACE for backward compatibility
+      };
+      
+      // Add countryName for PLACE and LOCALITY
+      if (loc.locationType !== 'COUNTRY' && loc.countryName) {
+        result.countryName = loc.countryName;
+      }
+      
+      // Add parentPlaceName for LOCALITY
+      if (loc.locationType === 'LOCALITY' && loc.parentPlaceName) {
+        result.parentPlaceName = loc.parentPlaceName;
+      }
+      
+      return result;
+    });
 
     // 7. Build response
     const response: LocationSearchResponse = {

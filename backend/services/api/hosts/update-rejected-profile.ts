@@ -15,7 +15,7 @@ import { generateUploadUrl, validateS3Key } from '../lib/s3-presigned';
 import { validateDocumentTypes, validateAllDocumentIntents } from '../lib/document-validation';
 import { validateProfileData, sanitizeProfileData } from '../lib/profile-validation';
 import { ProfileData } from '../../types/host.types';
-import { DocumentUploadIntent, DocumentUploadUrl, MAX_FILE_SIZE } from '../../types/document.types';
+import { DocumentUploadIntent, DocumentUploadUrl, DocumentType, MAX_FILE_SIZE } from '../../types/document.types';
 import { SubmissionToken } from '../../types/submission.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -192,7 +192,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 8. Create document records if documents are provided (handle multi-file documents)
     const documentRecords: Array<{
       documentId: string;
-      documentType: string;
+      documentType: DocumentType;
       documentSide: 'FRONT' | 'BACK' | 'SINGLE';
       relatedDocumentId: string | null;
       fileName: string;

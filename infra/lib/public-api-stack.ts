@@ -101,7 +101,14 @@ export class PublicApiStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
           ? ['https://portal.localstays.me', 'https://localstays.me', 'https://www.localstays.me']
-          : apigateway.Cors.ALL_ORIGINS,
+          : [
+              'http://localhost:3000',
+              'http://localhost:3001',
+              'http://192.168.4.54:3000',
+              'http://192.168.4.54:3001',
+              'https://staging.portal.localstays.me',
+              'https://staging.localstays.me',
+            ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
         allowCredentials: true,

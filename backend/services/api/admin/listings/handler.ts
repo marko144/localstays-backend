@@ -9,22 +9,29 @@ import { handler as setReviewing } from './set-reviewing';
 import { handler as approveListing } from './approve-listing';
 import { handler as rejectListing } from './reject-listing';
 import { handler as suspendListing } from './suspend-listing';
+import { handler as searchLocations } from './search-locations';
+import { handler as setManualLocations } from './set-manual-locations';
+import { handler as bulkApprove } from './bulk-approve';
 
 /**
- * Consolidated Admin Listings Handler (v1.1 - supports LOCKED status)
+ * Consolidated Admin Listings Handler (v1.4 - supports pre-approve)
  * 
  * Routes all admin listing operations to their respective handlers based on
  * HTTP method and resource path.
  * 
  * Supported routes:
- * - GET    /api/v1/admin/listings                        → list all listings
- * - GET    /api/v1/admin/listings/pending-review        → list pending review listings
- * - GET    /api/v1/admin/hosts/{hostId}/listings        → list listings for a host
- * - GET    /api/v1/admin/listings/{listingId}           → get listing details
- * - PUT    /api/v1/admin/listings/{listingId}/reviewing → set listing to reviewing
- * - PUT    /api/v1/admin/listings/{listingId}/approve   → approve listing (IN_REVIEW/REVIEWING/LOCKED)
- * - PUT    /api/v1/admin/listings/{listingId}/reject    → reject listing (IN_REVIEW/REVIEWING/LOCKED)
- * - PUT    /api/v1/admin/listings/{listingId}/suspend   → suspend listing
+ * - GET    /api/v1/admin/listings                              → list all listings
+ * - GET    /api/v1/admin/listings/pending-review               → list pending review listings
+ * - GET    /api/v1/admin/hosts/{hostId}/listings               → list listings for a host
+ * - GET    /api/v1/admin/listings/{listingId}                  → get listing details
+ * - GET    /api/v1/admin/locations/search                      → search locations for manual association
+ * - POST   /api/v1/admin/listings/bulk-approve                 → bulk approve ready listings
+ * - POST   /api/v1/admin/listings/{listingId}/pre-approve      → mark listing ready (sets flag, keeps status)
+ * - PUT    /api/v1/admin/listings/{listingId}/reviewing        → set listing to reviewing
+ * - PUT    /api/v1/admin/listings/{listingId}/approve          → approve listing (IN_REVIEW/REVIEWING/LOCKED)
+ * - PUT    /api/v1/admin/listings/{listingId}/reject           → reject listing (IN_REVIEW/REVIEWING/LOCKED)
+ * - PUT    /api/v1/admin/listings/{listingId}/suspend          → suspend listing
+ * - PUT    /api/v1/admin/listings/{listingId}/manual-locations → set manual locations for listing
  */
 export const handler: APIGatewayProxyHandler = async (
   event: APIGatewayProxyEvent,
@@ -60,6 +67,16 @@ export const handler: APIGatewayProxyHandler = async (
       return (await getListing(event, context, callback)) as APIGatewayProxyResult;
     }
 
+    // GET /api/v1/admin/locations/search
+    if (method === 'GET' && resource === '/api/v1/admin/locations/search') {
+      return (await searchLocations(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // POST /api/v1/admin/listings/bulk-approve
+    if (method === 'POST' && resource === '/api/v1/admin/listings/bulk-approve') {
+      return (await bulkApprove(event, context, callback)) as APIGatewayProxyResult;
+    }
+
     // PUT /api/v1/admin/listings/{listingId}/reviewing
     if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/reviewing') {
       return (await setReviewing(event, context, callback)) as APIGatewayProxyResult;
@@ -70,6 +87,17 @@ export const handler: APIGatewayProxyHandler = async (
       return (await approveListing(event, context, callback)) as APIGatewayProxyResult;
     }
 
+    // POST /api/v1/admin/listings/{listingId}/pre-approve (mark ready without approving)
+    if (method === 'POST' && resource === '/api/v1/admin/listings/{listingId}/pre-approve') {
+      // Inject markReadyOnly into the body, with listingVerified defaulting to true
+      // (pre-approve implies the listing has been verified as ready)
+      const modifiedEvent = {
+        ...event,
+        body: JSON.stringify({ markReadyOnly: true, listingVerified: true }),
+      };
+      return (await approveListing(modifiedEvent as APIGatewayProxyEvent, context, callback)) as APIGatewayProxyResult;
+    }
+
     // PUT /api/v1/admin/listings/{listingId}/reject
     if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/reject') {
       return (await rejectListing(event, context, callback)) as APIGatewayProxyResult;
@@ -78,6 +106,11 @@ export const handler: APIGatewayProxyHandler = async (
     // PUT /api/v1/admin/listings/{listingId}/suspend
     if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/suspend') {
       return (await suspendListing(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PUT /api/v1/admin/listings/{listingId}/manual-locations
+    if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/manual-locations') {
+      return (await setManualLocations(event, context, callback)) as APIGatewayProxyResult;
     }
 
     // Route not found

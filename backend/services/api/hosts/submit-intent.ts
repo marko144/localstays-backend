@@ -251,7 +251,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Generate document records (handle multi-file documents)
     const documentRecords: Array<{
       documentId: string;
-      documentType: string;
+      documentType: DocumentType;
       documentSide: 'FRONT' | 'BACK' | 'SINGLE';
       relatedDocumentId: string | null;
       fileName: string;

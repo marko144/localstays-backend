@@ -29,6 +29,8 @@ export class DataStack extends cdk.Stack {
   public readonly publicListingsTable: dynamodb.Table;
   public readonly publicListingMediaTable: dynamodb.Table;
   public readonly availabilityTable: dynamodb.Table;
+  public readonly subscriptionPlansTable: dynamodb.Table;
+  public readonly advertisingSlotsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -157,6 +159,22 @@ export class DataStack extends cdk.Stack {
       },
       sortKey: {
         name: 'gsi6sk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI7 - StripeCustomerIndex: Query HostSubscription by Stripe Customer ID
+    // Used by EventBridge handler to find host when Stripe events arrive
+    // pk=STRIPE_CUSTOMER#<stripeCustomerId>, sk=SUBSCRIPTION
+    this.table.addGlobalSecondaryIndex({
+      indexName: 'StripeCustomerIndex',
+      partitionKey: {
+        name: 'gsi7pk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi7sk',
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
@@ -341,6 +359,106 @@ export class DataStack extends cdk.Stack {
     });
 
     // ========================================
+    // Subscription Plans Table - Reference data for subscription tiers
+    // ========================================
+    
+    // Stores subscription plan configurations (Basic, Standard, Pro, Agency)
+    // PK: PLAN#<planId>
+    // SK: CONFIG
+    this.subscriptionPlansTable = new dynamodb.Table(this, 'SubscriptionPlansTable', {
+      tableName: `localstays-subscription-plans-${stage}`,
+      partitionKey: {
+        name: 'pk', // PLAN#<planId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // CONFIG
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      encryption: dynamodb.TableEncryption.DEFAULT,
+    });
+
+    // ========================================
+    // Advertising Slots Table - Active ad slots for published listings
+    // ========================================
+    
+    // Stores advertising slot records (one slot per published listing)
+    // PK: LISTING#<listingId>
+    // SK: SLOT#<slotId>
+    // GSI1 (HostSlotsIndex): HOST#<hostId> / <activatedAt> - Get all slots for a host
+    // GSI2 (ExpiryIndex): SLOT_EXPIRY / <expiresAt>#<listingId>#<slotId> - Query expiring slots
+    this.advertisingSlotsTable = new dynamodb.Table(this, 'AdvertisingSlotsTable', {
+      tableName: `localstays-advertising-slots-${stage}`,
+      partitionKey: {
+        name: 'pk', // LISTING#<listingId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // SLOT#<slotId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      encryption: dynamodb.TableEncryption.DEFAULT,
+    });
+
+    // GSI1: HostSlotsIndex - Query all slots for a host
+    // Useful for: subscription page, renewal processing, token availability checking
+    this.advertisingSlotsTable.addGlobalSecondaryIndex({
+      indexName: 'HostSlotsIndex',
+      partitionKey: {
+        name: 'gsi1pk', // HOST#<hostId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi1sk', // <activatedAt> (ISO timestamp for sorting)
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI2: ExpiryIndex - Query slots by expiry date for daily expiry job
+    // Useful for: slot expiry processor, expiry warning processor
+    this.advertisingSlotsTable.addGlobalSecondaryIndex({
+      indexName: 'ExpiryIndex',
+      partitionKey: {
+        name: 'gsi2pk', // SLOT_EXPIRY (constant for all slots)
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi2sk', // <expiresAt>#<listingId>#<slotId> (sortable by expiry date)
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
     // Database Seeding CustomResource
     // ========================================
     
@@ -395,7 +513,7 @@ export class DataStack extends cdk.Stack {
       properties: {
         TableName: this.table.tableName,
         // Change this value to trigger re-seeding
-        Version: '1.12.0', // Added isFilter field to amenities
+        Version: '1.13.0', // Added subscription notification templates: ADS_EXPIRING_SOON, ADS_EXPIRED, PAYMENT_FAILED, LISTING_PUBLISHED
       },
     });
 
@@ -456,6 +574,65 @@ export class DataStack extends cdk.Stack {
         LocationsTableName: this.locationsTable.tableName,
         // Change this value to trigger re-seeding
         Version: '1.0.0', // Initial version with Belgrade/Beograd variant
+      },
+    });
+
+    // ========================================
+    // Subscription Plans Seeding CustomResource
+    // ========================================
+    
+    // Lambda function to seed subscription plans to the SubscriptionPlans table
+    const seedSubscriptionPlansLambda = new nodejs.NodejsFunction(this, 'SeedSubscriptionPlansHandler', {
+      functionName: `localstays-${stage}-subscription-plans-seed`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: 'backend/services/seed/seed-subscription-plans.ts',
+      handler: 'handler',
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      environment: {
+        SUBSCRIPTION_PLANS_TABLE_NAME: this.subscriptionPlansTable.tableName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'es2022',
+        externalModules: ['@aws-sdk/*'],
+      },
+      logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-seed`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
+    });
+
+    // Grant permissions to write to SubscriptionPlans table
+    this.subscriptionPlansTable.grantWriteData(seedSubscriptionPlansLambda);
+
+    // Create custom resource provider
+    const seedSubscriptionPlansProvider = new cr.Provider(this, 'SeedSubscriptionPlansProvider', {
+      onEventHandler: seedSubscriptionPlansLambda,
+      logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansProviderLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-provider`,
+        retention: stage === 'prod' 
+          ? logs.RetentionDays.ONE_MONTH 
+          : logs.RetentionDays.ONE_WEEK,
+        removalPolicy: stage === 'prod' 
+          ? cdk.RemovalPolicy.RETAIN 
+          : cdk.RemovalPolicy.DESTROY,
+      }),
+    });
+
+    // Create custom resource (triggers seeding on stack create/update)
+    new cdk.CustomResource(this, 'SeedSubscriptionPlansCustomResource', {
+      serviceToken: seedSubscriptionPlansProvider.serviceToken,
+      properties: {
+        SubscriptionPlansTableName: this.subscriptionPlansTable.tableName,
+        // Change this value to trigger re-seeding
+        Version: '1.0.0', // Initial version with Basic, Standard, Pro, Agency plans
       },
     });
 
@@ -520,6 +697,30 @@ export class DataStack extends cdk.Stack {
       value: this.availabilityTable.tableArn,
       description: 'Availability DynamoDB table ARN',
       exportName: `Localstays${capitalizedStage}AvailabilityTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'SubscriptionPlansTableName', {
+      value: this.subscriptionPlansTable.tableName,
+      description: 'Subscription Plans DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}SubscriptionPlansTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'SubscriptionPlansTableArn', {
+      value: this.subscriptionPlansTable.tableArn,
+      description: 'Subscription Plans DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}SubscriptionPlansTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'AdvertisingSlotsTableName', {
+      value: this.advertisingSlotsTable.tableName,
+      description: 'Advertising Slots DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}AdvertisingSlotsTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'AdvertisingSlotsTableArn', {
+      value: this.advertisingSlotsTable.tableArn,
+      description: 'Advertising Slots DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}AdvertisingSlotsTableArn`,
     });
 
     // Add tags for resource management

@@ -1,44 +1,78 @@
 /**
  * Get Host Subscription Lambda Handler
- * Retrieves host subscription details and entitlements
+ * 
+ * GET /api/v1/hosts/{hostId}/subscription
+ * 
+ * Retrieves host subscription details including:
+ * - Current subscription plan and status
+ * - Token availability (total, used, available)
+ * - Active advertising slots with their listings
+ * - Billing information (period start/end, renewal date)
  */
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
+import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
+import {
+  getHostSubscription,
+  getSubscriptionPlan,
+  getHostSlots,
+  getTokenAvailability,
+  buildSlotSummary,
+} from '../../lib/subscription-service';
+import { getEffectivePeriodEnd } from '../../types/subscription.types';
+import { AdvertisingSlot, SlotSummary } from '../../types/advertising-slot.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
 
-interface HostSubscription {
-  pk: string;
-  sk: string;
+/**
+ * Response structure for subscription endpoint
+ */
+interface SubscriptionResponse {
+  // Subscription info
   hostId: string;
-  planName: string;
-  maxListings: number;
   status: string;
-  startedAt: string;
-  expiresAt: string | null;
-  cancelledAt: string | null;
+  statusLabel: string;
+  statusLabel_sr: string;
+  
+  // Plan info
+  planId: string;
+  planName: string;
+  planName_sr: string;
+  
+  // Token info
+  totalTokens: number;
+  usedTokens: number;
+  availableTokens: number;
+  canPublishNewAd: boolean;
+  
+  // Billing info
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  effectivePeriodEnd?: string;  // Includes any extensions
+  cancelAtPeriodEnd: boolean;
+  
+  // Trial info (if applicable)
+  isTrialPeriod: boolean;
+  trialEndsAt?: string;
+  
+  // Stripe info (for managing subscription)
+  stripeCustomerId?: string;
+  hasPaymentMethod: boolean;
+  
+  // Active slots
+  activeSlots: SlotSummary[];
+  
+  // Timestamps
   createdAt: string;
   updatedAt: string;
-}
-
-interface SubscriptionPlan {
-  pk: string;
-  sk: string;
-  planName: string;
-  displayName: string;
-  maxListings: number;
-  monthlyPrice: number;
-  description: string;
-  isActive: boolean;
-  sortOrder: number;
 }
 
 /**
@@ -67,25 +101,69 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const subscription = await getHostSubscription(hostId);
 
     if (!subscription) {
-      return response.notFound(`Subscription not found for host: ${hostId}`);
+      // Return a "no subscription" response instead of 404
+      return response.success({
+        hostId,
+        status: 'NONE',
+        statusLabel: 'No Subscription',
+        statusLabel_sr: 'Nema pretplate',
+        planId: null,
+        planName: null,
+        planName_sr: null,
+        totalTokens: 0,
+        usedTokens: 0,
+        availableTokens: 0,
+        canPublishNewAd: false,
+        cancelAtPeriodEnd: false,
+        isTrialPeriod: false,
+        hasPaymentMethod: false,
+        activeSlots: [],
+        createdAt: null,
+        updatedAt: null,
+      });
     }
 
     // 4. Fetch subscription plan details
-    const plan = await getSubscriptionPlan(subscription.planName);
+    const plan = await getSubscriptionPlan(subscription.planId);
 
-    // 5. Build simplified response
-    const subscriptionResponse = {
+    // 5. Get token availability
+    const tokenAvailability = await getTokenAvailability(hostId);
+
+    // 6. Get active slots with listing details
+    const slots = await getHostSlots(hostId);
+    const slotSummaries = await buildSlotSummariesWithListings(slots, subscription.cancelAtPeriodEnd);
+
+    // 7. Build response
+    const subscriptionResponse: SubscriptionResponse = {
       hostId: subscription.hostId,
-      planName: subscription.planName,
-      displayName: plan?.displayName || subscription.planName,
       status: subscription.status,
-      maxListings: subscription.maxListings,
-      monthlyPrice: plan?.monthlyPrice || 0.00,
-      description: plan?.description || '',
-      startedAt: subscription.startedAt,
-      expiresAt: subscription.expiresAt,
-      cancelledAt: subscription.cancelledAt,
-      isActive: subscription.status === 'ACTIVE',
+      statusLabel: getStatusLabel(subscription.status, 'en'),
+      statusLabel_sr: getStatusLabel(subscription.status, 'sr'),
+      
+      planId: subscription.planId,
+      planName: plan?.displayName || subscription.planId,
+      planName_sr: plan?.displayName_sr || subscription.planId,
+      
+      totalTokens: subscription.totalTokens,
+      usedTokens: tokenAvailability.usedTokens,
+      availableTokens: tokenAvailability.availableTokens,
+      canPublishNewAd: tokenAvailability.canPublish,
+      
+      currentPeriodStart: subscription.currentPeriodStart,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      effectivePeriodEnd: getEffectivePeriodEnd(subscription),
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      
+      isTrialPeriod: subscription.status === 'TRIALING',
+      trialEndsAt: subscription.trialEnd || undefined,
+      
+      stripeCustomerId: subscription.stripeCustomerId || undefined,
+      hasPaymentMethod: !!subscription.stripeCustomerId, // Simplified check
+      
+      activeSlots: slotSummaries,
+      
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt || subscription.createdAt,
     };
 
     return response.success(subscriptionResponse);
@@ -97,35 +175,84 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 }
 
 /**
- * Get host subscription from DynamoDB
+ * Build slot summaries with listing details
  */
-async function getHostSubscription(hostId: string): Promise<HostSubscription | null> {
-  const result = await docClient.send(
-    new GetCommand({
-      TableName: TABLE_NAME,
-      Key: {
-        pk: `HOST#${hostId}`,
-        sk: 'SUBSCRIPTION',
-      },
-    })
-  );
+async function buildSlotSummariesWithListings(
+  slots: AdvertisingSlot[],
+  cancelAtPeriodEnd: boolean
+): Promise<SlotSummary[]> {
+  if (slots.length === 0) {
+    return [];
+  }
 
-  return result.Item as HostSubscription | null;
+  // Fetch listing details for each slot
+  const summaries: SlotSummary[] = [];
+
+  for (const slot of slots) {
+    // Fetch listing metadata
+    const listingResult = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `HOST#${slot.hostId}`,
+          sk: `LISTING_META#${slot.listingId}`,
+        },
+      })
+    );
+
+    const listing = listingResult.Item;
+    const listingName = listing?.listingName || 'Unknown Listing';
+    
+    // Get thumbnail URL from listing images
+    // Note: We cannot use Limit with FilterExpression because DynamoDB applies
+    // Limit BEFORE the filter, which could return 0 results if the first N
+    // records don't match the filter.
+    let thumbnailUrl = '';
+    if (listing) {
+      const imagesResult = await docClient.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk)',
+          FilterExpression: 'isPrimary = :isPrimary AND isDeleted = :notDeleted',
+          ExpressionAttributeValues: {
+            ':pk': `LISTING#${slot.listingId}`,
+            ':sk': 'IMAGE#',
+            ':isPrimary': true,
+            ':notDeleted': false,
+          },
+          // No Limit - must scan all images to find the primary one
+        })
+      );
+
+      const primaryImage = imagesResult.Items?.[0];
+      if (primaryImage?.webpUrls?.thumbnail) {
+        // Build full CloudFront URL from S3 key
+        thumbnailUrl = buildCloudFrontUrl(primaryImage.webpUrls.thumbnail);
+      }
+    }
+
+    const summary = buildSlotSummary(slot, listingName, thumbnailUrl, cancelAtPeriodEnd);
+    summaries.push(summary);
+  }
+
+  // Sort by activation date (newest first)
+  summaries.sort((a, b) => new Date(b.activatedAt).getTime() - new Date(a.activatedAt).getTime());
+
+  return summaries;
 }
 
 /**
- * Get subscription plan configuration from DynamoDB
+ * Get human-readable status label
  */
-async function getSubscriptionPlan(planName: string): Promise<SubscriptionPlan | null> {
-  const result = await docClient.send(
-    new GetCommand({
-      TableName: TABLE_NAME,
-      Key: {
-        pk: `SUBSCRIPTION_PLAN#${planName}`,
-        sk: 'CONFIG',
-      },
-    })
-  );
+function getStatusLabel(status: string, lang: 'en' | 'sr'): string {
+  const labels: Record<string, { en: string; sr: string }> = {
+    TRIALING: { en: 'Free Trial', sr: 'Besplatni probni period' },
+    ACTIVE: { en: 'Active', sr: 'Aktivna' },
+    PAST_DUE: { en: 'Payment Past Due', sr: 'Plaćanje kasni' },
+    CANCELLED: { en: 'Cancelled', sr: 'Otkazana' },
+    EXPIRED: { en: 'Expired', sr: 'Istekla' },
+    NONE: { en: 'No Subscription', sr: 'Nema pretplate' },
+  };
 
-  return result.Item as SubscriptionPlan | null;
+  return labels[status]?.[lang] || status;
 }

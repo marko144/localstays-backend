@@ -9,7 +9,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import * as response from '../lib/response';
 import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { buildPublicListingMediaPK } from '../../types/public-listing-media.types';
@@ -81,6 +81,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 3: Get location IDs from listing
+    const countryId = listing.mapboxMetadata?.country?.mapbox_id;
     const placeId = listing.mapboxMetadata?.place?.mapbox_id;
     if (!placeId) {
       return response.badRequest('Missing location information on listing');
@@ -139,9 +140,23 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     });
 
-    // 5c. Update listing status to OFFLINE
-    transactItems.push({
-      Update: {
+    // Step 6: Execute transaction (all succeed or all fail)
+    console.log(`Unpublishing listing with ${transactItems.length} transaction items (listing records + ${mediaRecords.length} images)`);
+    
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: transactItems,
+      })
+    );
+
+    console.log('Public listing records deleted successfully via transaction');
+
+    // Step 6b: Update listing status to OFFLINE
+    // Note: The advertising slot remains active and continues to count against tokens.
+    // The host can bring the listing back online while the slot is still active.
+    // The slot will be extended at subscription renewal unless explicitly marked as doNotRenew.
+    await docClient.send(
+      new UpdateCommand({
         TableName: TABLE_NAME,
         Key: {
           pk: `HOST#${hostId}`,
@@ -156,22 +171,21 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           ':offline': 'OFFLINE',
           ':now': now,
         },
-      },
-    });
-
-    // Step 6: Execute transaction (all succeed or all fail)
-    console.log(`Unpublishing listing with ${transactItems.length} transaction items (1 listing + ${mediaRecords.length} images + 1 status update)`);
-    
-    await docClient.send(
-      new TransactWriteCommand({
-        TransactItems: transactItems,
       })
     );
 
-    console.log('Listing unpublished successfully via transaction');
+    console.log('Listing status updated to OFFLINE');
 
-    // Step 6b: Decrement location listings count for ALL name variants
+    // Step 6c: Decrement location listings count for ALL name variants
     // This is done outside the transaction to avoid transaction size limits
+    // Order: COUNTRY, PLACE, LOCALITY (if exists)
+    
+    // Decrement country count if we have country ID
+    if (countryId) {
+      await decrementLocationListingsCount(countryId, now);
+    }
+    
+    // Decrement place count
     await decrementLocationListingsCount(placeId, now);
     
     // If locality exists, also decrement its listings count
@@ -252,7 +266,6 @@ async function decrementLocationListingsCount(placeId: string, timestamp: string
     console.log(`Decrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
 
     // Update each variant
-    const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
     for (const variant of variants.Items) {
       await docClient.send(
         new UpdateCommand({

@@ -82,7 +82,7 @@ export class EmailTemplateStack extends cdk.Stack {
     new cdk.CustomResource(this, 'SeedEmailTemplatesCustomResource', {
       serviceToken: seedProvider.serviceToken,
       properties: {
-        Version: '1.1.0', // Increment to force re-seeding (Added LIVE_ID_CHECK_REQUEST)
+        Version: '1.2.0', // Increment to force re-seeding (Added subscription email templates: ADS_EXPIRING_SOON, ADS_EXPIRED, PAYMENT_FAILED, SUBSCRIPTION_CANCELLED, SUBSCRIPTION_WELCOME)
       },
     });
 

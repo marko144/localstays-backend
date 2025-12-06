@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { APIGatewayProxyEvent } from 'aws-lambda';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -283,8 +284,12 @@ export async function checkAndIncrementWriteOperationRateLimit(
 
 /**
  * Helper function to extract userId from API Gateway event
+ * 
+ * Accepts APIGatewayProxyEvent or similar event structures with authorizer claims.
  */
-export function extractUserId(event: { requestContext: { authorizer?: { claims?: { sub?: string } } } }): string | null {
-  return event.requestContext.authorizer?.claims?.sub || null;
+export function extractUserId(event: APIGatewayProxyEvent): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const authorizer = event.requestContext.authorizer as any;
+  return authorizer?.claims?.sub || null;
 }
 

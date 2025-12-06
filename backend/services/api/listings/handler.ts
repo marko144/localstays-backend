@@ -19,6 +19,7 @@ import { handler as updateListingHandler } from './update-listing';
 import { handler as resubmitForReviewHandler } from './resubmit-for-review';
 import { handler as getPricingHandler } from './get-pricing';
 import { handler as setPricingHandler } from './set-pricing';
+import { handler as setSlotDoNotRenewHandler } from './set-slot-do-not-renew';
 
 /**
  * Main router handler - dispatches to appropriate operation based on route and method
@@ -92,6 +93,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Route: PUT /api/v1/hosts/{hostId}/listings/{listingId}/pricing
     if (method === 'PUT' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/pricing') {
       return await setPricingHandler(event);
+    }
+
+    // Route: PUT /api/v1/hosts/{hostId}/listings/{listingId}/slot/do-not-renew
+    if (method === 'PUT' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/slot/do-not-renew') {
+      return await setSlotDoNotRenewHandler(event);
     }
 
     // Unknown route

@@ -239,13 +239,18 @@ export interface NotificationTemplate {
  */
 export type NotificationTemplateName = 
   | 'LISTING_APPROVED'
+  | 'LISTING_PUBLISHED'
   | 'LISTING_REJECTED'
   | 'HOST_APPROVED'
   | 'HOST_REJECTED'
   | 'REQUEST_UPDATE_NEEDED'
   | 'VIDEO_VERIFICATION_REQUESTED'
   | 'BOOKING_RECEIVED'
-  | 'REVIEW_RECEIVED';
+  | 'REVIEW_RECEIVED'
+  // Subscription & Slot notifications
+  | 'ADS_EXPIRING_SOON'
+  | 'ADS_EXPIRED'
+  | 'PAYMENT_FAILED';
 
 /**
  * Variables that can be used in notification templates

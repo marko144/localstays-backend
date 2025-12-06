@@ -35,8 +35,9 @@ function formatHostName(host: Host): string {
 /**
  * Check if host matches search query
  * Search in: name (forename, surname, legalName, businessName, displayName) and email
+ * Note: Currently unused - kept for future fuzzy search implementation
  */
-function matchesSearchQuery(host: Host, query: string): boolean {
+function _matchesSearchQuery(host: Host, query: string): boolean {
   const lowerQuery = query.toLowerCase();
   
   // Search in email
@@ -59,6 +60,9 @@ function matchesSearchQuery(host: Host, query: string): boolean {
   
   return false;
 }
+
+// Suppress unused variable warning
+void _matchesSearchQuery;
 
 /**
  * Convert Host entity to HostSummary

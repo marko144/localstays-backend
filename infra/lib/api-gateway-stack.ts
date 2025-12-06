@@ -77,11 +77,16 @@ export class ApiGatewayStack extends cdk.Stack {
         throttlingBurstLimit: stage === 'prod' ? 2000 : 200,
       },
       
-      // CORS configuration
+      // CORS configuration - restrict to specific origins
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
-          ? ['https://app.localstays.com'] // TODO: Update with actual domain
-          : apigateway.Cors.ALL_ORIGINS,
+          ? ['https://portal.localstays.me', 'https://localstays.me', 'https://www.localstays.me']
+          : [
+              'http://localhost:3000',
+              'http://192.168.4.54:3000',
+              'https://staging.portal.localstays.me',
+              'https://staging.localstays.me',
+            ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: [
           'Content-Type',

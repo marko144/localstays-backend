@@ -14,30 +14,37 @@
  * 
  * Note: Multiple name variants can exist for the same location (e.g., "Belgrade" and "Beograd")
  * All variants share the same locationId (Mapbox Place ID) and listingsCount
+ * 
+ * Hierarchy: COUNTRY > PLACE > LOCALITY
+ * - COUNTRY: Top level, no parent
+ * - PLACE: Links to COUNTRY via mapboxCountryId
+ * - LOCALITY: Links to PLACE via mapboxPlaceId
  */
 export interface LocationRecord {
   // Primary key
-  pk: string;                    // "LOCATION#<mapboxPlaceId>" or "LOCATION#<mapboxLocalityId>"
+  pk: string;                    // "LOCATION#<mapboxId>" (country, place, or locality)
   sk: string;                    // "NAME#<name>" (e.g., "NAME#Belgrade" or "NAME#Beograd")
   
   // Core fields
-  locationId: string;            // Canonical ID (mapboxPlaceId or mapboxLocalityId)
-  locationType: 'PLACE' | 'LOCALITY';  // Location type
-  name: string;                  // Place or locality name (e.g., "Zlatibor", "Čajetina")
+  locationId: string;            // Canonical ID (mapboxCountryId, mapboxPlaceId, or mapboxLocalityId)
+  locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';  // Location type in hierarchy
+  name: string;                  // Location name (e.g., "Serbia", "Zlatibor", "Čajetina")
   displayName: string;           // Display name for autocomplete (e.g., "Zlatibor" or "Čajetina, Zlatibor")
-  regionName: string;            // Region name (e.g., "Zlatibor District")
+  regionName?: string;           // Region name (e.g., "Zlatibor District") - not for COUNTRY
   countryName: string;           // Country name (e.g., "Serbia")
+  countryCode?: string;          // ISO country code (e.g., "RS") - for COUNTRY type
   
-  // Parent reference (for LOCALITY only)
-  parentPlaceName?: string;      // Parent place name (e.g., "Zlatibor") - only for LOCALITY type
+  // Parent references (hierarchy)
+  parentPlaceName?: string;      // Parent place name - only for LOCALITY type
+  mapboxCountryId?: string;      // Parent country ID - for PLACE type
   
   // Mapbox IDs
-  mapboxPlaceId: string;         // Mapbox place ID (always present, parent place for localities)
-  mapboxRegionId: string;        // Mapbox region ID
-  mapboxLocalityId?: string;     // Mapbox locality ID (only for LOCALITY type)
+  mapboxPlaceId?: string;        // Mapbox place ID - for PLACE type, or parent place for LOCALITY
+  mapboxRegionId?: string;       // Mapbox region ID - not for COUNTRY
+  mapboxLocalityId?: string;     // Mapbox locality ID - only for LOCALITY type
   
   // Search & routing
-  slug: string;                  // URL-safe slug (e.g., "zlatibor-rs" or "cajetina-rs")
+  slug: string;                  // URL-safe slug (e.g., "serbia", "zlatibor-rs", "cajetina-rs")
   searchName: string;            // Normalized search text (e.g., "zlatibor zlatibor district")
   entityType: string;            // Always "LOCATION" - used as GSI partition key for search
   
@@ -80,7 +87,9 @@ export interface LocationSearchResult {
   slug: string;                  // SEO-friendly slug (e.g., "zlatibor-rs" or "cajetina-rs")
   name: string;                  // Raw name (e.g., "Zlatibor" or "Čajetina")
   displayName: string;           // Display name for UI (e.g., "Zlatibor" or "Čajetina, Zlatibor")
-  locationType: 'PLACE' | 'LOCALITY';  // Location type indicator
+  locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';  // Location type indicator
+  countryName?: string;          // Country name (for PLACE and LOCALITY)
+  parentPlaceName?: string;      // Parent place name (for LOCALITY only)
 }
 
 /**

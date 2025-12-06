@@ -264,5 +264,173 @@ export const notificationTemplates: NotificationTemplate[] = [
     updatedAt: now,
     notes: 'Notification sent when admin creates a video verification request for a listing',
   },
+
+  // ============================================================================
+  // LISTING_PUBLISHED - Serbian (auto-published after approval)
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#LISTING_PUBLISHED',
+    sk: 'LANG#sr',
+    templateName: 'LISTING_PUBLISHED',
+    language: 'sr',
+    title: '🚀 Oglas je online!',
+    body: 'Vaš oglas "{{listingName}}" je sada online i vidljiv gostima.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/listings/{{listingId}}',
+    requireInteraction: true,
+    silent: false,
+    tag: 'listing-published',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when listing is auto-published after admin approval',
+  },
+
+  // ============================================================================
+  // LISTING_PUBLISHED - English
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#LISTING_PUBLISHED',
+    sk: 'LANG#en',
+    templateName: 'LISTING_PUBLISHED',
+    language: 'en',
+    title: '🚀 Listing is Live!',
+    body: 'Your listing "{{listingName}}" is now online and visible to guests.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/listings/{{listingId}}',
+    requireInteraction: true,
+    silent: false,
+    tag: 'listing-published',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when listing is auto-published after admin approval',
+  },
+
+  // ============================================================================
+  // ADS_EXPIRING_SOON - Serbian
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#ADS_EXPIRING_SOON',
+    sk: 'LANG#sr',
+    templateName: 'ADS_EXPIRING_SOON',
+    language: 'sr',
+    title: '⏰ Oglasi uskoro ističu',
+    body: 'Imate {{count}} oglas(a) koji ističu za 7 dana. Proverite svoju pretplatu.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'ads-expiring-soon',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent 7 days before ad slots expire',
+  },
+
+  // ============================================================================
+  // ADS_EXPIRING_SOON - English
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#ADS_EXPIRING_SOON',
+    sk: 'LANG#en',
+    templateName: 'ADS_EXPIRING_SOON',
+    language: 'en',
+    title: '⏰ Ads Expiring Soon',
+    body: 'You have {{count}} ad(s) expiring in 7 days. Check your subscription.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'ads-expiring-soon',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent 7 days before ad slots expire',
+  },
+
+  // ============================================================================
+  // ADS_EXPIRED - Serbian
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#ADS_EXPIRED',
+    sk: 'LANG#sr',
+    templateName: 'ADS_EXPIRED',
+    language: 'sr',
+    title: '📴 Oglasi su istekli',
+    body: '{{count}} oglas(a) je isteklo i sada su offline. Obnovite pretplatu da ih vratite.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'ads-expired',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when ad slots expire and listings are unpublished',
+  },
+
+  // ============================================================================
+  // ADS_EXPIRED - English
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#ADS_EXPIRED',
+    sk: 'LANG#en',
+    templateName: 'ADS_EXPIRED',
+    language: 'en',
+    title: '📴 Ads Have Expired',
+    body: '{{count}} ad(s) have expired and are now offline. Renew your subscription to restore them.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'ads-expired',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when ad slots expire and listings are unpublished',
+  },
+
+  // ============================================================================
+  // PAYMENT_FAILED - Serbian
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#PAYMENT_FAILED',
+    sk: 'LANG#sr',
+    templateName: 'PAYMENT_FAILED',
+    language: 'sr',
+    title: '⚠️ Plaćanje nije uspelo',
+    body: 'Nismo uspeli da obradimo vašu uplatu. Ažurirajte način plaćanja da izbegnete prekid.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'payment-failed',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when subscription payment fails',
+  },
+
+  // ============================================================================
+  // PAYMENT_FAILED - English
+  // ============================================================================
+  {
+    pk: 'NOTIFICATION_TEMPLATE#PAYMENT_FAILED',
+    sk: 'LANG#en',
+    templateName: 'PAYMENT_FAILED',
+    language: 'en',
+    title: '⚠️ Payment Failed',
+    body: 'We couldn\'t process your payment. Update your payment method to avoid interruption.',
+    icon: '/icon-192x192.png',
+    badge: '/badge-72x72.png',
+    actionUrlPath: '/subscription',
+    requireInteraction: true,
+    silent: false,
+    tag: 'payment-failed',
+    createdAt: now,
+    updatedAt: now,
+    notes: 'Notification sent when subscription payment fails',
+  },
 ];
 

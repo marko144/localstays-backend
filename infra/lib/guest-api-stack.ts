@@ -77,11 +77,17 @@ export class GuestApiStack extends cdk.Stack {
         throttlingBurstLimit: stage === 'prod' ? 1000 : 200,
       },
       
-      // CORS configuration - restrict to localhost and staging domain
+      // CORS configuration - restrict to specific origins
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
           ? ['https://localstays.me', 'https://www.localstays.me']
-          : apigateway.Cors.ALL_ORIGINS, // Allow all origins in non-prod for local development (including mobile on local network)
+          : [
+              'http://localhost:3000',
+              'http://localhost:3001',
+              'http://192.168.4.54:3000',
+              'http://192.168.4.54:3001',
+              'https://staging.localstays.me',
+            ],
         allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowHeaders: [
           'Content-Type',

@@ -77,6 +77,9 @@ export interface Request {
   reviewedBy?: string;             // adminId
   rejectionReason?: string;        // If status is REJECTED
   
+  // Soft Deletion
+  isDeleted?: boolean;             // True if request is soft-deleted (e.g., listing was archived)
+  
   // GSI2: Admin queries (all requests by type/status)
   gsi2pk?: string;                 // REQUEST#<requestType>
   gsi2sk?: string;                 // STATUS#<status>#<createdAt>

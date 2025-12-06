@@ -198,6 +198,47 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     // 6. Update listing status with rejection reason
     const now = new Date().toISOString();
+    
+    // Build update expression - only set firstReviewCompletedAt if not already set
+    const isFirstReview = !listing.firstReviewCompletedAt;
+    
+    let updateExpression = `
+      SET #status = :status,
+          #rejectedAt = :rejectedAt,
+          #rejectionReason = :rejectionReason,
+          #updatedAt = :updatedAt,
+          #gsi2pk = :gsi2pk,
+          #gsi2sk = :gsi2sk
+    `;
+    
+    const expressionAttributeNames: Record<string, string> = {
+      '#status': 'status',
+      '#rejectedAt': 'rejectedAt',
+      '#rejectionReason': 'rejectionReason',
+      '#updatedAt': 'updatedAt',
+      '#gsi2pk': 'gsi2pk',
+      '#gsi2sk': 'gsi2sk',
+    };
+    
+    const expressionAttributeValues: Record<string, any> = {
+      ':status': 'REJECTED',
+      ':rejectedAt': now,
+      ':rejectionReason': rejectionReason,
+      ':updatedAt': now,
+      ':gsi2pk': 'LISTING_STATUS#REJECTED',
+      ':gsi2sk': now,
+    };
+    
+    // Set firstReviewCompletedAt only on first review completion (approve OR reject)
+    if (isFirstReview) {
+      updateExpression = updateExpression.replace(
+        '#gsi2sk = :gsi2sk',
+        '#gsi2sk = :gsi2sk, #firstReviewCompletedAt = :firstReviewCompletedAt'
+      );
+      expressionAttributeNames['#firstReviewCompletedAt'] = 'firstReviewCompletedAt';
+      expressionAttributeValues[':firstReviewCompletedAt'] = now;
+      console.log(`📅 Setting firstReviewCompletedAt for listing ${listingId} (rejection)`);
+    }
 
     await docClient.send(
       new UpdateCommand({
@@ -206,30 +247,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           pk: `HOST#${listing.hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: `
-          SET #status = :status,
-              #rejectedAt = :rejectedAt,
-              #rejectionReason = :rejectionReason,
-              #updatedAt = :updatedAt,
-              #gsi2pk = :gsi2pk,
-              #gsi2sk = :gsi2sk
-        `,
-        ExpressionAttributeNames: {
-          '#status': 'status',
-          '#rejectedAt': 'rejectedAt',
-          '#rejectionReason': 'rejectionReason',
-          '#updatedAt': 'updatedAt',
-          '#gsi2pk': 'gsi2pk',
-          '#gsi2sk': 'gsi2sk',
-        },
-        ExpressionAttributeValues: {
-          ':status': 'REJECTED',
-          ':rejectedAt': now,
-          ':rejectionReason': rejectionReason,
-          ':updatedAt': now,
-          ':gsi2pk': 'LISTING_STATUS#REJECTED',
-          ':gsi2sk': now,
-        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
       })
     );
 

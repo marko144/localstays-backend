@@ -15,6 +15,8 @@ import { HostApiStack } from '../lib/host-api-stack';
 import { AdminApiStack } from '../lib/admin-api-stack';
 import { PublicApiStack } from '../lib/public-api-stack';
 import { GuestApiStack } from '../lib/guest-api-stack';
+import { StripeEventBridgeStack } from '../lib/stripe-eventbridge-stack';
+import { ScheduledJobsStack } from '../lib/scheduled-jobs-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -211,6 +213,8 @@ const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
   publicListingsTable: dataStack.publicListingsTable,
   publicListingMediaTable: dataStack.publicListingMediaTable,
   availabilityTable: dataStack.availabilityTable,
+  subscriptionPlansTable: dataStack.subscriptionPlansTable,
+  advertisingSlotsTable: dataStack.advertisingSlotsTable,
   bucket: storageStack.bucket,
   emailTemplatesTable: emailTemplateStack.table,
   rateLimitTable: rateLimitStack.table,
@@ -242,6 +246,8 @@ const adminApiStack = new AdminApiStack(app, `${stackPrefix}AdminApiStack`, {
   publicListingsTable: dataStack.publicListingsTable,
   publicListingMediaTable: dataStack.publicListingMediaTable,
   locationsTable: dataStack.locationsTable,
+  subscriptionPlansTable: dataStack.subscriptionPlansTable,
+  advertisingSlotsTable: dataStack.advertisingSlotsTable,
 });
 adminApiStack.addDependency(cognitoStack);
 adminApiStack.addDependency(dataStack);
@@ -285,6 +291,49 @@ guestApiStack.addDependency(cognitoStack);
 guestApiStack.addDependency(dataStack);
 guestApiStack.addDependency(rateLimitStack);
 
+// Stack 15: Stripe EventBridge (Subscription event handling)
+// Stripe Event Source Names per environment (from Stripe Dashboard → Developers → Webhooks → EventBridge)
+const stripeEventSourceNames: Record<string, string> = {
+  staging: 'aws.partner/stripe.com/ed_test_61Tk7Xvlo3KznFDAL16Tk6KN2VE9BfC6cP2LuQVWSC5I',
+  // prod: 'aws.partner/stripe.com/<prod_event_destination_id>', // Add when prod is configured
+};
+
+const stripeEventBridgeStack = new StripeEventBridgeStack(app, `${stackPrefix}StripeEventBridgeStack`, {
+  env,
+  description: `Stripe EventBridge integration for subscription events (${stage})`,
+  stackName: `localstays-${stage}-stripe-eventbridge`,
+  stage,
+  table: dataStack.table,
+  subscriptionPlansTable: dataStack.subscriptionPlansTable,
+  advertisingSlotsTable: dataStack.advertisingSlotsTable,
+  emailTemplatesTable: emailTemplateStack.table,
+  sendGridParamName: paramsStack.sendGridParamName,
+  frontendUrl,
+  stripeEventSourceName: stripeEventSourceNames[stage],
+});
+stripeEventBridgeStack.addDependency(dataStack);
+stripeEventBridgeStack.addDependency(emailTemplateStack);
+stripeEventBridgeStack.addDependency(paramsStack);
+
+// Stack 16: Scheduled Jobs (Slot expiry processing)
+const scheduledJobsStack = new ScheduledJobsStack(app, `${stackPrefix}ScheduledJobsStack`, {
+  env,
+  description: `Scheduled background jobs for slot expiry processing (${stage})`,
+  stackName: `localstays-${stage}-scheduled-jobs`,
+  stage,
+  table: dataStack.table,
+  locationsTable: dataStack.locationsTable,
+  publicListingsTable: dataStack.publicListingsTable,
+  publicListingMediaTable: dataStack.publicListingMediaTable,
+  advertisingSlotsTable: dataStack.advertisingSlotsTable,
+  emailTemplatesTable: emailTemplateStack.table,
+  sendGridParamName: paramsStack.sendGridParamName,
+  frontendUrl,
+});
+scheduledJobsStack.addDependency(dataStack);
+scheduledJobsStack.addDependency(emailTemplateStack);
+scheduledJobsStack.addDependency(paramsStack);
+
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
@@ -301,6 +350,8 @@ console.log(`  11. ${hostApiStack.stackName} (Host API Gateway + Lambdas)`);
 console.log(`  12. ${adminApiStack.stackName} (Admin API Gateway + Lambdas)`);
 console.log(`  13. ${publicApiStack.stackName} (Public API Gateway + Lambdas - Geocoding)`);
 console.log(`  14. ${guestApiStack.stackName} (Guest API Gateway + Lambdas - Search)`);
+console.log(`  15. ${stripeEventBridgeStack.stackName} (Stripe EventBridge - Subscriptions)`);
+console.log(`  16. ${scheduledJobsStack.stackName} (Scheduled Jobs - Slot Expiry)`);
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

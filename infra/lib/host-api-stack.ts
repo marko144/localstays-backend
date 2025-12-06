@@ -29,6 +29,10 @@ export interface HostApiStackProps extends cdk.StackProps {
   publicListingMediaTable: dynamodb.Table;
   /** Availability DynamoDB table */
   availabilityTable: dynamodb.Table;
+  /** Subscription Plans DynamoDB table */
+  subscriptionPlansTable: dynamodb.Table;
+  /** Advertising Slots DynamoDB table */
+  advertisingSlotsTable: dynamodb.Table;
   /** S3 bucket for host assets */
   bucket: s3.Bucket;
   /** Email templates DynamoDB table */
@@ -60,14 +64,15 @@ export class HostApiStack extends cdk.Stack {
   // Lambda functions
   public readonly hostProfileHandlerLambda: nodejs.NodejsFunction;
   public readonly getSubscriptionLambda: nodejs.NodejsFunction;
+  public readonly customerPortalLambda: nodejs.NodejsFunction;
   public readonly hostListingsHandlerLambda: nodejs.NodejsFunction;
   public readonly publishListingLambda: nodejs.NodejsFunction;
-  public readonly unpublishListingLambda: nodejs.NodejsFunction;
   public readonly hostRequestsHandlerLambda: nodejs.NodejsFunction;
   public readonly hostAvailabilityHandlerLambda: nodejs.NodejsFunction;
   public readonly subscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly unsubscribeNotificationLambda: nodejs.NodejsFunction;
   public readonly checkNotificationStatusLambda: nodejs.NodejsFunction;
+  public readonly stripeHandlerLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: HostApiStackProps) {
     super(scope, id, props);
@@ -126,7 +131,11 @@ export class HostApiStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: stage === 'prod' 
           ? ['https://portal.localstays.me']
-          : apigateway.Cors.ALL_ORIGINS,
+          : [
+              'http://localhost:3000',
+              'http://192.168.4.54:3000',
+              'https://staging.portal.localstays.me',
+            ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
         allowCredentials: true,
@@ -202,6 +211,8 @@ export class HostApiStack extends cdk.Stack {
       PUBLIC_LISTINGS_TABLE_NAME: props.publicListingsTable.tableName,
       PUBLIC_LISTING_MEDIA_TABLE_NAME: props.publicListingMediaTable.tableName,
       AVAILABILITY_TABLE_NAME: props.availabilityTable.tableName,
+      SUBSCRIPTION_PLANS_TABLE_NAME: props.subscriptionPlansTable.tableName,
+      ADVERTISING_SLOTS_TABLE_NAME: props.advertisingSlotsTable.tableName,
       BUCKET_NAME: bucket.bucketName,
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       RATE_LIMIT_TABLE_NAME: rateLimitTable.tableName,
@@ -211,6 +222,7 @@ export class HostApiStack extends cdk.Stack {
       STAGE: stage,
       CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
       USE_CLOUDFRONT: props.cloudFrontDomain ? 'true' : 'false',
+      // Review compensation is controlled via SSM Parameter: /localstays/{stage}/config/review-compensation-enabled
     };
 
     // Common Lambda configuration
@@ -297,6 +309,39 @@ export class HostApiStack extends cdk.Stack {
 
     // Grant DynamoDB permissions (read-only)
     table.grantReadData(this.getSubscriptionLambda);
+    props.subscriptionPlansTable.grantReadData(this.getSubscriptionLambda);
+    props.advertisingSlotsTable.grantReadData(this.getSubscriptionLambda);
+
+    // ========================================
+    // Customer Portal Session Lambda
+    // ========================================
+    this.customerPortalLambda = new nodejs.NodejsFunction(this, 'CustomerPortalLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-customer-portal`,
+      entry: 'backend/services/api/hosts/create-customer-portal-session.ts',
+      handler: 'handler',
+      description: 'Create Stripe Customer Portal session for subscription management',
+      environment: {
+        ...commonEnvironment,
+        FRONTEND_URL: props.frontendUrl,
+        STAGE: stage,
+      },
+      logGroup: new logs.LogGroup(this, 'CustomerPortalLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-customer-portal`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
+    });
+
+    // Grant DynamoDB permissions (read-only - just needs to look up subscription)
+    table.grantReadData(this.customerPortalLambda);
+
+    // Grant SSM permissions to read Stripe secret key
+    this.customerPortalLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/stripe/secret-key`],
+    }));
 
     // ========================================
     // HOST LISTINGS HANDLER LAMBDA (CONSOLIDATED)
@@ -318,6 +363,7 @@ export class HostApiStack extends cdk.Stack {
     // Grant DynamoDB permissions (read + write for all operations)
     table.grantReadWriteData(this.hostListingsHandlerLambda);
     props.publicListingsTable.grantWriteData(this.hostListingsHandlerLambda); // For syncing updates to PublicListings
+    props.advertisingSlotsTable.grantReadWriteData(this.hostListingsHandlerLambda); // For reading/updating slot info on listing details
     rateLimitTable.grantReadWriteData(this.hostListingsHandlerLambda); // For write operation rate limiting
 
     // Grant S3 permissions (for pre-signed URLs and verification)
@@ -363,30 +409,17 @@ export class HostApiStack extends cdk.Stack {
     props.locationsTable.grantReadWriteData(this.publishListingLambda); // Locations table (check/create location, increment count)
     props.publicListingsTable.grantWriteData(this.publishListingLambda); // PublicListings table (write only)
     props.publicListingMediaTable.grantWriteData(this.publishListingLambda); // PublicListingMedia table (write only)
+    props.subscriptionPlansTable.grantReadData(this.publishListingLambda); // SubscriptionPlans table (read for plan info)
+    props.advertisingSlotsTable.grantReadWriteData(this.publishListingLambda); // AdvertisingSlots table (create slots)
 
-    // ========================================
-    // UNPUBLISH LISTING LAMBDA
-    // ========================================
-    this.unpublishListingLambda = new nodejs.NodejsFunction(this, 'UnpublishListingLambda', {
-      ...commonLambdaProps,
-      functionName: `localstays-${stage}-unpublish-listing`,
-      entry: 'backend/services/api/listings/unpublish-listing.ts',
-      handler: 'handler',
-      description: 'Unpublish an ONLINE listing from PublicListings table',
-      environment: commonEnvironment,
-      logGroup: new logs.LogGroup(this, 'UnpublishListingLogs', {
-        logGroupName: `/aws/lambda/localstays-${stage}-unpublish-listing`,
-        retention: logRetentionDays,
-        removalPolicy: logRemovalPolicy,
-      }),
-    });
-
-    // Grant DynamoDB permissions (least privilege)
-    table.grantReadWriteData(this.unpublishListingLambda); // Main table (read listing, update status)
-    props.locationsTable.grantWriteData(this.unpublishListingLambda); // Locations table (decrement count only)
-    props.publicListingsTable.grantWriteData(this.unpublishListingLambda); // PublicListings table (delete only)
-    props.publicListingMediaTable.grantReadWriteData(this.unpublishListingLambda); // PublicListingMedia table (read for query, delete)
-    rateLimitTable.grantReadWriteData(this.unpublishListingLambda); // For write operation rate limiting
+    // Grant SSM permission for review compensation config
+    this.publishListingLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/review-compensation-enabled`,
+      ],
+    }));
 
     // ========================================
     // HOST AVAILABILITY HANDLER LAMBDA (CONSOLIDATED)
@@ -515,6 +548,39 @@ export class HostApiStack extends cdk.Stack {
     this.subscribeNotificationLambda.addToRolePolicy(vapidPolicyStatement);
 
     // ========================================
+    // STRIPE HANDLER LAMBDA
+    // ========================================
+    this.stripeHandlerLambda = new nodejs.NodejsFunction(this, 'StripeHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-stripe-handler`,
+      entry: 'backend/services/api/hosts/stripe-handler.ts',
+      handler: 'handler',
+      description: 'Stripe operations: fetch prices, create checkout sessions',
+      environment: {
+        ...commonEnvironment,
+        SUBSCRIPTION_PLANS_TABLE_NAME: props.subscriptionPlansTable.tableName,
+        FRONTEND_URL: frontendUrl,
+        STAGE: stage,
+      },
+      logGroup: new logs.LogGroup(this, 'StripeHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-stripe-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
+    });
+
+    // Grant DynamoDB permissions
+    table.grantReadData(this.stripeHandlerLambda); // For host profile lookup
+    props.subscriptionPlansTable.grantReadData(this.stripeHandlerLambda); // For prices lookup
+
+    // Grant SSM permissions to read Stripe secret key
+    this.stripeHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/stripe/secret-key`],
+    }));
+
+    // ========================================
     // API Gateway Routes - Host Profile
     // ========================================
 
@@ -595,6 +661,49 @@ export class HostApiStack extends cdk.Stack {
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/subscription/customer-portal
+    const customerPortalResource = subscriptionResource.addResource('customer-portal');
+    customerPortalResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.customerPortalLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // API Gateway Routes - Stripe
+    // ========================================
+
+    // /api/v1/hosts/{hostId}/stripe
+    const stripeResource = hostIdParam.addResource('stripe');
+
+    // GET /api/v1/hosts/{hostId}/stripe/prices
+    const stripePricesResource = stripeResource.addResource('prices');
+    stripePricesResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.stripeHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/stripe/checkout-session
+    const stripeCheckoutResource = stripeResource.addResource('checkout-session');
+    stripeCheckoutResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.stripeHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
       }
     );
 
@@ -757,17 +866,6 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
-    // POST /api/v1/hosts/{hostId}/listings/{listingId}/unpublish
-    const unpublishListingResource = listingIdParam.addResource('unpublish');
-    unpublishListingResource.addMethod(
-      'POST',
-      new apigateway.LambdaIntegration(this.unpublishListingLambda, { proxy: true }),
-      {
-        authorizer: this.authorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      }
-    );
-
     // GET /api/v1/hosts/{hostId}/listings/{listingId}/availability
     const listingAvailabilityResource = listingIdParam.addResource('availability');
     listingAvailabilityResource.addMethod(
@@ -819,6 +917,21 @@ export class HostApiStack extends cdk.Stack {
       }
     );
     pricingResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // PUT /api/v1/hosts/{hostId}/listings/{listingId}/slot/do-not-renew
+    const slotResource = listingIdParam.addResource('slot');
+    const doNotRenewResource = slotResource.addResource('do-not-renew');
+    doNotRenewResource.addMethod(
       'PUT',
       new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
       {

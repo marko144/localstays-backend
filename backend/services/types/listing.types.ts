@@ -201,6 +201,10 @@ export interface ListingMetadata {
       name: string;
     };
   };
+
+  // Manual Location IDs (set by admin when host uses manual address entry)
+  // Used as fallback when mapboxMetadata is not available
+  manualLocationIds?: string[];  // Array of location IDs (PLACE and optionally LOCALITY)
   
   // Capacity
   capacity: {
@@ -270,6 +274,12 @@ export interface ListingMetadata {
   // Verification flags
   listingVerified: boolean;     // True if admin explicitly verified the listing during approval
   
+  // Internal admin flag for staged approval (not visible to hosts)
+  // When true, listing is ready to be approved but waiting for bulk launch
+  readyToApprove?: boolean;
+  readyToApproveAt?: string;    // ISO timestamp when marked ready
+  readyToApproveBy?: string;    // Admin email who marked it ready
+  
   // Metadata
   isDeleted: boolean;
   deletedAt?: string;
@@ -284,6 +294,17 @@ export interface ListingMetadata {
   // Review tracking
   reviewStartedAt?: string;     // When admin started reviewing
   reviewedBy?: string;          // Admin email who is reviewing
+  
+  // Submission for review tracking (for subscription slot compensation)
+  submittedForReviewAt?: string;   // ISO timestamp when host submitted for review (IN_REVIEW)
+  firstReviewCompletedAt?: string; // ISO timestamp when admin first approved OR rejected (set once, never updated)
+  reviewDurationDays?: number;     // Days in review (calculated at approval)
+  
+  // Advertising Slot Association (denormalized from AdvertisingSlots table for display)
+  activeSlotId?: string;           // Current slot ID (if ONLINE)
+  slotExpiresAt?: string;          // From slot.expiresAt
+  slotDoNotRenew?: boolean;        // From slot.doNotRenew
+  slotIsPastDue?: boolean;         // From slot.isPastDue
   
   // Admin lock (for LOCKED status)
   lockedAt?: string;
@@ -603,6 +624,10 @@ export interface GetListingResponse {
     rejectionReason?: string;
     rightToListDocumentNumber?: string;
     officialStarRating?: number;
+    // Slot info (quick access from listing metadata)
+    activeSlotId?: string;
+    slotExpiresAt?: string;
+    slotDoNotRenew?: boolean;
   };
   images: Array<{
     imageId: string;
@@ -621,6 +646,19 @@ export interface GetListingResponse {
     contentType: string;
     uploadedAt: string;
   }>;
+  // Detailed slot information (for ONLINE/OFFLINE listings with active slots)
+  slot?: {
+    slotId: string;
+    activatedAt: string;
+    expiresAt: string;
+    daysRemaining: number;
+    doNotRenew: boolean;
+    isPastDue: boolean;
+    reviewCompensationDays: number;
+    displayStatus: string;
+    displayLabel: string;
+    displayLabel_sr: string;
+  };
 }
 
 /**
