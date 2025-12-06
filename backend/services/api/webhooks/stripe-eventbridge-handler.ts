@@ -1,8 +1,14 @@
 /**
  * Stripe EventBridge Handler
  * 
- * Processes Stripe events received via AWS EventBridge.
- * Stripe sends events directly to EventBridge using their partner integration.
+ * Processes Stripe events received via AWS EventBridge through SQS.
+ * 
+ * Architecture: EventBridge → SQS Queue → This Lambda
+ * 
+ * The SQS queue provides:
+ * - Buffering for burst traffic (e.g., 500 renewals on the same day)
+ * - Dead Letter Queue for failed events
+ * - Automatic retries with visibility timeout
  * 
  * Subscription Events:
  * - checkout.session.completed → Link Stripe customer to host
@@ -23,7 +29,7 @@
  * @see https://stripe.com/docs/stripe-apps/build-backend#eventbridge
  */
 
-import { EventBridgeEvent } from 'aws-lambda';
+import { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import Stripe from 'stripe';
@@ -135,87 +141,116 @@ interface StripeEventBridgeDetail {
 }
 
 // ============================================================================
-// MAIN HANDLER
+// MAIN HANDLER (SQS Event Source)
 // ============================================================================
 
-export const handler = async (
-  event: EventBridgeEvent<'stripe.event', StripeEventBridgeDetail>
-): Promise<void> => {
-  console.log('📥 Stripe EventBridge event received:', {
-    detailType: event['detail-type'],
-    source: event.source,
-    eventType: event.detail?.type,
-    eventId: event.detail?.id,
-  });
-
-  const stripeEvent = event.detail;
+/**
+ * Main Lambda handler - processes SQS messages containing EventBridge events
+ * 
+ * With reportBatchItemFailures enabled, we return failed message IDs
+ * so only those messages get retried (not the whole batch).
+ */
+export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
+  console.log(`📥 Processing ${event.Records.length} Stripe event(s) from SQS`);
   
-  if (!stripeEvent || !stripeEvent.type) {
-    console.error('❌ Invalid event structure - missing type');
-    return;
-  }
+  const batchItemFailures: SQSBatchItemFailure[] = [];
+  
+  for (const record of event.Records) {
+    try {
+      // Parse the EventBridge event from SQS message body
+      const eventBridgeEvent = JSON.parse(record.body);
+      const stripeEvent: StripeEventBridgeDetail = eventBridgeEvent.detail;
+      
+      console.log('📥 Stripe event received:', {
+        messageId: record.messageId,
+        detailType: eventBridgeEvent['detail-type'],
+        eventType: stripeEvent?.type,
+        eventId: stripeEvent?.id,
+      });
 
-  try {
-    switch (stripeEvent.type) {
-      case 'checkout.session.completed':
-        await processCheckoutSessionCompleted(stripeEvent.data.object as Stripe.Checkout.Session);
-        break;
+      if (!stripeEvent || !stripeEvent.type) {
+        console.error('❌ Invalid event structure - missing type', { messageId: record.messageId });
+        // Don't retry malformed events - they'll never succeed
+        continue;
+      }
 
-      case 'customer.subscription.created':
-        await processSubscriptionCreated(stripeEvent.data.object as Stripe.Subscription);
-        break;
-
-      case 'customer.subscription.updated':
-        await processSubscriptionUpdated(
-          stripeEvent.data.object as Stripe.Subscription,
-          stripeEvent.data.previous_attributes
-        );
-        break;
-
-      case 'customer.subscription.deleted':
-        await processSubscriptionDeleted(stripeEvent.data.object as Stripe.Subscription);
-        break;
-
-      case 'invoice.paid':
-        await processInvoicePaid(stripeEvent.data.object as Stripe.Invoice);
-        break;
-
-      case 'invoice.payment_failed':
-        await processInvoicePaymentFailed(stripeEvent.data.object as Stripe.Invoice);
-        break;
-
-      // Product/Price catalog events
-      case 'product.created':
-      case 'product.updated':
-        await processProductUpsert(stripeEvent.data.object as Stripe.Product);
-        break;
-
-      case 'product.deleted':
-        await processProductDeleted(stripeEvent.data.object as Stripe.Product);
-        break;
-
-      case 'price.created':
-      case 'price.updated':
-        await processPriceUpsert(stripeEvent.data.object as Stripe.Price);
-        break;
-
-      case 'price.deleted':
-        await processPriceDeleted(stripeEvent.data.object as Stripe.Price);
-        break;
-
-      case 'customer.deleted':
-        await processCustomerDeleted(stripeEvent.data.object as Stripe.Customer);
-        break;
-
-      default:
-        console.log(`ℹ️ Unhandled event type: ${stripeEvent.type}`);
+      await processStripeEvent(stripeEvent);
+      
+    } catch (error) {
+      console.error(`❌ Error processing message ${record.messageId}:`, error);
+      // Add to failures - this message will be retried
+      batchItemFailures.push({ itemIdentifier: record.messageId });
     }
-  } catch (error) {
-    console.error(`❌ Error processing ${stripeEvent.type}:`, error);
-    // Re-throw to let EventBridge handle retry
-    throw error;
   }
+  
+  if (batchItemFailures.length > 0) {
+    console.log(`⚠️ ${batchItemFailures.length}/${event.Records.length} messages failed, will be retried`);
+  } else {
+    console.log(`✅ All ${event.Records.length} messages processed successfully`);
+  }
+  
+  return { batchItemFailures };
 };
+
+/**
+ * Process a single Stripe event
+ */
+async function processStripeEvent(stripeEvent: StripeEventBridgeDetail): Promise<void> {
+  switch (stripeEvent.type) {
+    case 'checkout.session.completed':
+      await processCheckoutSessionCompleted(stripeEvent.data.object as Stripe.Checkout.Session);
+      break;
+
+    case 'customer.subscription.created':
+      await processSubscriptionCreated(stripeEvent.data.object as Stripe.Subscription);
+      break;
+
+    case 'customer.subscription.updated':
+      await processSubscriptionUpdated(
+        stripeEvent.data.object as Stripe.Subscription,
+        stripeEvent.data.previous_attributes
+      );
+      break;
+
+    case 'customer.subscription.deleted':
+      await processSubscriptionDeleted(stripeEvent.data.object as Stripe.Subscription);
+      break;
+
+    case 'invoice.paid':
+      await processInvoicePaid(stripeEvent.data.object as Stripe.Invoice);
+      break;
+
+    case 'invoice.payment_failed':
+      await processInvoicePaymentFailed(stripeEvent.data.object as Stripe.Invoice);
+      break;
+
+    // Product/Price catalog events
+    case 'product.created':
+    case 'product.updated':
+      await processProductUpsert(stripeEvent.data.object as Stripe.Product);
+      break;
+
+    case 'product.deleted':
+      await processProductDeleted(stripeEvent.data.object as Stripe.Product);
+      break;
+
+    case 'price.created':
+    case 'price.updated':
+      await processPriceUpsert(stripeEvent.data.object as Stripe.Price);
+      break;
+
+    case 'price.deleted':
+      await processPriceDeleted(stripeEvent.data.object as Stripe.Price);
+      break;
+
+    case 'customer.deleted':
+      await processCustomerDeleted(stripeEvent.data.object as Stripe.Customer);
+      break;
+
+    default:
+      console.log(`ℹ️ Unhandled event type: ${stripeEvent.type}`);
+  }
+}
 
 // ============================================================================
 // EVENT PROCESSORS
@@ -272,6 +307,8 @@ async function processCheckoutSessionCompleted(
       subscriptionId: subscription.id,
       status: subscription.status,
       priceId: subscription.items.data[0]?.price?.id,
+      trialStart: subscription.trial_start,
+      trialEnd: subscription.trial_end,
     });
     
     // Get plan info from our database using the Stripe price ID
@@ -301,6 +338,9 @@ async function processCheckoutSessionCompleted(
       currentPeriodStart: periodStart ? new Date(periodStart * 1000).toISOString() : new Date().toISOString(),
       currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000).toISOString() : new Date().toISOString(),
       adSlots,
+      // Trial period info (if subscription has a trial)
+      trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : undefined,
+      trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : undefined,
     };
   } catch (error) {
     console.error('⚠️ Failed to fetch subscription details from Stripe:', error);

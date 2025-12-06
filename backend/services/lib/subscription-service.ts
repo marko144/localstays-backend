@@ -517,22 +517,38 @@ export async function createAdvertisingSlot(params: {
   
   // Calculate review compensation days (time listing waited for first review)
   // Only apply if compensation is enabled (via SSM) and we have both dates
+  // Note: Review compensation is NOT applied during trial periods
+  const isTrialPeriod = subscription.status === 'TRIALING' && !!subscription.trialEnd;
   const compensationEnabled = await getReviewCompensationEnabled();
   let reviewCompensationDays = 0;
   
-  if (compensationEnabled && listingCreatedAt && firstReviewCompletedAt) {
+  if (!isTrialPeriod && compensationEnabled && listingCreatedAt && firstReviewCompletedAt) {
     reviewCompensationDays = calculateReviewCompensationDays(
       listingCreatedAt,
       firstReviewCompletedAt
     );
     console.log(`📅 Review compensation calculated: ${reviewCompensationDays} days (created: ${listingCreatedAt}, reviewed: ${firstReviewCompletedAt})`);
+  } else if (isTrialPeriod) {
+    console.log(`📅 Review compensation not applied during trial period`);
   } else if (!compensationEnabled) {
     console.log(`📅 Review compensation disabled (SSM parameter)`);
   }
   
-  // Calculate expiry date: creation date + full billing period + review compensation
-  // This ensures hosts get the full billing period duration even if creating mid-cycle
-  const expiresAt = calculateNewSlotExpiry(now, billingPeriod, reviewCompensationDays);
+  // Calculate expiry date based on subscription status:
+  // - TRIALING: Use trial end date (no compensation, slots expire when trial ends)
+  // - ACTIVE/other: Use full billing period from creation date + compensation
+  let expiresAt: string;
+  
+  if (isTrialPeriod) {
+    // During trial: slots expire when trial ends
+    // No review compensation during trial - it will be applied when trial converts to paid
+    expiresAt = subscription.trialEnd!;
+    console.log(`📅 Trial period: slot expires at trial end ${expiresAt}`);
+  } else {
+    // Normal subscription: full billing period from creation date + review compensation
+    expiresAt = calculateNewSlotExpiry(now, billingPeriod, reviewCompensationDays);
+    console.log(`📅 Paid subscription: slot expires at ${expiresAt} (billing period: ${billingPeriod}, compensation: ${reviewCompensationDays} days)`);
+  }
   
   const slot: AdvertisingSlot = {
     pk: buildAdvertisingSlotPK(listingId),

@@ -234,8 +234,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       console.log(`Setting manual location: PLACE (${location.name})`);
     }
 
-    // 7. Update the listing with manualLocationIds
+    // 7. Update the listing with manualLocationIds and denormalized locationId
     const now = new Date().toISOString();
+    
+    // The first ID in manualLocationIds is always the PLACE (primary location for querying)
+    const locationId = manualLocationIds[0];
 
     await docClient.send(
       new UpdateCommand({
@@ -244,15 +247,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           pk: `HOST#${hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: 'SET manualLocationIds = :locationIds, updatedAt = :now',
+        UpdateExpression: 'SET manualLocationIds = :locationIds, locationId = :locationId, gsi8pk = :gsi8pk, gsi8sk = :gsi8sk, updatedAt = :now',
         ExpressionAttributeValues: {
           ':locationIds': manualLocationIds,
+          ':locationId': locationId,
+          ':gsi8pk': `LOCATION#${locationId}`,
+          ':gsi8sk': `LISTING#${listingId}`,
           ':now': now,
         },
       })
     );
 
-    console.log(`Updated listing ${listingId} with manualLocationIds: ${manualLocationIds.join(', ')}`);
+    console.log(`Updated listing ${listingId} with manualLocationIds: ${manualLocationIds.join(', ')}, locationId: ${locationId}`);
 
     // 8. Return success response
     return {

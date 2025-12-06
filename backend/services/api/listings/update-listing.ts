@@ -221,6 +221,24 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       expressionAttributeNames['#mapboxMetadata'] = 'mapboxMetadata';
       expressionAttributeValues[':mapboxMetadata'] = updates.mapboxMetadata;
       updatedFields.push('mapboxMetadata');
+      
+      // Update denormalized locationId and GSI8 when mapboxMetadata changes
+      const newLocationId = updates.mapboxMetadata?.place?.mapbox_id || null;
+      if (newLocationId) {
+        updateExpressionParts.push('#locationId = :locationId');
+        expressionAttributeNames['#locationId'] = 'locationId';
+        expressionAttributeValues[':locationId'] = newLocationId;
+        
+        updateExpressionParts.push('#gsi8pk = :gsi8pk');
+        expressionAttributeNames['#gsi8pk'] = 'gsi8pk';
+        expressionAttributeValues[':gsi8pk'] = `LOCATION#${newLocationId}`;
+        
+        updateExpressionParts.push('#gsi8sk = :gsi8sk');
+        expressionAttributeNames['#gsi8sk'] = 'gsi8sk';
+        expressionAttributeValues[':gsi8sk'] = `LISTING#${listingId}`;
+        
+        updatedFields.push('locationId');
+      }
     }
 
     // capacity

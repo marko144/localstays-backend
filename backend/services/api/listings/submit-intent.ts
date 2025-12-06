@@ -131,7 +131,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 8. Normalize address data
     const normalizedAddress = normalizeAddress(body.address);
 
-    // 9. Create listing metadata record
+    // 9. Derive locationId from mapboxMetadata (if available)
+    // Rule: mapboxMetadata.place.mapbox_id takes priority
+    const locationId = body.mapboxMetadata?.place?.mapbox_id || null;
+
+    // 10. Create listing metadata record
     await docClient.send(
       new PutCommand({
         TableName: TABLE_NAME,
@@ -149,6 +153,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           
           address: normalizedAddress,
           ...(body.mapboxMetadata && { mapboxMetadata: body.mapboxMetadata }),
+          ...(locationId && { locationId }),
           capacity: body.capacity,
           ...(body.pricing && { pricing: body.pricing }),
           hasPricing: false,           // Will be set to true when detailed pricing is configured
@@ -193,6 +198,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           // GSI3: Direct lookup by listingId
           gsi3pk: `LISTING#${listingId}`,
           gsi3sk: `LISTING_META#${listingId}`,
+          
+          // GSI8: Query by location (only if locationId exists)
+          ...(locationId && {
+            gsi8pk: `LOCATION#${locationId}`,
+            gsi8sk: `LISTING#${listingId}`,
+          }),
         },
       })
     );

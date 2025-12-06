@@ -206,6 +206,10 @@ export interface ListingMetadata {
   // Used as fallback when mapboxMetadata is not available
   manualLocationIds?: string[];  // Array of location IDs (PLACE and optionally LOCALITY)
   
+  // Denormalized location ID for efficient querying (GSI8)
+  // Derived from: mapboxMetadata.place.mapbox_id || manualLocationIds[0]
+  locationId?: string;
+  
   // Capacity
   capacity: {
     beds: number;
@@ -318,6 +322,10 @@ export interface ListingMetadata {
   // GSI3: Direct lookup by listingId
   gsi3pk?: string;              // LISTING#<listingId>
   gsi3sk?: string;              // LISTING_META#<listingId>
+  
+  // GSI8: Query listings by location
+  gsi8pk?: string;              // LOCATION#<locationId>
+  gsi8sk?: string;              // LISTING#<listingId>
 }
 
 // ============================================================================

@@ -13,6 +13,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
@@ -29,13 +30,58 @@ import { AdvertisingSlot, SlotSummary } from '../../types/advertising-slot.types
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
+const ssmClient = new SSMClient({});
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const STAGE = process.env.STAGE || 'dev1';
+
+// Cache for subscriptions enabled setting
+let cachedSubscriptionsEnabled: boolean | null = null;
+
+/**
+ * Check if subscriptions are globally enabled
+ * Returns true if enabled (default), false if explicitly disabled
+ */
+async function getSubscriptionsEnabled(): Promise<boolean> {
+  if (cachedSubscriptionsEnabled !== null) {
+    return cachedSubscriptionsEnabled;
+  }
+
+  const parameterName = `/localstays/${STAGE}/config/subscriptions-enabled`;
+
+  try {
+    const response = await ssmClient.send(
+      new GetParameterCommand({
+        Name: parameterName,
+      })
+    );
+
+    const value = response.Parameter?.Value?.toLowerCase();
+    cachedSubscriptionsEnabled = value === 'true';
+    
+    console.log(`Subscriptions enabled: ${cachedSubscriptionsEnabled}`);
+    return cachedSubscriptionsEnabled;
+  } catch (error: any) {
+    // Parameter doesn't exist - default to enabled
+    if (error.name === 'ParameterNotFound') {
+      console.log('Subscriptions enabled parameter not found - defaulting to enabled');
+      cachedSubscriptionsEnabled = true;
+      return true;
+    }
+    console.error('Failed to get subscriptions-enabled from SSM:', error);
+    // Default to enabled on error
+    cachedSubscriptionsEnabled = true;
+    return true;
+  }
+}
 
 /**
  * Response structure for subscription endpoint
  */
 interface SubscriptionResponse {
+  // Global subscription availability
+  subscriptionsEnabled: boolean;
+  
   // Subscription info
   hostId: string;
   status: string;
@@ -101,8 +147,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const subscription = await getHostSubscription(hostId);
 
     if (!subscription) {
+      // Check if subscriptions are globally enabled
+      const subscriptionsEnabled = await getSubscriptionsEnabled();
+      
       // Return a "no subscription" response instead of 404
       return response.success({
+        subscriptionsEnabled,
         hostId,
         status: 'NONE',
         statusLabel: 'No Subscription',
@@ -133,8 +183,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const slots = await getHostSlots(hostId);
     const slotSummaries = await buildSlotSummariesWithListings(slots, subscription.cancelAtPeriodEnd);
 
-    // 7. Build response
+    // 7. Check if subscriptions are globally enabled
+    const subscriptionsEnabled = await getSubscriptionsEnabled();
+
+    // 8. Build response
     const subscriptionResponse: SubscriptionResponse = {
+      subscriptionsEnabled,
       hostId: subscription.hostId,
       status: subscription.status,
       statusLabel: getStatusLabel(subscription.status, 'en'),

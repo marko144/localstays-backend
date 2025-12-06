@@ -177,6 +177,9 @@ export interface CheckoutSessionData {
     currentPeriodStart: string;
     currentPeriodEnd: string;
     adSlots: number;
+    // Trial period info (if applicable)
+    trialStart?: string;
+    trialEnd?: string;
   };
 }
 
@@ -295,8 +298,9 @@ export async function handleCheckoutCompleted(
       cancelAtPeriodEnd: false,
       cancelledAt: null,
       
-      trialStart: null,
-      trialEnd: null,
+      // Trial period info (from Stripe subscription if applicable)
+      trialStart: subDetails?.trialStart || null,
+      trialEnd: subDetails?.trialEnd || null,
       
       startedAt: existingSubscription?.startedAt || now,
       
@@ -776,8 +780,18 @@ export async function handleSubscriptionUpdated(
 
     // Check if period end has changed (plan change resets billing cycle)
     const periodEndChanged = subscription.currentPeriodEnd !== data.currentPeriodEnd;
+    
+    // Check if this is a trial-to-paid conversion
+    const wasTrialing = subscription.status === 'TRIALING';
+    const isNowActive = data.status === 'ACTIVE';
+    const trialConverted = wasTrialing && isNowActive;
+    
+    if (trialConverted) {
+      console.log(`🎉 Trial converted to paid subscription for host ${data.hostId}`);
+    }
 
     // Update subscription
+    // Clear trial dates when trial converts to paid (status changes from TRIALING to ACTIVE)
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -794,6 +808,8 @@ export async function handleSubscriptionUpdated(
               currentPeriodEnd = :periodEnd,
               cancelAtPeriodEnd = :cancelAtPeriodEnd,
               cancelledAt = :cancelledAt,
+              trialStart = :trialStart,
+              trialEnd = :trialEnd,
               updatedAt = :now
         `,
         ExpressionAttributeNames: {
@@ -808,6 +824,9 @@ export async function handleSubscriptionUpdated(
           ':periodEnd': data.currentPeriodEnd,
           ':cancelAtPeriodEnd': data.cancelAtPeriodEnd,
           ':cancelledAt': data.cancelledAt || null,
+          // Clear trial dates when trial converts to paid, otherwise preserve them
+          ':trialStart': trialConverted ? null : (subscription.trialStart || null),
+          ':trialEnd': trialConverted ? null : (subscription.trialEnd || null),
           ':now': now,
         },
       })

@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
@@ -6,6 +7,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { Construct } from 'constructs';
 
 /**
@@ -40,8 +43,13 @@ export interface StripeEventBridgeStackProps extends cdk.StackProps {
 /**
  * Stack for Stripe EventBridge integration
  * 
- * Handles subscription events from Stripe via AWS EventBridge partner integration.
- * This is more reliable than HTTP webhooks and doesn't require signature verification.
+ * Architecture: EventBridge → SQS Queue → Lambda
+ * 
+ * This provides:
+ * - Buffering for burst traffic (e.g., 500 renewals on the same day)
+ * - Dead Letter Queue for failed events (never lose an event)
+ * - Cost-effective polling with maxBatchingWindow
+ * - Automatic retries with visibility timeout
  * 
  * Setup:
  * 1. In Stripe Dashboard → Developers → Webhooks → Add destination
@@ -55,6 +63,8 @@ export interface StripeEventBridgeStackProps extends cdk.StackProps {
  */
 export class StripeEventBridgeStack extends cdk.Stack {
   public readonly stripeEventHandlerLambda: lambda.Function;
+  public readonly stripeEventQueue: sqs.Queue;
+  public readonly stripeEventDLQ: sqs.Queue;
 
   constructor(scope: Construct, id: string, props: StripeEventBridgeStackProps) {
     super(scope, id, props);
@@ -71,6 +81,47 @@ export class StripeEventBridgeStack extends cdk.Stack {
     } = props;
 
     // ========================================
+    // SQS Queues for Event Buffering
+    // ========================================
+
+    // Dead Letter Queue for failed Stripe event processing
+    // Events that fail 3 times end up here for manual inspection
+    this.stripeEventDLQ = new sqs.Queue(this, 'StripeEventDLQ', {
+      queueName: `${stage}-stripe-event-dlq`,
+      retentionPeriod: cdk.Duration.days(14), // Keep failed events for 2 weeks
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Main Stripe event processing queue
+    // Buffers events between EventBridge and Lambda for resilience
+    this.stripeEventQueue = new sqs.Queue(this, 'StripeEventQueue', {
+      queueName: `${stage}-stripe-event-queue`,
+      
+      // Visibility timeout: 2x Lambda timeout (30s * 2 = 60s)
+      // Ensures message isn't reprocessed while Lambda is still working
+      visibilityTimeout: cdk.Duration.seconds(60),
+      
+      // Message retention: 4 days (same as other queues)
+      retentionPeriod: cdk.Duration.days(4),
+      
+      // Long polling: 20 seconds
+      // Reduces empty receives and SQS costs
+      receiveMessageWaitTime: cdk.Duration.seconds(20),
+      
+      // Dead Letter Queue after 3 failed attempts
+      deadLetterQueue: {
+        queue: this.stripeEventDLQ,
+        maxReceiveCount: 3,
+      },
+      
+      removalPolicy: stage === 'prod' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // ========================================
     // Stripe EventBridge Handler Lambda
     // ========================================
     
@@ -81,6 +132,9 @@ export class StripeEventBridgeStack extends cdk.Stack {
       handler: 'handler',
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
+      // Reserved concurrency prevents runaway scaling and protects downstream services
+      // 10 concurrent = can process ~20 events/second sustained
+      reservedConcurrentExecutions: 10,
       environment: {
         TABLE_NAME: table.tableName,
         SUBSCRIPTION_PLANS_TABLE_NAME: subscriptionPlansTable.tableName,
@@ -129,6 +183,26 @@ export class StripeEventBridgeStack extends cdk.Stack {
     }));
 
     // ========================================
+    // Connect SQS Queue to Lambda
+    // ========================================
+
+    // Lambda polls SQS queue for events
+    // Cost-saving configuration matches other queues
+    this.stripeEventHandlerLambda.addEventSource(new SqsEventSource(this.stripeEventQueue, {
+      // Process one event at a time for predictable behavior
+      // Stripe events often need sequential processing (checkout before subscription.created)
+      batchSize: 1,
+      
+      // Wait up to 60s between polls when queue is empty
+      // Reduces SQS costs by ~85% during idle periods
+      maxBatchingWindow: cdk.Duration.seconds(60),
+      
+      // Enable partial batch failure handling
+      // If processing fails, only that message goes back to queue
+      reportBatchItemFailures: true,
+    }));
+
+    // ========================================
     // EventBridge Rule for Stripe Events
     // ========================================
     
@@ -155,7 +229,7 @@ export class StripeEventBridgeStack extends cdk.Stack {
     // and detail-type matching the Stripe event type (e.g., "checkout.session.completed")
     const stripeEventRule = new events.Rule(this, 'StripeEventRule', {
       ruleName: `localstays-${stage}-stripe-events`,
-      description: 'Routes Stripe subscription and product events to handler Lambda',
+      description: 'Routes Stripe subscription and product events to SQS queue',
       eventBus: partnerEventBus, // CRITICAL: Must be on the partner event bus!
       eventPattern: {
         // For partner event buses, we match on detail-type only
@@ -181,23 +255,55 @@ export class StripeEventBridgeStack extends cdk.Stack {
       },
     });
 
-    // Add the Lambda as a target
-    stripeEventRule.addTarget(
-      new targets.LambdaFunction(this.stripeEventHandlerLambda, {
-        retryAttempts: 2,
-      })
-    );
+    // Route events to SQS queue (not directly to Lambda)
+    // This provides buffering, DLQ, and retry capabilities
+    stripeEventRule.addTarget(new targets.SqsQueue(this.stripeEventQueue));
 
     // ========================================
-    // Alternative: Custom Event Bus (if not using partner integration)
+    // CloudWatch Alarms
     // ========================================
-    
-    // If you prefer to use a custom event bus instead of the default,
-    // uncomment this and update the rule to use this bus:
-    //
-    // const stripeEventBus = new events.EventBus(this, 'StripeEventBus', {
-    //   eventBusName: `localstays-${stage}-stripe-events`,
-    // });
+
+    // Alert when events are failing and going to DLQ
+    new cloudwatch.Alarm(this, 'StripeEventDLQAlarm', {
+      alarmName: `${stage}-stripe-event-dlq-messages`,
+      alarmDescription: 'Alert when Stripe events are failing and going to DLQ',
+      metric: this.stripeEventDLQ.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1, // Alert on any failed event
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Alert when Lambda is having errors
+    new cloudwatch.Alarm(this, 'StripeEventHandlerErrorsAlarm', {
+      alarmName: `${stage}-stripe-event-handler-errors`,
+      alarmDescription: 'Alert when Stripe event handler Lambda has errors',
+      metric: this.stripeEventHandlerLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 5, // Alert if 5+ errors in 5 minutes
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Alert when queue is backing up (events not being processed fast enough)
+    new cloudwatch.Alarm(this, 'StripeEventQueueBacklogAlarm', {
+      alarmName: `${stage}-stripe-event-queue-backlog`,
+      alarmDescription: 'Alert when Stripe event queue has a backlog',
+      metric: this.stripeEventQueue.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Average',
+      }),
+      threshold: 100, // Alert if 100+ messages waiting
+      evaluationPeriods: 2, // For 10 minutes
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
 
     // ========================================
     // Outputs
@@ -206,6 +312,16 @@ export class StripeEventBridgeStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'StripeEventHandlerArn', {
       value: this.stripeEventHandlerLambda.functionArn,
       description: 'Stripe EventBridge Handler Lambda ARN',
+    });
+
+    new cdk.CfnOutput(this, 'StripeEventQueueUrl', {
+      value: this.stripeEventQueue.queueUrl,
+      description: 'Stripe Event SQS Queue URL',
+    });
+
+    new cdk.CfnOutput(this, 'StripeEventDLQUrl', {
+      value: this.stripeEventDLQ.queueUrl,
+      description: 'Stripe Event Dead Letter Queue URL',
     });
 
     new cdk.CfnOutput(this, 'StripeEventRuleName', {
@@ -224,4 +340,3 @@ export class StripeEventBridgeStack extends cdk.Stack {
     cdk.Tags.of(this).add('ManagedBy', 'CDK');
   }
 }
-

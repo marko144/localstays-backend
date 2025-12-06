@@ -299,7 +299,10 @@ export class HostApiStack extends cdk.Stack {
       entry: 'backend/services/api/hosts/get-subscription.ts',
       handler: 'handler',
       description: 'Retrieve host subscription details and entitlements',
-      environment: commonEnvironment,
+      environment: {
+        ...commonEnvironment,
+        STAGE: stage,
+      },
       logGroup: new logs.LogGroup(this, 'GetSubscriptionLogs', {
         logGroupName: `/aws/lambda/localstays-${stage}-get-subscription`,
         retention: logRetentionDays,
@@ -311,6 +314,15 @@ export class HostApiStack extends cdk.Stack {
     table.grantReadData(this.getSubscriptionLambda);
     props.subscriptionPlansTable.grantReadData(this.getSubscriptionLambda);
     props.advertisingSlotsTable.grantReadData(this.getSubscriptionLambda);
+
+    // Grant SSM permissions for subscriptions-enabled config
+    this.getSubscriptionLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/subscriptions-enabled`,
+      ],
+    }));
 
     // ========================================
     // Customer Portal Session Lambda
@@ -573,11 +585,15 @@ export class HostApiStack extends cdk.Stack {
     table.grantReadData(this.stripeHandlerLambda); // For host profile lookup
     props.subscriptionPlansTable.grantReadData(this.stripeHandlerLambda); // For prices lookup
 
-    // Grant SSM permissions to read Stripe secret key
+    // Grant SSM permissions to read Stripe secret key and config parameters
     this.stripeHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/stripe/secret-key`],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/stripe/secret-key`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/trial-days`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/localstays/${stage}/config/subscriptions-enabled`,
+      ],
     }));
 
     // ========================================

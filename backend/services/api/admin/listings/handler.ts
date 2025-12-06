@@ -12,9 +12,11 @@ import { handler as suspendListing } from './suspend-listing';
 import { handler as searchLocations } from './search-locations';
 import { handler as setManualLocations } from './set-manual-locations';
 import { handler as bulkApprove } from './bulk-approve';
+import { handler as bulkApproveByIds } from './bulk-approve-by-ids';
+import { handler as searchByLocation } from './search-by-location';
 
 /**
- * Consolidated Admin Listings Handler (v1.4 - supports pre-approve)
+ * Consolidated Admin Listings Handler (v1.6 - supports bulk approve by IDs)
  * 
  * Routes all admin listing operations to their respective handlers based on
  * HTTP method and resource path.
@@ -22,10 +24,12 @@ import { handler as bulkApprove } from './bulk-approve';
  * Supported routes:
  * - GET    /api/v1/admin/listings                              → list all listings
  * - GET    /api/v1/admin/listings/pending-review               → list pending review listings
+ * - GET    /api/v1/admin/listings/by-location/{locationId}     → search listings by location (efficient GSI query)
  * - GET    /api/v1/admin/hosts/{hostId}/listings               → list listings for a host
  * - GET    /api/v1/admin/listings/{listingId}                  → get listing details
  * - GET    /api/v1/admin/locations/search                      → search locations for manual association
- * - POST   /api/v1/admin/listings/bulk-approve                 → bulk approve ready listings
+ * - POST   /api/v1/admin/listings/bulk-approve                 → bulk approve ready listings (by readyToApprove flag)
+ * - POST   /api/v1/admin/listings/bulk-approve-by-ids          → bulk approve listings by IDs
  * - POST   /api/v1/admin/listings/{listingId}/pre-approve      → mark listing ready (sets flag, keeps status)
  * - PUT    /api/v1/admin/listings/{listingId}/reviewing        → set listing to reviewing
  * - PUT    /api/v1/admin/listings/{listingId}/approve          → approve listing (IN_REVIEW/REVIEWING/LOCKED)
@@ -57,6 +61,11 @@ export const handler: APIGatewayProxyHandler = async (
       return (await pendingReviewListings(event, context, callback)) as APIGatewayProxyResult;
     }
 
+    // GET /api/v1/admin/listings/by-location/{locationId}
+    if (method === 'GET' && resource === '/api/v1/admin/listings/by-location/{locationId}') {
+      return (await searchByLocation(event, context, callback)) as APIGatewayProxyResult;
+    }
+
     // GET /api/v1/admin/hosts/{hostId}/listings
     if (method === 'GET' && resource === '/api/v1/admin/hosts/{hostId}/listings') {
       return (await listHostListings(event, context, callback)) as APIGatewayProxyResult;
@@ -75,6 +84,11 @@ export const handler: APIGatewayProxyHandler = async (
     // POST /api/v1/admin/listings/bulk-approve
     if (method === 'POST' && resource === '/api/v1/admin/listings/bulk-approve') {
       return (await bulkApprove(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // POST /api/v1/admin/listings/bulk-approve-by-ids
+    if (method === 'POST' && resource === '/api/v1/admin/listings/bulk-approve-by-ids') {
+      return (await bulkApproveByIds(event, context, callback)) as APIGatewayProxyResult;
     }
 
     // PUT /api/v1/admin/listings/{listingId}/reviewing

@@ -574,6 +574,29 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // GET /api/v1/admin/listings/by-location/{locationId}
+    const adminListingsByLocationResource = adminListingsResource.addResource('by-location');
+    const adminListingsByLocationIdResource = adminListingsByLocationResource.addResource('{locationId}');
+    adminListingsByLocationIdResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/listings/bulk-approve-by-ids
+    const adminBulkApproveByIdsResource = adminListingsResource.addResource('bulk-approve-by-ids');
+    adminBulkApproveByIdsResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // GET /api/v1/admin/listings/{listingId}
     const adminListingIdParam = adminListingsResource.addResource('{listingId}');
     adminListingIdParam.addMethod(

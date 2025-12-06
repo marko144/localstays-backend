@@ -180,6 +180,22 @@ export class DataStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI8 - LocationIndex: Query listings by location ID
+    // Used by admin search to find all listings in a specific location
+    // pk=LOCATION#<locationId>, sk=LISTING#<listingId>
+    this.table.addGlobalSecondaryIndex({
+      indexName: 'LocationIndex',
+      partitionKey: {
+        name: 'gsi8pk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi8sk',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ========================================
     // Locations Table - Separate table for location data
     // ========================================

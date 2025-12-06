@@ -30,6 +30,12 @@ const STAGE = process.env.STAGE || 'dev1';
 // Cache the Stripe client after first initialization
 let stripeClient: Stripe | null = null;
 
+// Cache for trial days setting
+let cachedTrialDays: number | null = null;
+
+// Cache for subscriptions enabled setting
+let cachedSubscriptionsEnabled: boolean | null = null;
+
 // Standard response headers
 const headers = {
   'Content-Type': 'application/json',
@@ -65,6 +71,80 @@ async function getStripeClient(): Promise<Stripe> {
   } catch (error) {
     console.error(`Failed to retrieve Stripe secret key from SSM: ${parameterName}`, error);
     throw error;
+  }
+}
+
+/**
+ * Check if subscriptions are globally enabled
+ * Returns true if enabled (default), false if explicitly disabled
+ */
+async function getSubscriptionsEnabled(): Promise<boolean> {
+  if (cachedSubscriptionsEnabled !== null) {
+    return cachedSubscriptionsEnabled;
+  }
+
+  const parameterName = `/localstays/${STAGE}/config/subscriptions-enabled`;
+
+  try {
+    const response = await ssmClient.send(
+      new GetParameterCommand({
+        Name: parameterName,
+      })
+    );
+
+    const value = response.Parameter?.Value?.toLowerCase();
+    cachedSubscriptionsEnabled = value === 'true';
+    
+    console.log(`Subscriptions enabled: ${cachedSubscriptionsEnabled}`);
+    return cachedSubscriptionsEnabled;
+  } catch (error: any) {
+    // Parameter doesn't exist - default to enabled
+    if (error.name === 'ParameterNotFound') {
+      console.log('Subscriptions enabled parameter not found - defaulting to enabled');
+      cachedSubscriptionsEnabled = true;
+      return true;
+    }
+    console.error('Failed to get subscriptions-enabled from SSM:', error);
+    // Default to enabled on error to avoid blocking legitimate subscriptions
+    cachedSubscriptionsEnabled = true;
+    return true;
+  }
+}
+
+/**
+ * Get trial days from SSM parameter
+ * Returns null if trial is disabled (parameter doesn't exist or is 0)
+ */
+async function getTrialDays(): Promise<number | null> {
+  if (cachedTrialDays !== null) {
+    return cachedTrialDays > 0 ? cachedTrialDays : null;
+  }
+
+  const parameterName = `/localstays/${STAGE}/config/trial-days`;
+
+  try {
+    const response = await ssmClient.send(
+      new GetParameterCommand({
+        Name: parameterName,
+      })
+    );
+
+    const value = response.Parameter?.Value;
+    cachedTrialDays = value ? parseInt(value, 10) : 0;
+    
+    console.log(`Trial days configuration: ${cachedTrialDays} days`);
+    return cachedTrialDays > 0 ? cachedTrialDays : null;
+  } catch (error: any) {
+    // Parameter doesn't exist - trials are disabled
+    if (error.name === 'ParameterNotFound') {
+      console.log('Trial days parameter not found - trials disabled');
+      cachedTrialDays = 0;
+      return null;
+    }
+    console.error('Failed to get trial days from SSM:', error);
+    // Default to no trial on error
+    cachedTrialDays = 0;
+    return null;
   }
 }
 
@@ -362,6 +442,21 @@ async function handleCreateCheckoutSession(
     };
   }
 
+  // Check if subscriptions are globally enabled
+  const subscriptionsEnabled = await getSubscriptionsEnabled();
+  if (!subscriptionsEnabled) {
+    console.log('Subscription creation blocked - subscriptions are globally disabled');
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({
+        success: false,
+        error: 'Subscriptions are currently disabled',
+        code: 'SUBSCRIPTIONS_DISABLED',
+      }),
+    };
+  }
+
   try {
     // Fetch host profile to get email
     const hostResult = await docClient.send(
@@ -435,17 +530,22 @@ async function handleCreateCheckoutSession(
     const successUrl = `${FRONTEND_URL}/${locale}/subscription?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${FRONTEND_URL}/${locale}/subscription`;
 
+    // Get trial days from SSM (if configured)
+    const trialDays = await getTrialDays();
+
     // Create Stripe Checkout session
     console.log('Creating checkout session:', {
       hostId,
       email: hostEmail,
       priceId: body.priceId,
       locale,
+      trialDays,
       successUrl,
       cancelUrl,
     });
 
-    const session = await stripe.checkout.sessions.create({
+    // Build session parameters
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [
@@ -464,7 +564,17 @@ async function handleCreateCheckoutSession(
       },
       // Allow promotion codes if you have them set up in Stripe
       allow_promotion_codes: true,
-    });
+    };
+
+    // Add trial period if configured
+    // Note: This only applies to new customers - Stripe won't apply trial to existing customers
+    if (trialDays && trialDays > 0) {
+      sessionParams.subscription_data = {
+        trial_period_days: trialDays,
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     console.log('Checkout session created:', {
       sessionId: session.id,
