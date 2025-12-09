@@ -141,7 +141,7 @@ export class StripeEventBridgeStack extends cdk.Stack {
         ADVERTISING_SLOTS_TABLE_NAME: advertisingSlotsTable.tableName,
         EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
         SENDGRID_PARAM: sendGridParamName,
-        FROM_EMAIL: 'marko@localstays.me',
+        FROM_EMAIL: 'hello@localstays.me',
         FRONTEND_URL: frontendUrl,
         STAGE: stage,
         // Review compensation is controlled via SSM Parameter: /localstays/{stage}/config/review-compensation-enabled

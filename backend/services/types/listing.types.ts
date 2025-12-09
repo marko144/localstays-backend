@@ -547,6 +547,11 @@ export interface SubmitListingIntentRequest {
     contentType: string;
     fileSize: number;           // File size in bytes (enforced by S3)
   }>;
+  /** Optional initial property video for faster verification */
+  initialVideo?: {
+    contentType: string;       // video/mp4, video/mov, video/webm
+    fileSize: number;          // File size in bytes (max 200MB)
+  };
 }
 
 /**
@@ -566,6 +571,11 @@ export interface SubmitListingIntentResponse {
     uploadUrl: string;
     expiresAt: string;
   }>;
+  /** Optional upload URL for initial property video */
+  initialVideoUploadUrl?: {
+    uploadUrl: string;
+    expiresAt: string;
+  };
 }
 
 /**
@@ -575,6 +585,7 @@ export interface ConfirmListingSubmissionRequest {
   submissionToken: string;
   uploadedImages: string[];        // Array of imageIds
   uploadedDocuments?: VerificationDocType[];
+  uploadedInitialVideo?: boolean;  // True if initial video was uploaded
 }
 
 /**

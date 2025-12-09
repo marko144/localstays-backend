@@ -41,6 +41,10 @@ export interface AdminApiStackProps extends cdk.StackProps {
   subscriptionPlansTable: dynamodb.Table;
   /** Advertising Slots table */
   advertisingSlotsTable: dynamodb.Table;
+  /** Legal Documents table */
+  legalDocumentsTable: dynamodb.Table;
+  /** Legal Acceptances table */
+  legalAcceptancesTable: dynamodb.Table;
 }
 
 /**
@@ -62,6 +66,7 @@ export class AdminApiStack extends cdk.Stack {
   public readonly adminRequestsHandlerLambda: nodejs.NodejsFunction;
   public readonly adminSubscriptionsHandlerLambda: nodejs.NodejsFunction;
   public readonly sendNotificationLambda: nodejs.NodejsFunction;
+  public readonly adminLegalHandlerLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: AdminApiStackProps) {
     super(scope, id, props);
@@ -140,43 +145,37 @@ export class AdminApiStack extends cdk.Stack {
       cloudWatchRole: true,
     });
 
+    // CORS headers for gateway responses
+    // Using '*' for error responses is safe since these are error cases
+    // The actual CORS preflight is handled by defaultCorsPreflightOptions above
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+      'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,PATCH,OPTIONS'",
+      'Access-Control-Allow-Credentials': "'true'",
+    };
+
     // Add Gateway Responses for CORS on errors
     this.api.addGatewayResponse('Unauthorized', {
       type: apigateway.ResponseType.UNAUTHORIZED,
       statusCode: '401',
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('AccessDenied', {
       type: apigateway.ResponseType.ACCESS_DENIED,
       statusCode: '403',
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('Default4XX', {
       type: apigateway.ResponseType.DEFAULT_4XX,
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('Default5XX', {
       type: apigateway.ResponseType.DEFAULT_5XX,
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     // Create Cognito authorizer
@@ -201,7 +200,7 @@ export class AdminApiStack extends cdk.Stack {
       BUCKET_NAME: bucket.bucketName,
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
-      FROM_EMAIL: 'marko@localstays.me',
+      FROM_EMAIL: 'hello@localstays.me',
       FRONTEND_URL: frontendUrl,
       STAGE: stage,
       CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
@@ -388,6 +387,28 @@ export class AdminApiStack extends cdk.Stack {
     // Grant permissions for subscription plan operations
     table.grantReadData(this.adminSubscriptionsHandlerLambda); // For reading admin user permissions
     props.subscriptionPlansTable.grantReadWriteData(this.adminSubscriptionsHandlerLambda);
+
+    // ========================================
+    // ADMIN LEGAL LAMBDA (Consolidated)
+    // ========================================
+
+    this.adminLegalHandlerLambda = new nodejs.NodejsFunction(this, 'AdminLegalHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-legal-handler`,
+      entry: 'backend/services/api/admin/legal/handler.ts',
+      handler: 'handler',
+      description: 'Admin: Consolidated handler for legal document management',
+      environment: {
+        ...commonEnvironment,
+        LEGAL_DOCUMENTS_TABLE_NAME: props.legalDocumentsTable.tableName,
+        LEGAL_ACCEPTANCES_TABLE_NAME: props.legalAcceptancesTable.tableName,
+      },
+    });
+    
+    // Grant permissions for legal document operations
+    props.legalDocumentsTable.grantReadWriteData(this.adminLegalHandlerLambda);
+    props.legalAcceptancesTable.grantReadData(this.adminLegalHandlerLambda);
+    bucket.grantReadWrite(this.adminLegalHandlerLambda); // For uploading documents to S3
 
     // ========================================
     // SEND NOTIFICATION LAMBDA (Admin only)
@@ -853,6 +874,65 @@ export class AdminApiStack extends cdk.Stack {
     adminSubscriptionPlanIdParam.addMethod(
       'DELETE',
       new apigateway.LambdaIntegration(this.adminSubscriptionsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // ========================================
+    // Admin Legal Routes
+    // ========================================
+    const adminLegalResource = adminResource.addResource('legal');
+    const adminLegalDocumentsResource = adminLegalResource.addResource('documents');
+
+    // GET /api/v1/admin/legal/documents - List all documents
+    adminLegalDocumentsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/legal/documents - Upload new document
+    adminLegalDocumentsResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/legal/documents/{type} - List versions for type
+    const adminLegalDocumentTypeResource = adminLegalDocumentsResource.addResource('{type}');
+    adminLegalDocumentTypeResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/legal/documents/{type}/{version} - Get specific document
+    const adminLegalDocumentVersionResource = adminLegalDocumentTypeResource.addResource('{version}');
+    adminLegalDocumentVersionResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/legal/acceptances - Query acceptances
+    const adminLegalAcceptancesResource = adminLegalResource.addResource('acceptances');
+    adminLegalAcceptancesResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminLegalHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
         authorizationType: apigateway.AuthorizationType.COGNITO,

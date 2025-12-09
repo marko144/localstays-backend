@@ -483,6 +483,11 @@ async function markListingReadyToApprove(
   adminEmail: string,
   now: string
 ): Promise<void> {
+  // Update GSI8 sort key to reflect readyToApprove=true for efficient querying
+  const gsi8sk = listing.locationId 
+    ? `READY#true#LISTING#${listing.listingId}` 
+    : undefined;
+  
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
@@ -496,6 +501,7 @@ async function markListingReadyToApprove(
             readyToApproveBy = :readyBy,
             #listingVerified = :listingVerified,
             #updatedAt = :updatedAt
+            ${gsi8sk ? ', gsi8sk = :gsi8sk' : ''}
       `,
       ExpressionAttributeNames: {
         '#listingVerified': 'listingVerified',
@@ -507,6 +513,7 @@ async function markListingReadyToApprove(
         ':readyBy': adminEmail,
         ':listingVerified': listingVerified,
         ':updatedAt': now,
+        ...(gsi8sk && { ':gsi8sk': gsi8sk }),
       },
     })
   );
@@ -562,6 +569,15 @@ async function updateListingToApproved(
   }
   
   updateExpression += ' REMOVE readyToApprove, readyToApproveAt, readyToApproveBy';
+  
+  // Update GSI8 sort key to reflect readyToApprove=false
+  if (listing.locationId) {
+    updateExpression = updateExpression.replace(
+      '#gsi2sk = :gsi2sk',
+      '#gsi2sk = :gsi2sk, gsi8sk = :gsi8sk'
+    );
+    expressionAttributeValues[':gsi8sk'] = `READY#false#LISTING#${listing.listingId}`;
+  }
   
   await docClient.send(
     new UpdateCommand({

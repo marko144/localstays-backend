@@ -163,6 +163,10 @@ const authTriggerStack = new AuthTriggerStack(app, `${stackPrefix}AuthTriggerSta
   sendGridParamName: paramsStack.sendGridParamName,
   bucketName: storageStack.bucket.bucketName,
   bucketArn: storageStack.bucket.bucketArn,
+  legalDocumentsTableName: dataStack.legalDocumentsTable.tableName,
+  legalDocumentsTableArn: dataStack.legalDocumentsTable.tableArn,
+  legalAcceptancesTableName: dataStack.legalAcceptancesTable.tableName,
+  legalAcceptancesTableArn: dataStack.legalAcceptancesTable.tableArn,
 });
 
 authTriggerStack.addDependency(paramsStack);
@@ -220,6 +224,8 @@ const hostApiStack = new HostApiStack(app, `${stackPrefix}HostApiStack`, {
   rateLimitTable: rateLimitStack.table,
   sendGridParamName: paramsStack.sendGridParamName,
   cloudFrontDomain: cloudFrontStack.distributionDomainName,
+  legalDocumentsTable: dataStack.legalDocumentsTable,
+  legalAcceptancesTable: dataStack.legalAcceptancesTable,
 });
 hostApiStack.addDependency(cognitoStack);
 hostApiStack.addDependency(dataStack);
@@ -248,6 +254,8 @@ const adminApiStack = new AdminApiStack(app, `${stackPrefix}AdminApiStack`, {
   locationsTable: dataStack.locationsTable,
   subscriptionPlansTable: dataStack.subscriptionPlansTable,
   advertisingSlotsTable: dataStack.advertisingSlotsTable,
+  legalDocumentsTable: dataStack.legalDocumentsTable,
+  legalAcceptancesTable: dataStack.legalAcceptancesTable,
 });
 adminApiStack.addDependency(cognitoStack);
 adminApiStack.addDependency(dataStack);

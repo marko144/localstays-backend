@@ -32,6 +32,14 @@ export interface AuthTriggerStackProps extends cdk.StackProps {
   stage: string;
   /** Frontend URL for verification and password reset links */
   frontendUrl: string;
+  /** Legal Documents table name */
+  legalDocumentsTableName: string;
+  /** Legal Documents table ARN */
+  legalDocumentsTableArn: string;
+  /** Legal Acceptances table name */
+  legalAcceptancesTableName: string;
+  /** Legal Acceptances table ARN */
+  legalAcceptancesTableArn: string;
 }
 
 /**
@@ -47,7 +55,22 @@ export class AuthTriggerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AuthTriggerStackProps) {
     super(scope, id, props);
 
-    const { userPoolId, userPoolArn, kmsKey, tableName, tableArn, sendGridParamName, bucketName, bucketArn, stage, frontendUrl } = props;
+    const { 
+      userPoolId, 
+      userPoolArn, 
+      kmsKey, 
+      tableName, 
+      tableArn, 
+      sendGridParamName, 
+      bucketName, 
+      bucketArn, 
+      stage, 
+      frontendUrl,
+      legalDocumentsTableName,
+      legalDocumentsTableArn,
+      legalAcceptancesTableName,
+      legalAcceptancesTableArn,
+    } = props;
 
     // Custom Email Sender Lambda
     this.customEmailSenderLambda = new nodejs.NodejsFunction(
@@ -70,7 +93,7 @@ export class AuthTriggerStack extends cdk.Stack {
           VERIFY_URL_BASE: `${frontendUrl}/en/verify`,
           RESET_PASSWORD_URL_BASE: `${frontendUrl}/en/reset-password`,
           SENDGRID_PARAM: sendGridParamName,
-          FROM_EMAIL: 'marko@localstays.me',
+          FROM_EMAIL: 'hello@localstays.me',
           KMS_KEY_ARN: kmsKey.keyArn,
           NODE_OPTIONS: '--enable-source-maps',
         },
@@ -209,6 +232,8 @@ export class AuthTriggerStack extends cdk.Stack {
           USER_POOL_ID: userPoolId,
           TABLE_NAME: tableName,
           BUCKET_NAME: bucketName,
+          LEGAL_DOCUMENTS_TABLE_NAME: legalDocumentsTableName,
+          LEGAL_ACCEPTANCES_TABLE_NAME: legalAcceptancesTableName,
           NODE_OPTIONS: '--enable-source-maps',
         },
 
@@ -260,6 +285,29 @@ export class AuthTriggerStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['s3:PutObject'],
         resources: [`${bucketArn}/*`],
+      })
+    );
+
+    // IAM Policy: Legal documents table read access (to get latest versions)
+    this.postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowLegalDocumentsRead',
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:Query'],
+        resources: [
+          legalDocumentsTableArn,
+          `${legalDocumentsTableArn}/index/*`,
+        ],
+      })
+    );
+
+    // IAM Policy: Legal acceptances table write access (to record acceptance)
+    this.postConfirmationLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowLegalAcceptancesWrite',
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:PutItem'],
+        resources: [legalAcceptancesTableArn],
       })
     );
 

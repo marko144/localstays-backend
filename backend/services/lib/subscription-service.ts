@@ -27,7 +27,6 @@ import {
   buildHostSubscriptionPK,
   buildHostSubscriptionSK,
   canPublishAds,
-  getEffectivePeriodEnd,
 } from '../types/subscription.types';
 
 import {

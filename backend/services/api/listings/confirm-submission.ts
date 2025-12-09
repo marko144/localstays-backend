@@ -202,6 +202,30 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log('No documents uploaded (documents are optional)');
     }
 
+    // 10b. Fetch initial video record (if exists)
+    const initialVideoResult = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `HOST#${hostId}`,
+          sk: `LISTING_INITIAL_VIDEO#${listingId}`,
+        },
+      })
+    );
+
+    const initialVideo = initialVideoResult.Item;
+
+    // Verify initial video upload consistency
+    if (body.uploadedInitialVideo && !initialVideo) {
+      return response.badRequest('Initial video record not found');
+    }
+    if (initialVideo && !body.uploadedInitialVideo) {
+      console.log('Initial video record exists but not confirmed as uploaded - will remain PENDING_UPLOAD');
+    }
+    if (initialVideo && body.uploadedInitialVideo) {
+      console.log('Initial video record verified in DynamoDB');
+    }
+
     // 11. Update all records in a transaction
     const now = new Date().toISOString();
     const transactItems: any[] = [];
@@ -251,6 +275,26 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
     }
 
+    // Update initial video record (if uploaded)
+    if (initialVideo && body.uploadedInitialVideo) {
+      transactItems.push({
+        Update: {
+          TableName: TABLE_NAME,
+          Key: {
+            pk: `HOST#${hostId}`,
+            sk: `LISTING_INITIAL_VIDEO#${listingId}`,
+          },
+          UpdateExpression: 'SET #status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
+          ExpressionAttributeValues: {
+            ':status': 'PENDING_REVIEW',
+          },
+        },
+      });
+    }
+
     // Execute transaction
     await docClient.send(
       new TransactWriteCommand({
@@ -262,6 +306,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       listingId,
       imagesUpdated: images.length,
       documentsUpdated: documents.length,
+      initialVideoUploaded: !!(initialVideo && body.uploadedInitialVideo),
       status: 'IN_REVIEW',
     });
 

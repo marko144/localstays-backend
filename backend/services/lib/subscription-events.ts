@@ -35,6 +35,8 @@ import {
   sendSubscriptionWelcomeEmail,
   sendSubscriptionCancelledEmail,
   sendPaymentFailedEmail,
+  sendTrialConvertedEmail,
+  sendSubscriptionRenewedEmail,
 } from '../api/lib/email-service';
 
 // ============================================================================
@@ -614,6 +616,31 @@ export async function handlePaymentSucceeded(
       slotsExtended: extendedCount,
     });
 
+    // Send renewal email (only for actual renewals, not initial payments)
+    // This function is only called for subscription_cycle billing reason
+    try {
+      const host = await getHostProfile(data.hostId);
+      if (host) {
+        const hostName = getHostName(host);
+        const language = host.preferredLanguage || 'sr';
+        const baseUrl = process.env.FRONTEND_URL || 'https://localstays.rs';
+        const subscriptionUrl = `${baseUrl}/host/subscription`;
+        
+        await sendSubscriptionRenewedEmail(
+          host.email,
+          language,
+          hostName,
+          subscription.planId,
+          subscription.totalTokens,
+          data.periodEnd,
+          subscriptionUrl
+        );
+        console.log(`📧 Subscription renewed email sent to ${host.email}`);
+      }
+    } catch (emailError) {
+      console.error('Failed to send subscription renewed email:', emailError);
+    }
+
     return {
       success: true,
       action: 'PAYMENT_SUCCEEDED',
@@ -855,7 +882,34 @@ export async function handleSubscriptionUpdated(
       newPeriodEnd: data.currentPeriodEnd,
       cancelAtPeriodEnd: data.cancelAtPeriodEnd,
       cancelledAt: data.cancelledAt,
+      trialConverted,
     });
+
+    // Send trial converted email if applicable
+    if (trialConverted) {
+      try {
+        const host = await getHostProfile(data.hostId);
+        if (host) {
+          const hostName = getHostName(host);
+          const language = host.preferredLanguage || 'sr';
+          const baseUrl = process.env.FRONTEND_URL || 'https://localstays.rs';
+          const subscriptionUrl = `${baseUrl}/host/subscription`;
+          
+          await sendTrialConvertedEmail(
+            host.email,
+            language,
+            hostName,
+            planName,
+            adSlots,
+            data.currentPeriodEnd,
+            subscriptionUrl
+          );
+          console.log(`📧 Trial converted email sent to ${host.email}`);
+        }
+      } catch (emailError) {
+        console.error('Failed to send trial converted email:', emailError);
+      }
+    }
 
     return {
       success: true,
@@ -871,6 +925,7 @@ export async function handleSubscriptionUpdated(
         newPeriodEnd: data.currentPeriodEnd,
         previousPlanId: data.previousPlanId,
         previousTokens: data.previousTokens,
+        trialConverted,
       },
     };
   } catch (error) {

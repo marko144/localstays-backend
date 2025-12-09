@@ -240,6 +240,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // The first ID in manualLocationIds is always the PLACE (primary location for querying)
     const locationId = manualLocationIds[0];
 
+    // Preserve the current readyToApprove value in the GSI8 sort key
+    const isReadyToApprove = listing.readyToApprove === true;
+    
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -252,7 +255,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           ':locationIds': manualLocationIds,
           ':locationId': locationId,
           ':gsi8pk': `LOCATION#${locationId}`,
-          ':gsi8sk': `LISTING#${listingId}`,
+          ':gsi8sk': `READY#${isReadyToApprove}#LISTING#${listingId}`,
           ':now': now,
         },
       })

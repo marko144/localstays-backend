@@ -292,6 +292,42 @@ async function findReadyToApproveListings(): Promise<ListingMetadata[]> {
  * Approve a single listing
  */
 async function approveListing(listing: ListingMetadata, now: string): Promise<void> {
+  // Build update expression - include gsi8sk if listing has locationId
+  let updateExpression = `
+    SET #status = :status,
+        #approvedAt = :approvedAt,
+        #updatedAt = :updatedAt,
+        #gsi2pk = :gsi2pk,
+        #gsi2sk = :gsi2sk
+  `;
+  
+  const expressionAttributeNames: Record<string, string> = {
+    '#status': 'status',
+    '#approvedAt': 'approvedAt',
+    '#updatedAt': 'updatedAt',
+    '#gsi2pk': 'gsi2pk',
+    '#gsi2sk': 'gsi2sk',
+  };
+  
+  const expressionAttributeValues: Record<string, any> = {
+    ':status': 'APPROVED',
+    ':approvedAt': now,
+    ':updatedAt': now,
+    ':gsi2pk': 'LISTING_STATUS#APPROVED',
+    ':gsi2sk': now,
+  };
+  
+  // Update GSI8 sort key to reflect readyToApprove=false (since we're removing it)
+  if (listing.locationId) {
+    updateExpression = updateExpression.replace(
+      '#gsi2sk = :gsi2sk',
+      '#gsi2sk = :gsi2sk, gsi8sk = :gsi8sk'
+    );
+    expressionAttributeValues[':gsi8sk'] = `READY#false#LISTING#${listing.listingId}`;
+  }
+  
+  updateExpression += ' REMOVE readyToApprove, readyToApproveAt, readyToApproveBy';
+
   await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
@@ -299,28 +335,9 @@ async function approveListing(listing: ListingMetadata, now: string): Promise<vo
         pk: `HOST#${listing.hostId}`,
         sk: `LISTING_META#${listing.listingId}`,
       },
-      UpdateExpression: `
-        SET #status = :status,
-            #approvedAt = :approvedAt,
-            #updatedAt = :updatedAt,
-            #gsi2pk = :gsi2pk,
-            #gsi2sk = :gsi2sk
-        REMOVE readyToApprove, readyToApproveAt, readyToApproveBy
-      `,
-      ExpressionAttributeNames: {
-        '#status': 'status',
-        '#approvedAt': 'approvedAt',
-        '#updatedAt': 'updatedAt',
-        '#gsi2pk': 'gsi2pk',
-        '#gsi2sk': 'gsi2sk',
-      },
-      ExpressionAttributeValues: {
-        ':status': 'APPROVED',
-        ':approvedAt': now,
-        ':updatedAt': now,
-        ':gsi2pk': 'LISTING_STATUS#APPROVED',
-        ':gsi2sk': now,
-      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
     })
   );
 }

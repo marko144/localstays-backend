@@ -43,12 +43,15 @@ export class CognitoStack extends cdk.Stack {
         email: true,
       },
 
-      // Custom attributes for consent tracking
+      // Custom attributes for consent tracking and legal acceptance audit
       customAttributes: {
         termsAccepted: new cognito.StringAttribute({ mutable: true }),
         termsAcceptedAt: new cognito.StringAttribute({ mutable: true }),
         marketingOptIn: new cognito.StringAttribute({ mutable: true }),
         marketingOptInAt: new cognito.StringAttribute({ mutable: true }),
+        // Audit data for legal acceptance (passed from frontend at signup)
+        userAgent: new cognito.StringAttribute({ mutable: true }),
+        acceptLanguage: new cognito.StringAttribute({ mutable: true }),
       },
 
       // Standard attributes
@@ -151,13 +154,13 @@ export class CognitoStack extends cdk.Stack {
           email: true,
           emailVerified: true,
         })
-        .withCustomAttributes('termsAccepted', 'termsAcceptedAt', 'marketingOptIn', 'marketingOptInAt'),
+        .withCustomAttributes('termsAccepted', 'termsAcceptedAt', 'marketingOptIn', 'marketingOptInAt', 'userAgent', 'acceptLanguage'),
 
       writeAttributes: new cognito.ClientAttributes()
         .withStandardAttributes({
           email: true,
         })
-        .withCustomAttributes('termsAccepted', 'termsAcceptedAt', 'marketingOptIn', 'marketingOptInAt'),
+        .withCustomAttributes('termsAccepted', 'termsAcceptedAt', 'marketingOptIn', 'marketingOptInAt', 'userAgent', 'acceptLanguage'),
     });
 
     // Create Cognito Groups for role-based access control

@@ -31,6 +31,8 @@ export class DataStack extends cdk.Stack {
   public readonly availabilityTable: dynamodb.Table;
   public readonly subscriptionPlansTable: dynamodb.Table;
   public readonly advertisingSlotsTable: dynamodb.Table;
+  public readonly legalDocumentsTable: dynamodb.Table;
+  public readonly legalAcceptancesTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
@@ -475,6 +477,104 @@ export class DataStack extends cdk.Stack {
     });
 
     // ========================================
+    // Legal Documents Table - ToS and Privacy Policy versions
+    // ========================================
+    
+    // Stores versioned legal documents (ToS, Privacy Policy)
+    // PK: DOCUMENT#<documentType> (e.g., DOCUMENT#tos, DOCUMENT#privacy)
+    // SK: VERSION#<version> (e.g., VERSION#1.0)
+    this.legalDocumentsTable = new dynamodb.Table(this, 'LegalDocumentsTable', {
+      tableName: `localstays-legal-documents-${stage}`,
+      partitionKey: {
+        name: 'pk', // DOCUMENT#<documentType>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // VERSION#<version>
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      encryption: dynamodb.TableEncryption.DEFAULT,
+    });
+
+    // GSI1: LatestDocumentIndex - Quick lookup for latest version of each document type
+    // Only documents with isLatest=true have gsi1pk set
+    this.legalDocumentsTable.addGlobalSecondaryIndex({
+      indexName: 'LatestDocumentIndex',
+      partitionKey: {
+        name: 'gsi1pk', // LATEST#<documentType> (only set when isLatest=true)
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi1sk', // DOCUMENT
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
+    // Legal Acceptances Table - Audit trail of ToS/Privacy acceptances
+    // ========================================
+    
+    // Stores acceptance events for legal documents per host
+    // PK: HOST#<hostId>
+    // SK: ACCEPTANCE#<documentType>#<version>#<timestamp>
+    this.legalAcceptancesTable = new dynamodb.Table(this, 'LegalAcceptancesTable', {
+      tableName: `localstays-legal-acceptances-${stage}`,
+      partitionKey: {
+        name: 'pk', // HOST#<hostId>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'sk', // ACCEPTANCE#<documentType>#<version>#<timestamp>
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      
+      // Point-in-time recovery for data protection
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      
+      // Environment-specific removal policy
+      removalPolicy: stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      
+      // Enable deletion protection in prod
+      deletionProtection: stage === 'prod',
+      
+      // Encryption at rest using AWS-owned keys (no KMS charges, same security)
+      encryption: dynamodb.TableEncryption.DEFAULT,
+    });
+
+    // GSI1: DocumentAcceptanceIndex - Query all acceptances for a specific document version
+    // Useful for: "Who accepted ToS v1.0?"
+    this.legalAcceptancesTable.addGlobalSecondaryIndex({
+      indexName: 'DocumentAcceptanceIndex',
+      partitionKey: {
+        name: 'gsi1pk', // DOCUMENT#<documentType>#<version>
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'gsi1sk', // ACCEPTED#<timestamp>
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ========================================
     // Database Seeding CustomResource
     // ========================================
     
@@ -737,6 +837,30 @@ export class DataStack extends cdk.Stack {
       value: this.advertisingSlotsTable.tableArn,
       description: 'Advertising Slots DynamoDB table ARN',
       exportName: `Localstays${capitalizedStage}AdvertisingSlotsTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'LegalDocumentsTableName', {
+      value: this.legalDocumentsTable.tableName,
+      description: 'Legal Documents DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}LegalDocumentsTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'LegalDocumentsTableArn', {
+      value: this.legalDocumentsTable.tableArn,
+      description: 'Legal Documents DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}LegalDocumentsTableArn`,
+    });
+
+    new cdk.CfnOutput(this, 'LegalAcceptancesTableName', {
+      value: this.legalAcceptancesTable.tableName,
+      description: 'Legal Acceptances DynamoDB table name',
+      exportName: `Localstays${capitalizedStage}LegalAcceptancesTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'LegalAcceptancesTableArn', {
+      value: this.legalAcceptancesTable.tableArn,
+      description: 'Legal Acceptances DynamoDB table ARN',
+      exportName: `Localstays${capitalizedStage}LegalAcceptancesTableArn`,
     });
 
     // Add tags for resource management

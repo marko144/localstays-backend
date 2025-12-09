@@ -45,6 +45,10 @@ export interface HostApiStackProps extends cdk.StackProps {
   cloudFrontDomain?: string;
   /** Frontend URL for deep links in notifications */
   frontendUrl: string;
+  /** Legal Documents table */
+  legalDocumentsTable: dynamodb.Table;
+  /** Legal Acceptances table */
+  legalAcceptancesTable: dynamodb.Table;
 }
 
 /**
@@ -148,44 +152,38 @@ export class HostApiStack extends cdk.Stack {
       cloudWatchRole: true,
     });
 
+    // CORS headers for gateway responses
+    // Using '*' for error responses is safe since these are error cases
+    // The actual CORS preflight is handled by defaultCorsPreflightOptions above
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+      'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,PATCH,OPTIONS'",
+      'Access-Control-Allow-Credentials': "'true'",
+    };
+
     // Add Gateway Responses for CORS on errors (especially 401 from authorizer)
     // This ensures CORS headers are returned even when the authorizer fails
     this.api.addGatewayResponse('Unauthorized', {
       type: apigateway.ResponseType.UNAUTHORIZED,
       statusCode: '401',
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('AccessDenied', {
       type: apigateway.ResponseType.ACCESS_DENIED,
       statusCode: '403',
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('Default4XX', {
       type: apigateway.ResponseType.DEFAULT_4XX,
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     this.api.addGatewayResponse('Default5XX', {
       type: apigateway.ResponseType.DEFAULT_5XX,
-      responseHeaders: {
-        'Access-Control-Allow-Origin': "'*'",
-        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
-        'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-      },
+      responseHeaders: corsHeaders,
     });
 
     // Create Cognito authorizer
@@ -217,7 +215,7 @@ export class HostApiStack extends cdk.Stack {
       EMAIL_TEMPLATES_TABLE: emailTemplatesTable.tableName,
       RATE_LIMIT_TABLE_NAME: rateLimitTable.tableName,
       SENDGRID_PARAM: sendGridParamName,
-      FROM_EMAIL: 'marko@localstays.me', // Same verified SendGrid sender as auth emails
+      FROM_EMAIL: 'hello@localstays.me', // Same verified SendGrid sender as auth emails
       FRONTEND_URL: frontendUrl, // For deep links in notifications
       STAGE: stage,
       CLOUDFRONT_DOMAIN: props.cloudFrontDomain || '',
@@ -289,6 +287,33 @@ export class HostApiStack extends cdk.Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter${sendGridParamName}`,
       ],
     }));
+
+    // ========================================
+    // HOST LEGAL LAMBDA
+    // ========================================
+    // Handles legal status and acceptance endpoints
+    const hostLegalHandlerLambda = new nodejs.NodejsFunction(this, 'HostLegalHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-host-legal-handler`,
+      entry: 'backend/services/api/hosts/legal-handler.ts',
+      handler: 'handler',
+      description: 'Host: Legal status and acceptance operations',
+      environment: {
+        ...commonEnvironment,
+        LEGAL_DOCUMENTS_TABLE_NAME: props.legalDocumentsTable.tableName,
+        LEGAL_ACCEPTANCES_TABLE_NAME: props.legalAcceptancesTable.tableName,
+      },
+      logGroup: new logs.LogGroup(this, 'HostLegalHandlerLogs', {
+        logGroupName: `/aws/lambda/localstays-${stage}-host-legal-handler`,
+        retention: logRetentionDays,
+        removalPolicy: logRemovalPolicy,
+      }),
+    });
+
+    // Grant DynamoDB permissions
+    table.grantReadWriteData(hostLegalHandlerLambda); // For updating host record
+    props.legalDocumentsTable.grantReadData(hostLegalHandlerLambda);
+    props.legalAcceptancesTable.grantReadWriteData(hostLegalHandlerLambda);
 
     // ========================================
     // Get Subscription Lambda
@@ -662,6 +687,33 @@ export class HostApiStack extends cdk.Stack {
         requestValidatorOptions: {
           validateRequestParameters: true,
         },
+      }
+    );
+
+    // ========================================
+    // API Gateway Routes - Legal
+    // ========================================
+    const legalResource = hostIdParam.addResource('legal');
+
+    // GET /api/v1/hosts/{hostId}/legal/status
+    const legalStatusResource = legalResource.addResource('status');
+    legalStatusResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(hostLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/hosts/{hostId}/legal/accept
+    const legalAcceptResource = legalResource.addResource('accept');
+    legalAcceptResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(hostLegalHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
       }
     );
 

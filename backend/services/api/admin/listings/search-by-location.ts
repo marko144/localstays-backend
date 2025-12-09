@@ -185,32 +185,33 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       ? readyToApproveParam === 'true' 
       : undefined;
 
-    // 4. Build query params - only add filter if readyToApprove is specified
-    const baseExpressionValues: Record<string, any> = {
-      ':pk': `LOCATION#${locationId}`,
-    };
-    
-    let filterExpression: string | undefined;
-    let expressionAttributeNames: Record<string, string> | undefined;
-    
-    if (readyToApproveFilter !== undefined) {
-      filterExpression = 'readyToApprove = :readyToApprove';
-      baseExpressionValues[':readyToApprove'] = readyToApproveFilter;
-    }
-
     console.log('Query params:', { limit, readyToApproveFilter, hasNextToken: !!nextToken });
 
-    // 5. Query GSI8 (LocationIndex) for listings in this location
-    // Run two queries in parallel: one for items, one for total count
+    // 4. Build query using composite sort key for efficient filtering
+    // GSI8 sort key format: READY#<true|false>#LISTING#<listingId>
+    // This allows us to filter by readyToApprove using begins_with on the sort key
+    const pk = `LOCATION#${locationId}`;
+    
+    let keyConditionExpression: string;
+    const expressionAttributeValues: Record<string, any> = { ':pk': pk };
+    
+    if (readyToApproveFilter !== undefined) {
+      // Filter by readyToApprove using sort key prefix
+      keyConditionExpression = 'gsi8pk = :pk AND begins_with(gsi8sk, :skPrefix)';
+      expressionAttributeValues[':skPrefix'] = `READY#${readyToApproveFilter}#`;
+    } else {
+      // No filter - get all listings for this location
+      keyConditionExpression = 'gsi8pk = :pk';
+    }
+
+    // 5. Query GSI8 (LocationIndex) - efficient single query with composite key
     const [queryResult, countResult] = await Promise.all([
       docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
           IndexName: 'LocationIndex',
-          KeyConditionExpression: 'gsi8pk = :pk',
-          ExpressionAttributeValues: baseExpressionValues,
-          ...(filterExpression && { FilterExpression: filterExpression }),
-          ...(expressionAttributeNames && { ExpressionAttributeNames: expressionAttributeNames }),
+          KeyConditionExpression: keyConditionExpression,
+          ExpressionAttributeValues: expressionAttributeValues,
           Limit: limit,
           ExclusiveStartKey: exclusiveStartKey,
         })
@@ -219,19 +220,17 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         new QueryCommand({
           TableName: TABLE_NAME,
           IndexName: 'LocationIndex',
-          KeyConditionExpression: 'gsi8pk = :pk',
-          ExpressionAttributeValues: baseExpressionValues,
-          ...(filterExpression && { FilterExpression: filterExpression }),
-          ...(expressionAttributeNames && { ExpressionAttributeNames: expressionAttributeNames }),
+          KeyConditionExpression: keyConditionExpression,
+          ExpressionAttributeValues: expressionAttributeValues,
           Select: 'COUNT',
         })
       ),
     ]);
-
+    
     const listings = queryResult.Items || [];
     const lastEvaluatedKey = queryResult.LastEvaluatedKey;
-    const responseNextToken = encodeNextToken(lastEvaluatedKey);
     const totalCount = countResult.Count || 0;
+    const responseNextToken = encodeNextToken(lastEvaluatedKey);
 
     console.log(`Found ${listings.length} listings for location ${locationId}, total: ${totalCount}, hasMore: ${!!lastEvaluatedKey}`);
 

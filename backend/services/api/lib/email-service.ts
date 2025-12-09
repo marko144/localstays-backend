@@ -15,7 +15,7 @@ const ssmClient = new SSMClient({});
 
 const EMAIL_TEMPLATES_TABLE = process.env.EMAIL_TEMPLATES_TABLE!;
 const SENDGRID_PARAM = process.env.SENDGRID_PARAM!;
-const FROM_EMAIL = process.env.FROM_EMAIL || 'marko@localstays.me';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'hello@localstays.me';
 
 // Module-scoped cache for SendGrid API key
 let sendGridApiKey: string | null = null;
@@ -717,6 +717,62 @@ export async function sendSubscriptionWelcomeEmail(
       planName, 
       tokenCount: tokenCount.toString(), 
       billingPeriod: localizedBillingPeriod,
+      nextBillingDate: formattedBillingDate, 
+      subscriptionUrl 
+    }
+  );
+}
+
+/**
+ * Send trial converted to paid subscription email
+ */
+export async function sendTrialConvertedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  planName: string,
+  tokenCount: number,
+  nextBillingDate: string,
+  subscriptionUrl: string
+): Promise<void> {
+  const formattedBillingDate = formatDate(nextBillingDate, preferredLanguage);
+
+  await sendTemplatedEmail(
+    'SUBSCRIPTION_TRIAL_CONVERTED',
+    recipientEmail,
+    preferredLanguage,
+    { 
+      name, 
+      planName, 
+      tokenCount: tokenCount.toString(), 
+      nextBillingDate: formattedBillingDate, 
+      subscriptionUrl 
+    }
+  );
+}
+
+/**
+ * Send subscription renewed email
+ */
+export async function sendSubscriptionRenewedEmail(
+  recipientEmail: string,
+  preferredLanguage: string,
+  name: string,
+  planName: string,
+  tokenCount: number,
+  nextBillingDate: string,
+  subscriptionUrl: string
+): Promise<void> {
+  const formattedBillingDate = formatDate(nextBillingDate, preferredLanguage);
+
+  await sendTemplatedEmail(
+    'SUBSCRIPTION_RENEWED',
+    recipientEmail,
+    preferredLanguage,
+    { 
+      name, 
+      planName, 
+      tokenCount: tokenCount.toString(), 
       nextBillingDate: formattedBillingDate, 
       subscriptionUrl 
     }

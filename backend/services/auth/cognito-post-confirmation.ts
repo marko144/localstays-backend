@@ -1,7 +1,7 @@
 import { PostConfirmationTriggerHandler } from 'aws-lambda';
 import { CognitoIdentityProviderClient, AdminAddUserToGroupCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 
@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
  * 2. Creates minimal Host record (status=INCOMPLETE)
  * 3. Creates S3 folder structure for host
  * 4. Updates User record with RBAC fields (role, hostId, permissions)
+ * 5. Records legal document acceptance (ToS and Privacy Policy)
  * 
  * Trigger Source: PostConfirmation_ConfirmSignUp
  */
@@ -22,6 +23,8 @@ import { randomUUID } from 'crypto';
 const USER_POOL_ID = process.env.USER_POOL_ID!;
 const TABLE_NAME = process.env.TABLE_NAME!;
 const BUCKET_NAME = process.env.BUCKET_NAME!;
+const LEGAL_DOCUMENTS_TABLE = process.env.LEGAL_DOCUMENTS_TABLE_NAME!;
+const LEGAL_ACCEPTANCES_TABLE = process.env.LEGAL_ACCEPTANCES_TABLE_NAME!;
 
 // AWS SDK clients (reused across invocations)
 const cognitoClient = new CognitoIdentityProviderClient({});
@@ -165,6 +168,246 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
 // when no subscription exists.
 
 /**
+ * Get the latest version of a legal document (ToS or Privacy)
+ * Returns the version and English hash (used as canonical for acceptance tracking)
+ */
+async function getLatestLegalDocument(documentType: 'tos' | 'privacy'): Promise<{ version: string; sha256Hash: string } | null> {
+  try {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: LEGAL_DOCUMENTS_TABLE,
+        IndexName: 'LatestDocumentIndex',
+        KeyConditionExpression: 'gsi1pk = :gsi1pk',
+        ExpressionAttributeValues: {
+          ':gsi1pk': `LATEST#${documentType}`,
+        },
+        Limit: 1,
+      })
+    );
+
+    if (result.Items && result.Items.length > 0) {
+      const doc = result.Items[0];
+      // Use English hash as canonical for acceptance tracking
+      return {
+        version: doc.version,
+        sha256Hash: doc.content?.en?.sha256Hash || doc.sha256Hash || '',
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`❌ Failed to get latest ${documentType} document:`, error);
+    return null;
+  }
+}
+
+/**
+ * Parse user agent string to extract browser/OS info
+ */
+function parseUserAgent(userAgent: string): {
+  browserName: string;
+  browserVersion: string;
+  osName: string;
+  osVersion: string;
+  deviceType: string;
+} {
+  let browserName = 'Unknown';
+  let browserVersion = '';
+  let osName = 'Unknown';
+  let osVersion = '';
+  let deviceType = 'desktop';
+
+  // Detect browser
+  if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
+    browserName = 'Chrome';
+    const match = userAgent.match(/Chrome\/(\d+(?:\.\d+)*)/);
+    browserVersion = match?.[1] || '';
+  } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+    browserName = 'Safari';
+    const match = userAgent.match(/Version\/(\d+(?:\.\d+)*)/);
+    browserVersion = match?.[1] || '';
+  } else if (userAgent.includes('Firefox')) {
+    browserName = 'Firefox';
+    const match = userAgent.match(/Firefox\/(\d+(?:\.\d+)*)/);
+    browserVersion = match?.[1] || '';
+  } else if (userAgent.includes('Edg')) {
+    browserName = 'Edge';
+    const match = userAgent.match(/Edg\/(\d+(?:\.\d+)*)/);
+    browserVersion = match?.[1] || '';
+  }
+
+  // Detect OS
+  if (userAgent.includes('Windows')) {
+    osName = 'Windows';
+    const match = userAgent.match(/Windows NT (\d+(?:\.\d+)*)/);
+    osVersion = match?.[1] || '';
+  } else if (userAgent.includes('Mac OS X')) {
+    osName = 'macOS';
+    const match = userAgent.match(/Mac OS X (\d+[_\.]\d+(?:[_\.]\d+)*)/);
+    osVersion = match?.[1]?.replace(/_/g, '.') || '';
+  } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+    osName = 'iOS';
+    const match = userAgent.match(/OS (\d+[_\.]\d+(?:[_\.]\d+)*)/);
+    osVersion = match?.[1]?.replace(/_/g, '.') || '';
+    deviceType = userAgent.includes('iPad') ? 'tablet' : 'mobile';
+  } else if (userAgent.includes('Android')) {
+    osName = 'Android';
+    const match = userAgent.match(/Android (\d+(?:\.\d+)*)/);
+    osVersion = match?.[1] || '';
+    deviceType = 'mobile';
+  } else if (userAgent.includes('Linux')) {
+    osName = 'Linux';
+  }
+
+  // Detect device type (if not already set)
+  if (deviceType === 'desktop' && userAgent.includes('Mobile')) {
+    deviceType = 'mobile';
+  }
+
+  return { browserName, browserVersion, osName, osVersion, deviceType };
+}
+
+/**
+ * Record legal document acceptance at signup
+ */
+async function recordLegalAcceptance(
+  hostId: string,
+  userSub: string,
+  userAgent: string,
+  acceptLanguage: string
+): Promise<{ tosVersion: string | null; privacyVersion: string | null }> {
+  const now = new Date().toISOString();
+  const result = { tosVersion: null as string | null, privacyVersion: null as string | null };
+
+  // Get latest ToS and Privacy documents
+  const [latestTos, latestPrivacy] = await Promise.all([
+    getLatestLegalDocument('tos'),
+    getLatestLegalDocument('privacy'),
+  ]);
+
+  const { browserName, browserVersion, osName, osVersion, deviceType } = parseUserAgent(userAgent);
+
+  // Record ToS acceptance
+  if (latestTos) {
+    try {
+      await docClient.send(
+        new PutCommand({
+          TableName: LEGAL_ACCEPTANCES_TABLE,
+          Item: {
+            pk: `HOST#${hostId}`,
+            sk: `ACCEPTANCE#tos#${latestTos.version}#${now}`,
+            hostId,
+            acceptedByUserSub: userSub,
+            documentType: 'tos',
+            documentVersion: latestTos.version,
+            documentHash: latestTos.sha256Hash,
+            acceptedAt: now,
+            ipAddress: null, // Not available in Cognito triggers
+            userAgent,
+            browserName,
+            browserVersion,
+            osName,
+            osVersion,
+            deviceType,
+            acceptLanguage,
+            acceptanceSource: 'signup',
+            gsi1pk: `DOCUMENT#tos#${latestTos.version}`,
+            gsi1sk: `ACCEPTED#${now}`,
+          },
+        })
+      );
+      result.tosVersion = latestTos.version;
+      console.log(`✅ Recorded ToS acceptance: v${latestTos.version}`);
+    } catch (error) {
+      console.error('❌ Failed to record ToS acceptance:', error);
+    }
+  }
+
+  // Record Privacy acceptance
+  if (latestPrivacy) {
+    try {
+      await docClient.send(
+        new PutCommand({
+          TableName: LEGAL_ACCEPTANCES_TABLE,
+          Item: {
+            pk: `HOST#${hostId}`,
+            sk: `ACCEPTANCE#privacy#${latestPrivacy.version}#${now}`,
+            hostId,
+            acceptedByUserSub: userSub,
+            documentType: 'privacy',
+            documentVersion: latestPrivacy.version,
+            documentHash: latestPrivacy.sha256Hash,
+            acceptedAt: now,
+            ipAddress: null, // Not available in Cognito triggers
+            userAgent,
+            browserName,
+            browserVersion,
+            osName,
+            osVersion,
+            deviceType,
+            acceptLanguage,
+            acceptanceSource: 'signup',
+            gsi1pk: `DOCUMENT#privacy#${latestPrivacy.version}`,
+            gsi1sk: `ACCEPTED#${now}`,
+          },
+        })
+      );
+      result.privacyVersion = latestPrivacy.version;
+      console.log(`✅ Recorded Privacy acceptance: v${latestPrivacy.version}`);
+    } catch (error) {
+      console.error('❌ Failed to record Privacy acceptance:', error);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Update host record with accepted legal versions
+ */
+async function updateHostWithLegalAcceptance(
+  hostId: string,
+  tosVersion: string | null,
+  privacyVersion: string | null
+): Promise<void> {
+  if (!tosVersion && !privacyVersion) return;
+
+  const now = new Date().toISOString();
+  const updateExpressions: string[] = [];
+  const expressionValues: Record<string, any> = {};
+
+  if (tosVersion) {
+    updateExpressions.push('acceptedTosVersion = :tosVersion');
+    updateExpressions.push('acceptedTosAt = :now');
+    expressionValues[':tosVersion'] = tosVersion;
+  }
+
+  if (privacyVersion) {
+    updateExpressions.push('acceptedPrivacyVersion = :privacyVersion');
+    updateExpressions.push('acceptedPrivacyAt = :now');
+    expressionValues[':privacyVersion'] = privacyVersion;
+  }
+
+  expressionValues[':now'] = now;
+
+  try {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: `HOST#${hostId}`,
+          sk: 'META',
+        },
+        UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+        ExpressionAttributeValues: expressionValues,
+      })
+    );
+    console.log(`✅ Updated host with legal acceptance versions`);
+  } catch (error) {
+    console.error('❌ Failed to update host with legal acceptance:', error);
+  }
+}
+
+/**
  * Create or update User record with RBAC fields
  * Note: Using PutCommand instead of UpdateCommand because the USER record
  * may not exist yet when post-confirmation trigger fires
@@ -226,6 +469,10 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
   try {
     const { userName: userSub } = event;
     const email = event.request.userAttributes.email;
+    
+    // Get audit data from custom attributes (passed from frontend)
+    const userAgent = event.request.userAttributes['custom:userAgent'] || 'unknown';
+    const acceptLanguage = event.request.userAttributes['custom:acceptLanguage'] || 'unknown';
 
     // 1. Assign user to HOST Cognito Group
     await assignToHostGroup(userSub);
@@ -242,12 +489,25 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
     // 5. Create/Update User record with RBAC fields
     await updateUserWithRBAC(userSub, email, hostId, permissions);
 
-    console.log('✅ RBAC initialization complete (no subscription created - hosts must purchase via Stripe)', {
+    // 6. Record legal document acceptance (ToS and Privacy Policy)
+    const { tosVersion, privacyVersion } = await recordLegalAcceptance(
+      hostId,
+      userSub,
+      userAgent,
+      acceptLanguage
+    );
+
+    // 7. Update host record with accepted legal versions
+    await updateHostWithLegalAcceptance(hostId, tosVersion, privacyVersion);
+
+    console.log('✅ RBAC and legal acceptance initialization complete', {
       userSub,
       hostId,
       role: 'HOST',
       permissionCount: permissions.length,
       s3Prefix: `${hostId}/`,
+      acceptedTosVersion: tosVersion,
+      acceptedPrivacyVersion: privacyVersion,
     });
 
     return event;

@@ -17,7 +17,7 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, BatchGetCommand, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
 import { ListingMetadata } from '../../../types/listing.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
@@ -32,7 +32,6 @@ const docClient = DynamoDBDocumentClient.from(client, {
 const TABLE_NAME = process.env.TABLE_NAME!;
 
 // Concurrency limits
-const BATCH_GET_SIZE = 100; // DynamoDB BatchGetItem limit
 const UPDATE_CONCURRENCY = 25; // Max parallel updates to avoid throttling
 
 interface BulkApproveResult {
@@ -84,16 +83,6 @@ async function parallelWithLimit<T, R>(
   return results;
 }
 
-/**
- * Chunk array into smaller arrays
- */
-function chunkArray<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}
 
 /**
  * Fetch listings by IDs using BatchGetItem (up to 100 per call)
@@ -147,6 +136,45 @@ async function approveListing(listing: ListingMetadata, now: string, adminEmail:
       };
     }
 
+    // Build update expression - include gsi8sk if listing has locationId
+    let updateExpression = `
+      SET #status = :status,
+          #approvedAt = :approvedAt,
+          #approvedBy = :approvedBy,
+          #updatedAt = :updatedAt,
+          #gsi2pk = :gsi2pk,
+          #gsi2sk = :gsi2sk
+    `;
+    
+    const expressionAttributeNames: Record<string, string> = {
+      '#status': 'status',
+      '#approvedAt': 'approvedAt',
+      '#approvedBy': 'approvedBy',
+      '#updatedAt': 'updatedAt',
+      '#gsi2pk': 'gsi2pk',
+      '#gsi2sk': 'gsi2sk',
+    };
+    
+    const expressionAttributeValues: Record<string, any> = {
+      ':status': 'APPROVED',
+      ':approvedAt': now,
+      ':approvedBy': adminEmail,
+      ':updatedAt': now,
+      ':gsi2pk': 'LISTING_STATUS#APPROVED',
+      ':gsi2sk': now,
+    };
+    
+    // Update GSI8 sort key to reflect readyToApprove=false (since we're removing it)
+    if (listing.locationId) {
+      updateExpression = updateExpression.replace(
+        '#gsi2sk = :gsi2sk',
+        '#gsi2sk = :gsi2sk, gsi8sk = :gsi8sk'
+      );
+      expressionAttributeValues[':gsi8sk'] = `READY#false#LISTING#${listing.listingId}`;
+    }
+    
+    updateExpression += ' REMOVE readyToApprove, readyToApproveAt, readyToApproveBy, reviewStartedAt, reviewedBy';
+
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -154,31 +182,9 @@ async function approveListing(listing: ListingMetadata, now: string, adminEmail:
           pk: `HOST#${listing.hostId}`,
           sk: `LISTING_META#${listing.listingId}`,
         },
-        UpdateExpression: `
-          SET #status = :status,
-              #approvedAt = :approvedAt,
-              #approvedBy = :approvedBy,
-              #updatedAt = :updatedAt,
-              #gsi2pk = :gsi2pk,
-              #gsi2sk = :gsi2sk
-          REMOVE readyToApprove, readyToApproveAt, readyToApproveBy, reviewStartedAt, reviewedBy
-        `,
-        ExpressionAttributeNames: {
-          '#status': 'status',
-          '#approvedAt': 'approvedAt',
-          '#approvedBy': 'approvedBy',
-          '#updatedAt': 'updatedAt',
-          '#gsi2pk': 'gsi2pk',
-          '#gsi2sk': 'gsi2sk',
-        },
-        ExpressionAttributeValues: {
-          ':status': 'APPROVED',
-          ':approvedAt': now,
-          ':approvedBy': adminEmail,
-          ':updatedAt': now,
-          ':gsi2pk': 'LISTING_STATUS#APPROVED',
-          ':gsi2sk': now,
-        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
       })
     );
 

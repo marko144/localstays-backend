@@ -150,6 +150,12 @@ export interface BaseHost {
   suspendedAt: string | null;
   suspendedBy: string | null;
   suspendedReason: string | null;  // Max 500 chars
+  
+  // Legal document acceptance tracking
+  acceptedTosVersion: string | null;      // Version of ToS accepted (e.g., "1.0")
+  acceptedTosAt: string | null;           // ISO timestamp when ToS was accepted
+  acceptedPrivacyVersion: string | null;  // Version of Privacy Policy accepted
+  acceptedPrivacyAt: string | null;       // ISO timestamp when Privacy was accepted
 }
 
 /**

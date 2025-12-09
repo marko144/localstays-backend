@@ -28,6 +28,8 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB per image
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB per document
 const ALLOWED_DOCUMENT_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB for initial video
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/mov', 'video/webm'];
 
 /**
  * POST /api/v1/hosts/{hostId}/listings/submit-intent
@@ -200,9 +202,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           gsi3sk: `LISTING_META#${listingId}`,
           
           // GSI8: Query by location (only if locationId exists)
+          // Sort key includes readyToApprove flag for efficient filtering
           ...(locationId && {
             gsi8pk: `LOCATION#${locationId}`,
-            gsi8sk: `LISTING#${listingId}`,
+            gsi8sk: `READY#false#LISTING#${listingId}`,
           }),
         },
       })
@@ -352,6 +355,60 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`✅ Created ${body.verificationDocuments.length} document placeholder records`);
     }
 
+    // 12b. Create placeholder for initial video and generate pre-signed URL (if provided)
+    let initialVideoUploadUrl: SubmitListingIntentResponse['initialVideoUploadUrl'];
+    
+    if (body.initialVideo) {
+      const videoExtension = getFileExtension(body.initialVideo.contentType);
+      const videoS3Key = `veri_initial-video_${listingId}.${videoExtension}`;
+      
+      // Create placeholder video record
+      await docClient.send(
+        new PutCommand({
+          TableName: TABLE_NAME,
+          Item: {
+            pk: `HOST#${hostId}`,
+            sk: `LISTING_INITIAL_VIDEO#${listingId}`,
+            
+            listingId,
+            hostId,
+            
+            s3Key: videoS3Key, // Root location with prefix: veri_initial-video_{listingId}.ext
+            finalS3Key: `${s3Prefix}initial_video/property-video.${videoExtension}`, // Final destination
+            
+            contentType: body.initialVideo.contentType,
+            fileSize: 0, // Will be updated after upload
+            
+            status: 'PENDING_UPLOAD',
+            
+            uploadedAt: now,
+            isDeleted: false,
+          },
+        })
+      );
+
+      // Generate pre-signed URL with metadata for Lambda processing
+      // S3 will enforce the exact file size - upload will fail if size doesn't match
+      const uploadUrl = await generateUploadUrl(
+        videoS3Key, 
+        body.initialVideo.contentType, 
+        600, // 10 minutes for video upload
+        {
+          hostId,
+          listingId,
+        },
+        body.initialVideo.fileSize,  // Exact size required by S3
+        MAX_VIDEO_SIZE               // Maximum allowed size (200MB)
+      );
+      
+      initialVideoUploadUrl = {
+        uploadUrl,
+        expiresAt: tokenExpiresAt.toISOString(),
+      };
+
+      console.log(`✅ Created initial video placeholder record for listing ${listingId}`);
+    }
+
     // 13. Create submission tracking record
     await docClient.send(
       new PutCommand({
@@ -378,12 +435,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       expiresAt: tokenExpiresAt.toISOString(),
       imageUploadUrls,
       documentUploadUrls: documentUploadUrls.length > 0 ? documentUploadUrls : undefined,
+      initialVideoUploadUrl,
     };
 
     console.log('Submit intent successful:', {
       listingId,
       imagesCount: imageUploadUrls.length,
       documentsCount: documentUploadUrls.length,
+      hasInitialVideo: !!initialVideoUploadUrl,
     });
 
     return response.success(intentResponse);
@@ -530,6 +589,23 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
       if (doc.fileSize > MAX_DOCUMENT_SIZE) {
         return `Document ${doc.documentType}: file size ${(doc.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB`;
       }
+    }
+  }
+
+  // Optional: initialVideo validation
+  if (body.initialVideo) {
+    // Validate content type
+    if (!ALLOWED_VIDEO_TYPES.includes(body.initialVideo.contentType.toLowerCase())) {
+      return `Invalid video content type: ${body.initialVideo.contentType}. Allowed types: ${ALLOWED_VIDEO_TYPES.join(', ')}`;
+    }
+
+    // Validate file size
+    if (!body.initialVideo.fileSize || body.initialVideo.fileSize <= 0) {
+      return 'initialVideo.fileSize is required and must be greater than 0';
+    }
+
+    if (body.initialVideo.fileSize > MAX_VIDEO_SIZE) {
+      return `Initial video file size ${(body.initialVideo.fileSize / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_VIDEO_SIZE / 1024 / 1024}MB`;
     }
   }
 
@@ -713,6 +789,8 @@ function getFileExtension(contentType: string): string {
     'image/webp': 'webp',
     'application/pdf': 'pdf',
     'video/mp4': 'mp4',
+    'video/mov': 'mov',
+    'video/webm': 'webm',
   };
 
   return map[contentType.toLowerCase()] || 'bin';

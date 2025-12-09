@@ -233,9 +233,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         expressionAttributeNames['#gsi8pk'] = 'gsi8pk';
         expressionAttributeValues[':gsi8pk'] = `LOCATION#${newLocationId}`;
         
+        // Note: When location changes, readyToApprove is always false (only admins set it)
         updateExpressionParts.push('#gsi8sk = :gsi8sk');
         expressionAttributeNames['#gsi8sk'] = 'gsi8sk';
-        expressionAttributeValues[':gsi8sk'] = `LISTING#${listingId}`;
+        expressionAttributeValues[':gsi8sk'] = `READY#false#LISTING#${listingId}`;
         
         updatedFields.push('locationId');
       }

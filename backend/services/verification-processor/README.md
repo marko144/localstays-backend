@@ -8,7 +8,8 @@ This Lambda handles files that only need malware scanning and moving to their fi
 
 - Profile documents (ID cards, passports, etc.)
 - Listing documents (proof of right to list, etc.)
-- Property video verification files
+- Property video verification files (admin-requested)
+- Initial listing videos (optional, uploaded during listing creation)
 - LIVE_ID_CHECK video files
 
 ## Flow
@@ -40,12 +41,13 @@ S3 Upload (veri_* prefix)
 
 ## Supported File Patterns
 
-| File Type        | S3 Key Pattern                                                                     | DynamoDB Key                                              |
-| ---------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Profile Document | `{hostId}/verification/veri_{documentId}_{fileName}`                               | `HOST#{hostId}`, `DOCUMENT#{documentId}`                  |
-| Listing Document | `{hostId}/listings/{listingId}/verification/veri_{documentType}.{ext}`             | `HOST#{hostId}`, `LISTING_DOC#{listingId}#{documentType}` |
-| Property Video   | `{hostId}/listings/{listingId}/verification/veri_property-video-{requestId}.{ext}` | `LISTING#{listingId}`, `REQUEST#{requestId}`              |
-| LIVE_ID_CHECK    | `{hostId}/requests/{requestId}/veri_live-id-check.{ext}`                           | `HOST#{hostId}`, `REQUEST#{requestId}`                    |
+| File Type        | S3 Key Pattern                                                                     | DynamoDB Key                                                |
+| ---------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Profile Document | `{hostId}/verification/veri_{documentId}_{fileName}`                               | `HOST#{hostId}`, `DOCUMENT#{documentId}`                    |
+| Listing Document | `{hostId}/listings/{listingId}/verification/veri_{documentType}.{ext}`             | `HOST#{hostId}`, `LISTING_DOC#{listingId}#{documentType}`   |
+| Property Video   | `{hostId}/listings/{listingId}/verification/veri_property-video-{requestId}.{ext}` | `LISTING#{listingId}`, `REQUEST#{requestId}`                |
+| Initial Video    | `veri_initial-video_{listingId}.{ext}` → `{hostId}/listings/{listingId}/initial_video/property-video.{ext}` | `HOST#{hostId}`, `LISTING_INITIAL_VIDEO#{listingId}` |
+| LIVE_ID_CHECK    | `{hostId}/requests/{requestId}/veri_live-id-check.{ext}`                           | `HOST#{hostId}`, `REQUEST#{requestId}`                      |
 
 ## Environment Variables
 
