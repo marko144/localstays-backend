@@ -35,6 +35,7 @@ import { sendTemplatedNotification } from '../../lib/notification-template-servi
 import {
   canHostPublishListing,
   createAdvertisingSlot,
+  createCommissionBasedSlot,
 } from '../../../lib/subscription-service';
 import { buildPublicListingMediaPK, buildPublicListingMediaSK } from '../../../types/public-listing-media.types';
 import { buildCloudFrontUrl } from '../../lib/cloudfront-urls';
@@ -299,33 +300,38 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     // 9. Check if we can auto-publish (only if AUTO_PUBLISH_ON_APPROVAL is enabled)
+    // With commission-based fallback, canPublish will be true unless commission limit is reached
     const autoPublishEnabled = await getAutoPublishOnApproval();
     const publishCheck = await canHostPublishListing(listing.hostId);
     const canAutoPublish = autoPublishEnabled && publishCheck.canPublish;
     
-    console.log(`Auto-publish check: autoPublishEnabled=${autoPublishEnabled}, canPublish=${publishCheck.canPublish}, result=${canAutoPublish}`);
+    console.log(`Auto-publish check: autoPublishEnabled=${autoPublishEnabled}, canPublish=${publishCheck.canPublish}, useCommissionBased=${publishCheck.useCommissionBased}, result=${canAutoPublish}`);
     
     let finalStatus: 'APPROVED' | 'ONLINE' = 'APPROVED';
     let slotId: string | undefined;
     let slotExpiresAt: string | undefined;
+    let isCommissionBased: boolean | undefined;
 
     if (canAutoPublish) {
-      console.log(`Host has available tokens - attempting auto-publish for listing ${listingId}`);
+      const slotType = publishCheck.useCommissionBased ? 'commission-based' : 'subscription-based';
+      console.log(`Attempting auto-publish for listing ${listingId} as ${slotType}`);
       
       try {
-        // Auto-publish the listing
+        // Auto-publish the listing (subscription-based or commission-based)
         const publishResult = await autoPublishListing(
           listing,
           listingVerified,
           now,
-          publishCheck.subscription!
+          publishCheck.useCommissionBased,
+          publishCheck.subscription
         );
         
         if (publishResult.success) {
           finalStatus = 'ONLINE';
           slotId = publishResult.slotId;
           slotExpiresAt = publishResult.slotExpiresAt;
-          console.log(`✅ Listing ${listingId} auto-published successfully (slotId=${slotId})`);
+          isCommissionBased = publishResult.isCommissionBased;
+          console.log(`✅ Listing ${listingId} auto-published successfully (slotId=${slotId}, isCommissionBased=${isCommissionBased})`);
         } else {
           console.warn(`Auto-publish failed for listing ${listingId}: ${publishResult.error}`);
           // Fall back to just approving
@@ -339,7 +345,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         console.log(`✅ Listing ${listingId} approved (auto-publish error)`);
       }
     } else {
-      // Just approve - no tokens available or subscription issue
+      // Just approve - commission-based limit reached
       console.log(`Cannot auto-publish listing ${listingId}: ${publishCheck.reason}`);
       await updateListingToApproved(listing, listingVerified, now);
       console.log(`✅ Listing ${listingId} approved successfully (listingVerified=${listingVerified})`);
@@ -595,13 +601,15 @@ async function updateListingToApproved(
 
 /**
  * Auto-publish a listing (creates public records and advertising slot)
+ * Supports both subscription-based and commission-based slots
  */
 async function autoPublishListing(
   listing: ListingMetadata,
   listingVerified: boolean,
   now: string,
-  subscription: any
-): Promise<{ success: boolean; slotId?: string; slotExpiresAt?: string; error?: string }> {
+  useCommissionBased: boolean,
+  subscription?: any
+): Promise<{ success: boolean; slotId?: string; slotExpiresAt?: string; isCommissionBased?: boolean; error?: string }> {
   const listingId = listing.listingId;
   const hostId = listing.hostId;
   
@@ -811,31 +819,58 @@ async function autoPublishListing(
     );
   }
 
-  // Create advertising slot
-  // Note: For auto-publish, firstReviewCompletedAt is set to 'now' since this IS the first review
-  const slot = await createAdvertisingSlot({
-    hostId,
-    listingId,
-    planId: subscription.planId,
-    subscription,
-    listingCreatedAt: listing.createdAt,
-    firstReviewCompletedAt: listing.firstReviewCompletedAt || now, // Use existing or current time
-  });
+  // Create advertising slot (subscription-based or commission-based)
+  let slot;
+  
+  if (useCommissionBased) {
+    // Create commission-based (free) slot - no expiry
+    slot = await createCommissionBasedSlot({
+      hostId,
+      listingId,
+    });
+    console.log(`Created commission-based slot for listing ${listingId} (auto-publish)`);
+  } else {
+    // Create subscription-based slot with expiry
+    // Note: For auto-publish, firstReviewCompletedAt is set to 'now' since this IS the first review
+    slot = await createAdvertisingSlot({
+      hostId,
+      listingId,
+      planId: subscription!.planId,
+      subscription: subscription!,
+      listingCreatedAt: listing.createdAt,
+      firstReviewCompletedAt: listing.firstReviewCompletedAt || now, // Use existing or current time
+    });
+    console.log(`Created subscription-based slot for listing ${listingId}, expires: ${slot.expiresAt} (auto-publish)`);
+  }
 
   // Update listing status to ONLINE with slot info
   // Build update expression - only set firstReviewCompletedAt if not already set
   const isFirstReview = !listing.firstReviewCompletedAt;
   
-  let updateExpression = `
-    SET #status = :status,
-        #listingVerified = :listingVerified,
-        #approvedAt = :approvedAt,
-        activeSlotId = :slotId,
-        slotExpiresAt = :slotExpiresAt,
-        #updatedAt = :updatedAt,
-        #gsi2pk = :gsi2pk,
-        #gsi2sk = :gsi2sk
-  `;
+  // For commission-based slots, we don't set slotExpiresAt
+  let updateExpression = slot.isCommissionBased
+    ? `
+      SET #status = :status,
+          #listingVerified = :listingVerified,
+          #approvedAt = :approvedAt,
+          activeSlotId = :slotId,
+          isCommissionBased = :isCommissionBased,
+          #updatedAt = :updatedAt,
+          #gsi2pk = :gsi2pk,
+          #gsi2sk = :gsi2sk
+      REMOVE slotExpiresAt
+    `
+    : `
+      SET #status = :status,
+          #listingVerified = :listingVerified,
+          #approvedAt = :approvedAt,
+          activeSlotId = :slotId,
+          slotExpiresAt = :slotExpiresAt,
+          isCommissionBased = :isCommissionBased,
+          #updatedAt = :updatedAt,
+          #gsi2pk = :gsi2pk,
+          #gsi2sk = :gsi2sk
+    `;
   
   const expressionAttributeNames: Record<string, string> = {
     '#status': 'status',
@@ -851,11 +886,16 @@ async function autoPublishListing(
     ':listingVerified': listingVerified,
     ':approvedAt': now,
     ':slotId': slot.slotId,
-    ':slotExpiresAt': slot.expiresAt,
+    ':isCommissionBased': slot.isCommissionBased,
     ':updatedAt': now,
     ':gsi2pk': 'LISTING_STATUS#ONLINE',
     ':gsi2sk': now,
   };
+  
+  // Only add slotExpiresAt for subscription-based slots
+  if (!slot.isCommissionBased && slot.expiresAt) {
+    expressionAttributeValues[':slotExpiresAt'] = slot.expiresAt;
+  }
   
   // Set firstReviewCompletedAt only on first review completion
   if (isFirstReview) {
@@ -894,6 +934,7 @@ async function autoPublishListing(
     success: true,
     slotId: slot.slotId,
     slotExpiresAt: slot.expiresAt,
+    isCommissionBased: slot.isCommissionBased,
   };
 }
 

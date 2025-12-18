@@ -325,13 +325,14 @@ export async function sendListingApprovedEmail(
   recipientEmail: string,
   preferredLanguage: string,
   name: string,
-  listingName: string
+  listingName: string,
+  dashboardUrl: string = 'https://portal.localstays.me'
 ): Promise<void> {
   await sendTemplatedEmail(
     'LISTING_APPROVED',
     recipientEmail,
     preferredLanguage,
-    { name, listingName }
+    { name, listingName, dashboardUrl }
   );
 }
 

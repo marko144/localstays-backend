@@ -26,6 +26,8 @@ interface EmailTemplate {
   bodyHtml: string;
 }
 
+const currentYear = new Date().getFullYear();
+
 const templates: EmailTemplate[] = [
   // ============================================================================
   // SUBSCRIPTION_TRIAL_CONVERTED - English
@@ -45,59 +47,116 @@ Subscription Details:
 
 Your listings will continue to be promoted without interruption. You can manage your subscription, view your ad slots, and track performance at any time.
 
-Manage Subscription: {{subscriptionUrl}}
-
 Thank you for choosing LocalStays to promote your properties!
 
 Best regards,
-The LocalStays Team`,
+The LocalStays Team
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trial Ended - Subscription Active</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">Trial Ended - Subscription Active</h1>
-  </div>
-  
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-    <p style="font-size: 16px;">Hi <strong>{{name}}</strong>,</p>
-    
-    <p>Your free trial has ended and your LocalStays subscription is now active!</p>
-    
-    <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;">
-      <h3 style="margin-top: 0; color: #667eea;">Subscription Details</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Plan:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{planName}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Ad Slots:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{tokenCount}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Next Billing:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{nextBillingDate}}</td>
-        </tr>
-      </table>
-    </div>
-    
-    <p>Your listings will continue to be promoted without interruption.</p>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="{{subscriptionUrl}}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Manage Subscription</a>
-    </div>
-    
-    <p>Thank you for choosing LocalStays to promote your properties!</p>
-    
-    <p style="color: #666; margin-top: 30px;">
-      Best regards,<br>
-      <strong>The LocalStays Team</strong>
-    </p>
-  </div>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Success Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                    <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Subscription Active</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hi {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Your free trial has ended and your LocalStays subscription is now active!
+              </p>
+              <!-- Subscription Details Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Subscription Details</p>
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Plan:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{planName}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Ad Slots:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{tokenCount}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Next Billing:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{nextBillingDate}}</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Your listings will continue to be promoted without interruption.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                      Go to Dashboard →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Closing -->
+              <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Thank you for choosing LocalStays to promote your properties!
+              </p>
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Best regards,<br>
+                <span style="color: #374151; font-weight: 500;">The LocalStays Team</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`,
   },
@@ -118,61 +177,118 @@ Detalji pretplate:
 • Oglasnih mesta: {{tokenCount}}
 • Sledeće naplaćivanje: {{nextBillingDate}}
 
-Vaši oglasi će nastaviti da se promovišu bez prekida. Možete upravljati pretplatom, pregledati oglasna mesta i pratiti performanse u bilo kom trenutku.
-
-Upravljanje pretplatom: {{subscriptionUrl}}
+Vaši oglasi će nastaviti da se promovišu bez prekida.
 
 Hvala što ste izabrali LocalStays za promociju vaših nekretnina!
 
 Srdačan pozdrav,
-LocalStays Tim`,
+LocalStays Tim
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Probni period završen - Pretplata aktivna</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">Probni period završen - Pretplata aktivna</h1>
-  </div>
-  
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-    <p style="font-size: 16px;">Zdravo <strong>{{name}}</strong>,</p>
-    
-    <p>Vaš besplatni probni period je završen i vaša LocalStays pretplata je sada aktivna!</p>
-    
-    <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;">
-      <h3 style="margin-top: 0; color: #667eea;">Detalji pretplate</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Plan:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{planName}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Oglasnih mesta:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{tokenCount}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Sledeće naplaćivanje:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{nextBillingDate}}</td>
-        </tr>
-      </table>
-    </div>
-    
-    <p>Vaši oglasi će nastaviti da se promovišu bez prekida.</p>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="{{subscriptionUrl}}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Upravljanje pretplatom</a>
-    </div>
-    
-    <p>Hvala što ste izabrali LocalStays za promociju vaših nekretnina!</p>
-    
-    <p style="color: #666; margin-top: 30px;">
-      Srdačan pozdrav,<br>
-      <strong>LocalStays Tim</strong>
-    </p>
-  </div>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Success Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                    <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Pretplata aktivna</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Zdravo {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Vaš besplatni probni period je završen i vaša LocalStays pretplata je sada aktivna!
+              </p>
+              <!-- Subscription Details Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Detalji pretplate</p>
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Plan:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{planName}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Oglasnih mesta:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{tokenCount}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Sledeće naplaćivanje:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{nextBillingDate}}</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Vaši oglasi će nastaviti da se promovišu bez prekida.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                      Idi na Dashboard →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Closing -->
+              <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hvala što ste izabrali LocalStays za promociju vaših nekretnina!
+              </p>
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Srdačan pozdrav,<br>
+                <span style="color: #374151; font-weight: 500;">LocalStays Tim</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. Sva prava zadržana.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`,
   },
@@ -195,59 +311,116 @@ Subscription Details:
 
 Your ad slots have been extended and your listings will continue to be promoted to travelers searching for accommodations in your area.
 
-Manage Subscription: {{subscriptionUrl}}
-
 Thank you for your continued trust in LocalStays!
 
 Best regards,
-The LocalStays Team`,
+The LocalStays Team
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subscription Renewed</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">✓ Subscription Renewed</h1>
-  </div>
-  
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-    <p style="font-size: 16px;">Hi <strong>{{name}}</strong>,</p>
-    
-    <p>Great news! Your LocalStays subscription has been successfully renewed.</p>
-    
-    <div style="background: #f0fff4; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #38ef7d;">
-      <h3 style="margin-top: 0; color: #11998e;">Subscription Details</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Plan:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{planName}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Ad Slots:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{tokenCount}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Next Renewal:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{nextBillingDate}}</td>
-        </tr>
-      </table>
-    </div>
-    
-    <p>Your ad slots have been extended and your listings will continue to be promoted to travelers searching for accommodations in your area.</p>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="{{subscriptionUrl}}" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View Subscription</a>
-    </div>
-    
-    <p>Thank you for your continued trust in LocalStays!</p>
-    
-    <p style="color: #666; margin-top: 30px;">
-      Best regards,<br>
-      <strong>The LocalStays Team</strong>
-    </p>
-  </div>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Success Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                    <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Subscription Renewed</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hi {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Great news! Your LocalStays subscription has been successfully renewed.
+              </p>
+              <!-- Subscription Details Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Subscription Details</p>
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Plan:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{planName}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Ad Slots:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{tokenCount}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Next Renewal:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{nextBillingDate}}</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Your ad slots have been extended and your listings will continue to be promoted to travelers searching for accommodations in your area.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                      Go to Dashboard →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Closing -->
+              <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Thank you for your continued trust in LocalStays!
+              </p>
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Best regards,<br>
+                <span style="color: #374151; font-weight: 500;">The LocalStays Team</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`,
   },
@@ -270,59 +443,116 @@ Detalji pretplate:
 
 Vaša oglasna mesta su produžena i vaši oglasi će nastaviti da se promovišu putnicima koji traže smeštaj u vašem području.
 
-Upravljanje pretplatom: {{subscriptionUrl}}
-
 Hvala vam na poverenju u LocalStays!
 
 Srdačan pozdrav,
-LocalStays Tim`,
+LocalStays Tim
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pretplata obnovljena</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">✓ Pretplata obnovljena</h1>
-  </div>
-  
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-    <p style="font-size: 16px;">Zdravo <strong>{{name}}</strong>,</p>
-    
-    <p>Odlične vesti! Vaša LocalStays pretplata je uspešno obnovljena.</p>
-    
-    <div style="background: #f0fff4; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #38ef7d;">
-      <h3 style="margin-top: 0; color: #11998e;">Detalji pretplate</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Plan:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{planName}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Oglasnih mesta:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{tokenCount}}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0; color: #666;">Sledeće obnavljanje:</td>
-          <td style="padding: 8px 0; font-weight: bold;">{{nextBillingDate}}</td>
-        </tr>
-      </table>
-    </div>
-    
-    <p>Vaša oglasna mesta su produžena i vaši oglasi će nastaviti da se promovišu putnicima koji traže smeštaj u vašem području.</p>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="{{subscriptionUrl}}" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Pogledaj pretplatu</a>
-    </div>
-    
-    <p>Hvala vam na poverenju u LocalStays!</p>
-    
-    <p style="color: #666; margin-top: 30px;">
-      Srdačan pozdrav,<br>
-      <strong>LocalStays Tim</strong>
-    </p>
-  </div>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Success Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                    <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Pretplata obnovljena</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Zdravo {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Odlične vesti! Vaša LocalStays pretplata je uspešno obnovljena.
+              </p>
+              <!-- Subscription Details Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Detalji pretplate</p>
+                <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Plan:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{planName}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Oglasnih mesta:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{tokenCount}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; font-size: 14px; color: #6b7280;">Sledeće obnavljanje:</td>
+                    <td style="padding: 6px 0; font-size: 14px; color: #111827; font-weight: 500; text-align: right;">{{nextBillingDate}}</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Vaša oglasna mesta su produžena i vaši oglasi će nastaviti da se promovišu putnicima koji traže smeštaj u vašem području.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">
+                      Idi na Dashboard →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Closing -->
+              <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hvala vam na poverenju u LocalStays!
+              </p>
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Srdačan pozdrav,<br>
+                <span style="color: #374151; font-weight: 500;">LocalStays Tim</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. Sva prava zadržana.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`,
   },

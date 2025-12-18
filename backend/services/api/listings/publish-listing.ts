@@ -15,8 +15,9 @@ import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/
 import { buildPublicListingMediaPK, buildPublicListingMediaSK } from '../../types/public-listing-media.types';
 import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
 import {
-  canHostPublishListing,
+  getPublishingOptions,
   createAdvertisingSlot,
+  createCommissionBasedSlot,
   getSlotByListingId,
 } from '../../lib/subscription-service';
 
@@ -35,6 +36,7 @@ interface PublishListingResponse {
   status: string;
   slotId?: string;
   slotExpiresAt?: string;
+  isCommissionBased?: boolean;
 }
 
 /**
@@ -119,42 +121,71 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Listing already has an active advertising slot');
     }
 
-    // Step 5c: Check subscription and token availability
-    const publishCheck = await canHostPublishListing(hostId);
-    if (!publishCheck.canPublish) {
-      let errorMessage: string;
-      let errorMessage_sr: string;
-      
-      switch (publishCheck.reason) {
-        case 'NO_SUBSCRIPTION':
-          errorMessage = 'No active subscription found. Please subscribe to publish listings.';
-          errorMessage_sr = 'Nije pronađena aktivna pretplata. Pretplatite se da biste objavili oglase.';
-          break;
-        case 'SUBSCRIPTION_PAST_DUE':
-          errorMessage = 'Your subscription payment is past due. Please update your payment method.';
-          errorMessage_sr = 'Vaše plaćanje pretplate je zaostalo. Molimo ažurirajte način plaćanja.';
-          break;
-        case 'SUBSCRIPTION_CANCELLED':
-          errorMessage = 'Your subscription has been cancelled. Please resubscribe to publish listings.';
-          errorMessage_sr = 'Vaša pretplata je otkazana. Ponovo se pretplatite da biste objavili oglase.';
-          break;
-        case 'SUBSCRIPTION_EXPIRED':
-          errorMessage = 'Your subscription has expired. Please renew to publish listings.';
-          errorMessage_sr = 'Vaša pretplata je istekla. Obnovite pretplatu da biste objavili oglase.';
-          break;
-        case 'NO_TOKENS_AVAILABLE':
-          errorMessage = 'No advertising slots available. All your tokens are in use.';
-          errorMessage_sr = 'Nema dostupnih oglasnih slotova. Svi vaši tokeni su u upotrebi.';
-          break;
-        default:
-          errorMessage = 'Unable to publish listing. Please check your subscription status.';
-          errorMessage_sr = 'Nije moguće objaviti oglas. Proverite status pretplate.';
+    // Step 5c: Parse request body to get the chosen ad type
+    // Frontend decides: isCommissionBased = true for free ad, false for subscription-based
+    let body: { isCommissionBased?: boolean } = {};
+    if (event.body) {
+      try {
+        body = JSON.parse(event.body);
+      } catch {
+        // Body is optional for backward compatibility
       }
-      
-      return response.badRequest(errorMessage, { message_sr: errorMessage_sr, reason: publishCheck.reason });
     }
-
-    const subscription = publishCheck.subscription!;
+    
+    // Default to commission-based if not specified (backward compatibility / no subscription)
+    const requestedCommissionBased = body.isCommissionBased !== false;
+    
+    // Step 5d: Check publishing options and validate the user's choice
+    const publishOptions = await getPublishingOptions(hostId);
+    
+    let useCommissionBased: boolean;
+    let subscription = publishOptions.subscription;
+    
+    if (requestedCommissionBased) {
+      // User wants commission-based
+      if (!publishOptions.canPublishCommissionBased) {
+        const errorMessage = 'Unable to publish free listing. You have reached the maximum number of free listings (100).';
+        const errorMessage_sr = 'Nije moguće objaviti besplatan oglas. Dostigli ste maksimalan broj besplatnih oglasa (100).';
+        return response.badRequest(errorMessage, { 
+          message_sr: errorMessage_sr, 
+          reason: publishOptions.commissionReason,
+          commissionSlotsUsed: publishOptions.commissionSlotsUsed,
+          commissionSlotsLimit: publishOptions.commissionSlotsLimit,
+        });
+      }
+      useCommissionBased = true;
+    } else {
+      // User wants subscription-based
+      if (!publishOptions.canPublishSubscriptionBased) {
+        let errorMessage: string;
+        let errorMessage_sr: string;
+        
+        switch (publishOptions.subscriptionReason) {
+          case 'NO_SUBSCRIPTION':
+            errorMessage = 'No active subscription found. Please subscribe to publish subscription-based listings.';
+            errorMessage_sr = 'Nije pronađena aktivna pretplata. Pretplatite se da biste objavili pretplatne oglase.';
+            break;
+          case 'SUBSCRIPTION_PAST_DUE':
+            errorMessage = 'Your subscription payment is past due. Please update your payment method.';
+            errorMessage_sr = 'Vaše plaćanje pretplate je zaostalo. Molimo ažurirajte način plaćanja.';
+            break;
+          case 'NO_TOKENS_AVAILABLE':
+            errorMessage = 'No advertising slots available. All your tokens are in use.';
+            errorMessage_sr = 'Nema dostupnih oglasnih slotova. Svi vaši tokeni su u upotrebi.';
+            break;
+          default:
+            errorMessage = 'Unable to publish subscription-based listing. Please check your subscription status.';
+            errorMessage_sr = 'Nije moguće objaviti pretplatni oglas. Proverite status pretplate.';
+        }
+        
+        return response.badRequest(errorMessage, { 
+          message_sr: errorMessage_sr, 
+          reason: publishOptions.subscriptionReason,
+          availableTokens: publishOptions.availableTokens,
+        });
+      }
+      useCommissionBased = false;
+    }
 
     // Step 6: Determine location source and extract location data
     // Priority: mapboxMetadata > manualLocationIds
@@ -412,18 +443,47 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Public listing records created successfully via transaction');
 
-    // Step 12b: Create advertising slot
+    // Step 12b: Create advertising slot (subscription-based or commission-based)
     // This is done outside the main transaction because it writes to a different table
-    const slot = await createAdvertisingSlot({
-      hostId,
-      listingId,
-      planId: subscription.planId,
-      subscription,
-      listingCreatedAt: listing.createdAt,
-      firstReviewCompletedAt: listing.firstReviewCompletedAt,
-    });
+    let slot;
+    
+    if (useCommissionBased) {
+      // Create commission-based (free) slot - no expiry
+      slot = await createCommissionBasedSlot({
+        hostId,
+        listingId,
+      });
+      console.log(`Created commission-based slot for listing ${listingId}`);
+    } else {
+      // Create subscription-based slot with expiry
+      slot = await createAdvertisingSlot({
+        hostId,
+        listingId,
+        planId: subscription!.planId,
+        subscription: subscription!,
+        listingCreatedAt: listing.createdAt,
+        firstReviewCompletedAt: listing.firstReviewCompletedAt,
+      });
+      console.log(`Created subscription-based slot for listing ${listingId}, expires: ${slot.expiresAt}`);
+    }
 
     // Step 12c: Update listing status to ONLINE with slot info
+    // For commission-based slots, we don't set slotExpiresAt (no expiry)
+    const updateExpression = slot.isCommissionBased
+      ? 'SET #status = :online, activeSlotId = :slotId, isCommissionBased = :isCommissionBased, #updatedAt = :now REMOVE slotExpiresAt'
+      : 'SET #status = :online, activeSlotId = :slotId, slotExpiresAt = :expiresAt, isCommissionBased = :isCommissionBased, #updatedAt = :now';
+    
+    const updateExpressionValues: Record<string, any> = {
+      ':online': 'ONLINE',
+      ':slotId': slot.slotId,
+      ':isCommissionBased': slot.isCommissionBased,
+      ':now': now,
+    };
+    
+    if (!slot.isCommissionBased) {
+      updateExpressionValues[':expiresAt'] = slot.expiresAt;
+    }
+    
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -431,17 +491,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           pk: `HOST#${hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: 'SET #status = :online, activeSlotId = :slotId, slotExpiresAt = :expiresAt, #updatedAt = :now',
+        UpdateExpression: updateExpression,
         ExpressionAttributeNames: {
           '#status': 'status',
           '#updatedAt': 'updatedAt',
         },
-        ExpressionAttributeValues: {
-          ':online': 'ONLINE',
-          ':slotId': slot.slotId,
-          ':expiresAt': slot.expiresAt,
-          ':now': now,
-        },
+        ExpressionAttributeValues: updateExpressionValues,
       })
     );
 
@@ -472,7 +527,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       locationId: placeId,
       status: 'ONLINE',
       slotId: slot.slotId,
-      slotExpiresAt: slot.expiresAt,
+      isCommissionBased: slot.isCommissionBased,
+      ...(slot.expiresAt && { slotExpiresAt: slot.expiresAt }),
     };
 
     return response.success(responseData);

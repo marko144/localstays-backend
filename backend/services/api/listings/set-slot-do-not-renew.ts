@@ -39,7 +39,7 @@ interface SetDoNotRenewResponse {
   listingId: string;
   slotId: string;
   doNotRenew: boolean;
-  expiresAt: string;
+  expiresAt?: string;  // Undefined for commission-based slots
   message: string;
   message_sr: string;
 }

@@ -8,6 +8,11 @@
  * - Primary key: LISTING#<listingId> / SLOT#<slotId> (one slot per listing at a time)
  * - GSI1 (HostSlotsIndex): HOST#<hostId> / <activatedAt> (get all slots for a host)
  * - GSI2 (ExpiryIndex): SLOT_EXPIRY / <expiresAt>#<listingId>#<slotId> (query expiring slots)
+ *   Note: Commission-based slots are excluded from GSI2 (sparse index) as they don't expire
+ * 
+ * Ad Models:
+ * - Subscription-based (isCommissionBased: false): Has expiry, renews with subscription, uses tokens
+ * - Commission-based (isCommissionBased: true): No expiry, no renewal, monetized via booking commission
  */
 
 import { BillingPeriod } from './subscription-plan.types';
@@ -22,6 +27,10 @@ import { BillingPeriod } from './subscription-plan.types';
  * Created when a listing is published (goes ONLINE).
  * Tracks the ad's duration, expiry, and renewal preferences.
  * Permanently bound to one listing (no swapping).
+ * 
+ * Two ad models:
+ * - Subscription-based: Has expiry, renews with subscription, consumes tokens
+ * - Commission-based: No expiry, no renewal, monetized via booking commission
  */
 export interface AdvertisingSlot {
   // Keys
@@ -33,28 +42,32 @@ export interface AdvertisingSlot {
   listingId: string;               // Permanently bound to this listing
   hostId: string;                  // Denormalized for GSI1 queries
 
+  // Ad Model
+  isCommissionBased: boolean;      // true = free ad (commission model), false = subscription-based
+
   // Audit Trail
-  planIdAtCreation: string;        // Plan ID when slot was created (for audit)
+  planIdAtCreation?: string;       // Plan ID when slot was created (for audit). Undefined for commission-based.
 
-  // Timing
+  // Timing (subscription-based only)
   activatedAt: string;             // ISO timestamp when slot was created (listing published)
-  expiresAt: string;               // ISO timestamp: periodEnd + reviewCompensationDays
-  reviewCompensationDays: number;  // Extra days added for admin review time (max 60)
+  expiresAt?: string;              // ISO timestamp: periodEnd + reviewCompensationDays. Undefined for commission-based.
+  reviewCompensationDays?: number; // Extra days added for admin review time (max 60). Undefined for commission-based.
 
-  // Renewal Control
-  doNotRenew: boolean;             // If true, slot will not be extended at renewal
+  // Renewal Control (subscription-based only)
+  doNotRenew?: boolean;            // If true, slot will not be extended at renewal. Ignored for commission-based.
 
-  // Grace Period / Payment Status
-  isPastDue: boolean;              // True if subscription payment failed (grace period)
-  markedForImmediateExpiry: boolean; // True if payment ultimately failed, expire on next job run
+  // Grace Period / Payment Status (subscription-based only)
+  isPastDue?: boolean;             // True if subscription payment failed (grace period). Ignored for commission-based.
+  markedForImmediateExpiry?: boolean; // True if payment ultimately failed. Ignored for commission-based.
 
-  // GSI1: HostSlotsIndex (get all slots for a host)
+  // GSI1: HostSlotsIndex (get all slots for a host) - ALL slots indexed
   gsi1pk: string;                  // HOST#<hostId>
   gsi1sk: string;                  // <activatedAt> (ISO timestamp for sorting)
 
-  // GSI2: ExpiryIndex (query expiring slots for daily job)
-  gsi2pk: string;                  // SLOT_EXPIRY (constant)
-  gsi2sk: string;                  // <expiresAt>#<listingId>#<slotId> (sortable by expiry)
+  // GSI2: ExpiryIndex (query expiring slots for daily job) - Subscription-based only
+  // Commission-based slots have these undefined (sparse index - not projected)
+  gsi2pk?: string;                 // SLOT_EXPIRY (constant). Undefined for commission-based.
+  gsi2sk?: string;                 // <expiresAt>#<listingId>#<slotId>. Undefined for commission-based.
 
   // Metadata
   createdAt: string;
@@ -247,7 +260,8 @@ export type SlotDisplayStatus =
   | 'AUTO_RENEWS'      // Will be extended at next renewal
   | 'EXPIRES'          // Will expire (doNotRenew = true or subscription cancelled)
   | 'PAST_DUE'         // Payment failed, in grace period
-  | 'EXPIRING_SOON';   // Expires within 7 days
+  | 'EXPIRING_SOON'    // Expires within 7 days
+  | 'COMMISSION_BASED';// Commission-based (no expiry)
 
 /**
  * Slot summary for host dashboard
@@ -258,11 +272,13 @@ export interface SlotSummary {
   listingName: string;
   thumbnailUrl: string;
   activatedAt: string;
-  expiresAt: string;
-  daysRemaining: number;
-  reviewCompensationDays: number;
-  doNotRenew: boolean;
-  isPastDue: boolean;
+  isCommissionBased: boolean;
+  // The following are undefined for commission-based slots
+  expiresAt?: string;
+  daysRemaining?: number;
+  reviewCompensationDays?: number;
+  doNotRenew?: boolean;
+  isPastDue?: boolean;
   displayStatus: SlotDisplayStatus;
   displayLabel: string;
   displayLabel_sr: string;
@@ -272,7 +288,7 @@ export interface SlotSummary {
  * Slot details for subscription page
  */
 export interface SlotDetails extends SlotSummary {
-  planIdAtCreation: string;
+  planIdAtCreation?: string;  // Undefined for commission-based slots
   createdAt: string;
   updatedAt: string;
 }
@@ -290,20 +306,27 @@ export interface SlotsSummary {
  * Get display status for a slot
  */
 export function getSlotDisplayStatus(
-  slot: Pick<AdvertisingSlot, 'doNotRenew' | 'isPastDue' | 'expiresAt'>,
+  slot: Pick<AdvertisingSlot, 'isCommissionBased' | 'doNotRenew' | 'isPastDue' | 'expiresAt'>,
   subscriptionCancelAtPeriodEnd: boolean
 ): SlotDisplayStatus {
+  // Commission-based slots have a special status
+  if (slot.isCommissionBased) {
+    return 'COMMISSION_BASED';
+  }
+  
   if (slot.isPastDue) {
     return 'PAST_DUE';
   }
   
-  // Check if expiring within 7 days
-  const now = new Date();
-  const expiresAt = new Date(slot.expiresAt);
-  const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  
-  if (daysUntilExpiry <= 7 && (slot.doNotRenew || subscriptionCancelAtPeriodEnd)) {
-    return 'EXPIRING_SOON';
+  // Check if expiring within 7 days (only for subscription-based slots)
+  if (slot.expiresAt) {
+    const now = new Date();
+    const expiresAt = new Date(slot.expiresAt);
+    const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysUntilExpiry <= 7 && (slot.doNotRenew || subscriptionCancelAtPeriodEnd)) {
+      return 'EXPIRING_SOON';
+    }
   }
   
   if (slot.doNotRenew || subscriptionCancelAtPeriodEnd) {
@@ -318,9 +341,21 @@ export function getSlotDisplayStatus(
  */
 export function getSlotDisplayLabel(
   displayStatus: SlotDisplayStatus,
-  expiresAt: string,
+  expiresAt: string | undefined,
   language: 'en' | 'sr' = 'en'
 ): string {
+  // Handle commission-based slots first (no expiry date)
+  if (displayStatus === 'COMMISSION_BASED') {
+    return language === 'sr'
+      ? 'Besplatan oglas (provizija)'
+      : 'Free ad (commission-based)';
+  }
+  
+  // For status that require expiry date
+  if (!expiresAt) {
+    return '';
+  }
+  
   const date = new Date(expiresAt);
   const formattedDate = date.toLocaleDateString(language === 'sr' ? 'sr-Latn' : 'en-US', {
     month: 'short',
@@ -351,8 +386,12 @@ export function getSlotDisplayLabel(
 
 /**
  * Calculate days remaining until slot expires
+ * Returns undefined for commission-based slots (no expiry)
  */
-export function calculateDaysRemaining(expiresAt: string): number {
+export function calculateDaysRemaining(expiresAt: string | undefined): number | undefined {
+  if (!expiresAt) {
+    return undefined;
+  }
   const now = new Date();
   const expiry = new Date(expiresAt);
   const diffMs = expiry.getTime() - now.getTime();

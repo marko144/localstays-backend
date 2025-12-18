@@ -1011,6 +1011,33 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
+    // POST /api/v1/hosts/{hostId}/listings/{listingId}/slot/convert
+    // Convert between subscription-based and commission-based ad models
+    const convertSlotResource = slotResource.addResource('convert');
+    convertSlotResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        requestValidatorOptions: {
+          validateRequestBody: true,
+        },
+      }
+    );
+
+    // GET /api/v1/hosts/{hostId}/listings/{listingId}/publishing-options
+    // Returns what publishing options are available (subscription vs commission-based)
+    const publishingOptionsResource = listingIdParam.addResource('publishing-options');
+    publishingOptionsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
     const listingRequestsResource = listingIdParam.addResource('requests');
     listingRequestsResource.addMethod(

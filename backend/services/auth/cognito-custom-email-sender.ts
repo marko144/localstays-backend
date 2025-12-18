@@ -258,10 +258,12 @@ async function sendVerificationEmail(
     encodedCodeStart: encodeURIComponent(verificationCode).substring(0, 50),
   });
 
+  const currentYear = new Date().getFullYear();
+  
   const msg = {
     to: email,
     from: FROM_EMAIL,
-    subject: 'Verify your Localstays account',
+    subject: 'Verify your LocalStays account',
     // Disable click tracking to prevent SendGrid from mangling the verification code
     trackingSettings: {
       clickTracking: {
@@ -269,63 +271,91 @@ async function sendVerificationEmail(
         enableText: false,
       },
     },
-    text: `Welcome to Localstays!\n\nPlease verify your email address by clicking the link below:\n\n${verifyUrl}\n\nThis link will expire in 24 hours.\n\nIf you didn't create an account, please ignore this email.`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Verify your email</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-            <tr>
-              <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  <tr>
-                    <td style="padding: 40px 40px 20px 40px;">
-                      <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Welcome to Localstays!</h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 20px 40px;">
-                      <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                        Thank you for signing up. Please verify your email address to get started.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 30px 40px;">
-                      <a href="${verifyUrl}" style="display: inline-block; padding: 14px 32px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px; font-size: 16px; font-weight: 500;">
-                        Verify Email Address
-                      </a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 20px 40px; border-top: 1px solid #eeeeee;">
-                      <p style="margin: 20px 0 0 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                        Or copy and paste this link into your browser:
-                      </p>
-                      <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.5; color: #007bff; word-break: break-all;">
-                        ${verifyUrl}
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 40px 40px;">
-                      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #999999;">
-                        This link will expire in 24 hours. If you didn't create an account, please ignore this email.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `,
+    text: `Welcome to LocalStays!\n\nPlease verify your email address by clicking the link below:\n\n${verifyUrl}\n\nThis link will expire in 24 hours.\n\nIf you didn't create an account, please ignore this email.\n\n---\n© ${currentYear} LocalStays\nhello@localstays.me`,
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your email</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Welcome Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                    <span style="color: #059669; font-size: 14px; font-weight: 600;">🎉 Welcome!</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Welcome to LocalStays!
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Thank you for signing up. Please verify your email address to get started.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="${verifyUrl}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">Verify Email Address</a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Alternative Link -->
+              <p style="margin: 0 0 12px 0; font-size: 14px; line-height: 1.5; color: #6b7280;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #243447; word-break: break-all;">
+                ${verifyUrl}
+              </p>
+              <!-- Expiry Notice -->
+              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #9ca3af;">
+                This link will expire in 24 hours. If you didn't create an account, please ignore this email.
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
   };
 
   try {
@@ -361,10 +391,12 @@ async function sendPasswordResetEmail(
     codeLength: resetCode.length,
   });
 
+  const currentYear = new Date().getFullYear();
+  
   const msg = {
     to: email,
     from: FROM_EMAIL,
-    subject: 'Reset your Localstays password',
+    subject: 'Reset your LocalStays password',
     // Disable click tracking to prevent SendGrid from mangling the code
     trackingSettings: {
       clickTracking: {
@@ -372,63 +404,87 @@ async function sendPasswordResetEmail(
         enableText: false,
       },
     },
-    text: `Reset your Localstays password\n\nWe received a request to reset your password. Click the link below to set a new password:\n\n${resetUrl}\n\nThis link will expire in 1 hour.\n\nIf you didn't request a password reset, please ignore this email and your password will remain unchanged.`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Reset your password</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-            <tr>
-              <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  <tr>
-                    <td style="padding: 40px 40px 20px 40px;">
-                      <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Reset your password</h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 20px 40px;">
-                      <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                        We received a request to reset your Localstays password. Click the button below to set a new password.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 30px 40px;">
-                      <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background-color: #dc3545; color: #ffffff; text-decoration: none; border-radius: 4px; font-size: 16px; font-weight: 500;">
-                        Reset Password
-                      </a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 20px 40px; border-top: 1px solid #eeeeee;">
-                      <p style="margin: 20px 0 0 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                        Or copy and paste this link into your browser:
-                      </p>
-                      <p style="margin: 10px 0 0 0; font-size: 14px; line-height: 1.5; color: #007bff; word-break: break-all;">
-                        ${resetUrl}
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 0 40px 40px 40px;">
-                      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #999999;">
-                        This link will expire in 1 hour. If you didn't request a password reset, please ignore this email and your password will remain unchanged.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `,
+    text: `Reset your LocalStays password\n\nWe received a request to reset your password. Click the link below to set a new password:\n\n${resetUrl}\n\nThis link will expire in 1 hour.\n\nIf you didn't request a password reset, please ignore this email and your password will remain unchanged.\n\n---\n© ${currentYear} LocalStays\nhello@localstays.me`,
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset your password</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Security Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #fef3c7; padding: 8px 16px; border-radius: 20px; border: 1px solid #fcd34d;">
+                    <span style="color: #b45309; font-size: 14px; font-weight: 600;">🔐 Password Reset</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                We received a request to reset your LocalStays password. Click the button below to set a new password.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="${resetUrl}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">Reset Password</a>
+                  </td>
+                </tr>
+              </table>
+              <!-- Alternative Link -->
+              <p style="margin: 0 0 12px 0; font-size: 14px; line-height: 1.5; color: #6b7280;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #243447; word-break: break-all;">
+                ${resetUrl}
+              </p>
+              <!-- Expiry Notice -->
+              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #9ca3af;">
+                This link will expire in 1 hour. If you didn't request a password reset, please ignore this email and your password will remain unchanged.
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
   };
 
   try {

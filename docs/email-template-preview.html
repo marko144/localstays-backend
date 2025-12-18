@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Template Preview - HOST_PROFILE_APPROVED</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      background: #1a1a2e;
+      min-height: 100vh;
+    }
+    .preview-container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .preview-header {
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #333;
+    }
+    .preview-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+    }
+    .preview-header p {
+      margin: 0;
+      color: #888;
+      font-size: 14px;
+    }
+    .language-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .language-tabs button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .language-tabs button.active {
+      background: #243447;
+      color: #fff;
+    }
+    .language-tabs button:not(.active) {
+      background: #333;
+      color: #888;
+    }
+    .language-tabs button:hover:not(.active) {
+      background: #444;
+    }
+    .email-frame {
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .email-content {
+      display: none;
+    }
+    .email-content.active {
+      display: block;
+    }
+    .info-box {
+      background: #243447;
+      color: #fff;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+    }
+    .info-box strong {
+      color: #FF6B6B;
+    }
+    .info-box code {
+      background: rgba(255,255,255,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+    <div class="preview-header">
+      <h1>📧 Email Template Preview</h1>
+      <p>Template: HOST_PROFILE_APPROVED</p>
+    </div>
+
+    <div class="info-box">
+      <strong>Template:</strong> HOST_PROFILE_APPROVED<br>
+      <strong>Variables:</strong> <code>{{name}}</code><br>
+      <strong>Links:</strong> None (no CTA button needed)
+    </div>
+
+    <div class="language-tabs">
+      <button class="active" onclick="showLanguage('en')">🇬🇧 English</button>
+      <button onclick="showLanguage('sr')">🇷🇸 Serbian</button>
+    </div>
+
+    <!-- English Version -->
+    <div id="email-en" class="email-content active">
+      <div class="email-frame">
+        <!-- EMAIL HTML START -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+                <!-- HEADER -->
+                <tr>
+                  <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+                    <table cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding-right: 12px; vertical-align: middle;">
+                          <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                            <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                          </div>
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <!-- CONTENT -->
+                <tr>
+                  <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <!-- Success Badge -->
+                    <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                      <tr>
+                        <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                          <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Profile Approved</span>
+                        </td>
+                      </tr>
+                    </table>
+                    <!-- Greeting -->
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      Hi Marko,
+                    </p>
+                    <!-- Main Message -->
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      Great news! Your host profile has been approved.
+                    </p>
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      You can now create and submit property listings on LocalStays.
+                    </p>
+                    <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151; font-weight: 500;">
+                      Welcome to the LocalStays community!
+                    </p>
+                    <!-- Closing -->
+                    <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                      Best regards,<br>
+                      <span style="color: #374151; font-weight: 500;">The LocalStays Team</span>
+                    </p>
+                  </td>
+                </tr>
+                <!-- FOOTER -->
+                <tr>
+                  <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                      © 2025 LocalStays. All rights reserved.<br>
+                      <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+        <!-- EMAIL HTML END -->
+      </div>
+    </div>
+
+    <!-- Serbian Version -->
+    <div id="email-sr" class="email-content">
+      <div class="email-frame">
+        <!-- EMAIL HTML START -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+          <tr>
+            <td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+                <!-- HEADER -->
+                <tr>
+                  <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+                    <table cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding-right: 12px; vertical-align: middle;">
+                          <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                            <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                          </div>
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <!-- CONTENT -->
+                <tr>
+                  <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <!-- Success Badge -->
+                    <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                      <tr>
+                        <td style="background-color: #ecfdf5; padding: 8px 16px; border-radius: 20px; border: 1px solid #a7f3d0;">
+                          <span style="color: #059669; font-size: 14px; font-weight: 600;">✓ Profil odobren</span>
+                        </td>
+                      </tr>
+                    </table>
+                    <!-- Greeting -->
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      Zdravo Marko,
+                    </p>
+                    <!-- Main Message -->
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      Odlične vesti! Vaš profil domaćina je odobren.
+                    </p>
+                    <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                      Sada možete kreirati i poslati oglase za nekretnine na LocalStays.
+                    </p>
+                    <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151; font-weight: 500;">
+                      Dobrodošli u LocalStays zajednicu!
+                    </p>
+                    <!-- Closing -->
+                    <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                      Srdačan pozdrav,<br>
+                      <span style="color: #374151; font-weight: 500;">LocalStays Tim</span>
+                    </p>
+                  </td>
+                </tr>
+                <!-- FOOTER -->
+                <tr>
+                  <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                      © 2025 LocalStays. Sva prava zadržana.<br>
+                      <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+        <!-- EMAIL HTML END -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showLanguage(lang) {
+      // Hide all
+      document.querySelectorAll('.email-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.language-tabs button').forEach(el => el.classList.remove('active'));
+      
+      // Show selected
+      document.getElementById('email-' + lang).classList.add('active');
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>

@@ -306,9 +306,10 @@ export interface ListingMetadata {
   
   // Advertising Slot Association (denormalized from AdvertisingSlots table for display)
   activeSlotId?: string;           // Current slot ID (if ONLINE)
-  slotExpiresAt?: string;          // From slot.expiresAt
+  slotExpiresAt?: string;          // From slot.expiresAt (undefined for commission-based)
   slotDoNotRenew?: boolean;        // From slot.doNotRenew
   slotIsPastDue?: boolean;         // From slot.isPastDue
+  isCommissionBased?: boolean;     // True if this is a free/commission-based ad (no expiry)
   
   // Admin lock (for LOCKED status)
   lockedAt?: string;

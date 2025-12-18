@@ -367,11 +367,35 @@ export async function getSlotsExpiringOnDate(date: string): Promise<AdvertisingS
 }
 
 // ============================================================================
+// COMMISSION-BASED SLOT LIMITS
+// ============================================================================
+
+const MAX_COMMISSION_BASED_SLOTS = 100;
+
+/**
+ * Count how many commission-based (free) slots a host has
+ */
+export async function countCommissionBasedSlots(hostId: string): Promise<number> {
+  const slots = await getHostSlots(hostId);
+  return slots.filter(s => s.isCommissionBased).length;
+}
+
+/**
+ * Count how many subscription-based slots a host has
+ * (These are the ones that consume tokens)
+ */
+export async function countSubscriptionBasedSlots(hostId: string): Promise<number> {
+  const slots = await getHostSlots(hostId);
+  return slots.filter(s => !s.isCommissionBased).length;
+}
+
+// ============================================================================
 // TOKEN AVAILABILITY
 // ============================================================================
 
 /**
  * Check how many tokens are available for a host
+ * Note: Only subscription-based slots consume tokens
  */
 export async function getTokenAvailability(hostId: string): Promise<{
   totalTokens: number;
@@ -419,9 +443,8 @@ export async function getTokenAvailability(hostId: string): Promise<{
     };
   }
 
-  // Count active slots
-  const slots = await getHostSlots(hostId);
-  const usedTokens = slots.length;
+  // Count active subscription-based slots only (commission-based don't consume tokens)
+  const usedTokens = await countSubscriptionBasedSlots(hostId);
   const availableTokens = Math.max(0, subscription.totalTokens - usedTokens);
 
   return {
@@ -434,46 +457,111 @@ export async function getTokenAvailability(hostId: string): Promise<{
 }
 
 /**
- * Check if a host can publish a new listing
+ * Check what publishing options are available for a host.
+ * 
+ * The frontend decides which ad type to use based on these options.
+ * 
+ * @returns Available publishing options
  */
-export async function canHostPublishListing(hostId: string): Promise<{
-  canPublish: boolean;
-  reason?: string;
+export async function getPublishingOptions(hostId: string): Promise<{
+  canPublishSubscriptionBased: boolean;
+  canPublishCommissionBased: boolean;
+  subscriptionReason?: string;  // Why subscription-based is unavailable
+  commissionReason?: string;    // Why commission-based is unavailable
   subscription?: HostSubscription;
+  availableTokens?: number;
+  commissionSlotsUsed?: number;
+  commissionSlotsLimit: number;
 }> {
   const subscription = await getHostSubscription(hostId);
   
-  if (!subscription) {
-    return { canPublish: false, reason: 'NO_SUBSCRIPTION' };
-  }
-
-  if (subscription.status === 'PAST_DUE') {
-    return { 
-      canPublish: false, 
-      reason: 'SUBSCRIPTION_PAST_DUE',
-      subscription,
-    };
-  }
-
-  if (!canPublishAds(subscription)) {
-    return { 
-      canPublish: false, 
-      reason: 'SUBSCRIPTION_INACTIVE',
-      subscription,
-    };
-  }
-
-  const availability = await getTokenAvailability(hostId);
+  // Check subscription-based availability
+  let canPublishSubscriptionBased = false;
+  let subscriptionReason: string | undefined;
+  let availableTokens: number | undefined;
   
-  if (!availability.canPublish) {
+  if (!subscription) {
+    subscriptionReason = 'NO_SUBSCRIPTION';
+  } else if (subscription.status === 'PAST_DUE') {
+    subscriptionReason = 'SUBSCRIPTION_PAST_DUE';
+  } else if (!canPublishAds(subscription)) {
+    subscriptionReason = 'SUBSCRIPTION_INACTIVE';
+  } else {
+    const availability = await getTokenAvailability(hostId);
+    availableTokens = availability.availableTokens;
+    if (availability.canPublish) {
+      canPublishSubscriptionBased = true;
+    } else {
+      subscriptionReason = 'NO_TOKENS_AVAILABLE';
+    }
+  }
+  
+  // Check commission-based availability
+  const commissionSlotCount = await countCommissionBasedSlots(hostId);
+  let canPublishCommissionBased = true;
+  let commissionReason: string | undefined;
+  
+  if (commissionSlotCount >= MAX_COMMISSION_BASED_SLOTS) {
+    canPublishCommissionBased = false;
+    commissionReason = 'COMMISSION_SLOT_LIMIT_REACHED';
+  }
+  
+  return {
+    canPublishSubscriptionBased,
+    canPublishCommissionBased,
+    subscriptionReason,
+    commissionReason,
+    subscription: subscription || undefined,
+    availableTokens,
+    commissionSlotsUsed: commissionSlotCount,
+    commissionSlotsLimit: MAX_COMMISSION_BASED_SLOTS,
+  };
+}
+
+/**
+ * Check if a host can publish using their preferred ad type.
+ * Used by admin auto-publish to decide which type to use automatically.
+ * 
+ * Logic for auto-publish:
+ * 1. If host has active subscription with available tokens → use subscription-based
+ * 2. If no subscription or no tokens → fall back to commission-based (if under limit)
+ * 3. If commission-based limit reached → cannot publish
+ * 
+ * @returns Publishing availability with recommended ad model
+ */
+export async function canHostPublishListing(hostId: string): Promise<{
+  canPublish: boolean;
+  useCommissionBased: boolean;
+  reason?: string;
+  subscription?: HostSubscription;
+}> {
+  const options = await getPublishingOptions(hostId);
+  
+  // Prefer subscription-based if available
+  if (options.canPublishSubscriptionBased) {
     return { 
-      canPublish: false, 
-      reason: availability.reason,
-      subscription,
+      canPublish: true, 
+      useCommissionBased: false,
+      subscription: options.subscription,
     };
   }
-
-  return { canPublish: true, subscription };
+  
+  // Fall back to commission-based
+  if (options.canPublishCommissionBased) {
+    return { 
+      canPublish: true, 
+      useCommissionBased: true,
+      subscription: options.subscription,
+    };
+  }
+  
+  // Neither available
+  return { 
+    canPublish: false, 
+    useCommissionBased: false,
+    reason: options.commissionReason || options.subscriptionReason || 'CANNOT_PUBLISH',
+    subscription: options.subscription,
+  };
 }
 
 // ============================================================================
@@ -481,7 +569,7 @@ export async function canHostPublishListing(hostId: string): Promise<{
 // ============================================================================
 
 /**
- * Create a new advertising slot for a listing
+ * Create a new subscription-based advertising slot for a listing
  * 
  * New slots get the FULL billing period duration from the creation date,
  * not just until the current subscription period ends. This ensures hosts
@@ -557,6 +645,7 @@ export async function createAdvertisingSlot(params: {
     listingId,
     hostId,
     
+    isCommissionBased: false,
     planIdAtCreation: planId,
     
     activatedAt: now,
@@ -584,12 +673,74 @@ export async function createAdvertisingSlot(params: {
     })
   );
   
-  console.log(`✅ Created advertising slot ${slotId} for listing ${listingId}`, {
+  console.log(`✅ Created subscription-based advertising slot ${slotId} for listing ${listingId}`, {
     createdAt: now,
     expiresAt,
     reviewCompensationDays,
     billingPeriod,
     compensationEnabled,
+  });
+  
+  return slot;
+}
+
+/**
+ * Create a new commission-based (free) advertising slot for a listing
+ * 
+ * Commission-based slots:
+ * - Have no expiry date (run indefinitely)
+ * - Are not indexed in ExpiryIndex (sparse index)
+ * - Don't consume subscription tokens
+ * - Are monetized via booking commission instead of subscription fee
+ */
+export async function createCommissionBasedSlot(params: {
+  hostId: string;
+  listingId: string;
+}): Promise<AdvertisingSlot> {
+  const { hostId, listingId } = params;
+  
+  const slotId = `slot_${randomUUID()}`;
+  const now = new Date().toISOString();
+  
+  const slot: AdvertisingSlot = {
+    pk: buildAdvertisingSlotPK(listingId),
+    sk: buildAdvertisingSlotSK(slotId),
+    
+    slotId,
+    listingId,
+    hostId,
+    
+    isCommissionBased: true,
+    // No planIdAtCreation for commission-based slots
+    // No expiresAt - commission slots don't expire
+    // No reviewCompensationDays - not applicable
+    // No doNotRenew - not applicable (no renewal concept)
+    // No isPastDue - not applicable (no payment)
+    // No markedForImmediateExpiry - not applicable
+    
+    activatedAt: now,
+    
+    // GSI1: HostSlotsIndex - included for querying all host slots
+    gsi1pk: buildSlotGSI1PK(hostId),
+    gsi1sk: buildSlotGSI1SK(now),
+    
+    // GSI2: ExpiryIndex - NOT included (sparse index, commission slots don't expire)
+    // gsi2pk and gsi2sk are undefined
+    
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  await docClient.send(
+    new PutCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Item: slot,
+    })
+  );
+  
+  console.log(`✅ Created commission-based advertising slot ${slotId} for listing ${listingId}`, {
+    createdAt: now,
+    isCommissionBased: true,
   });
   
   return slot;
@@ -626,21 +777,25 @@ export async function setSlotDoNotRenew(
 }
 
 /**
- * Mark all slots for a host as past due (payment failed)
+ * Mark all subscription-based slots for a host as past due (payment failed)
+ * Commission-based slots are not affected by subscription payment status
  */
 export async function markHostSlotsPastDue(hostId: string, isPastDue: boolean): Promise<void> {
   const slots = await getHostSlots(hostId);
   
-  if (slots.length === 0) {
-    console.log(`No slots to mark as past due for host ${hostId}`);
+  // Only affect subscription-based slots
+  const subscriptionSlots = slots.filter((s) => !s.isCommissionBased);
+  
+  if (subscriptionSlots.length === 0) {
+    console.log(`No subscription-based slots to mark as past due for host ${hostId}`);
     return;
   }
   
   const now = new Date().toISOString();
   
-  // Update each slot
+  // Update each subscription-based slot
   await Promise.all(
-    slots.map((slot) =>
+    subscriptionSlots.map((slot) =>
       docClient.send(
         new UpdateCommand({
           TableName: ADVERTISING_SLOTS_TABLE_NAME,
@@ -658,15 +813,17 @@ export async function markHostSlotsPastDue(hostId: string, isPastDue: boolean): 
     )
   );
   
-  console.log(`✅ Marked ${slots.length} slots as isPastDue=${isPastDue} for host ${hostId}`);
+  console.log(`✅ Marked ${subscriptionSlots.length} subscription-based slots as isPastDue=${isPastDue} for host ${hostId}`);
 }
 
 /**
- * Mark slots for immediate expiry (payment ultimately failed)
+ * Mark subscription-based slots for immediate expiry (payment ultimately failed)
+ * Commission-based slots are not affected by subscription payment status
  */
 export async function markSlotsForImmediateExpiry(hostId: string): Promise<void> {
   const slots = await getHostSlots(hostId);
-  const pastDueSlots = slots.filter((s) => s.isPastDue);
+  // Only affect subscription-based slots that are past due
+  const pastDueSlots = slots.filter((s) => !s.isCommissionBased && s.isPastDue);
   
   if (pastDueSlots.length === 0) {
     console.log(`No past-due slots to mark for immediate expiry for host ${hostId}`);
@@ -698,6 +855,156 @@ export async function markSlotsForImmediateExpiry(hostId: string): Promise<void>
 }
 
 /**
+ * Convert a commission-based slot to subscription-based
+ * 
+ * This is like publishing a new subscription-based ad:
+ * - Requires active subscription with available token
+ * - Sets expiry based on billing period (full period from now)
+ * - No review compensation (listing already approved)
+ */
+export async function convertSlotToSubscriptionBased(
+  slot: AdvertisingSlot,
+  subscription: HostSubscription,
+  planId: string
+): Promise<AdvertisingSlot> {
+  if (!slot.isCommissionBased) {
+    throw new Error('Slot is already subscription-based');
+  }
+  
+  const now = new Date().toISOString();
+  
+  // Get billing period from subscription
+  const plan = await getSubscriptionPlan(planId);
+  const priceInfo = plan?.prices.find(p => p.priceId === subscription.priceId);
+  const billingPeriod: BillingPeriod = priceInfo?.billingPeriod || 'MONTHLY';
+  
+  // Calculate expiry (no review compensation for conversion)
+  const isTrialPeriod = subscription.status === 'TRIALING' && !!subscription.trialEnd;
+  let expiresAt: string;
+  
+  if (isTrialPeriod) {
+    expiresAt = subscription.trialEnd!;
+  } else {
+    expiresAt = calculateNewSlotExpiry(now, billingPeriod, 0);
+  }
+  
+  // Update the slot
+  await docClient.send(
+    new UpdateCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Key: {
+        pk: slot.pk,
+        sk: slot.sk,
+      },
+      UpdateExpression: `
+        SET isCommissionBased = :isCommissionBased,
+            planIdAtCreation = :planId,
+            activatedAt = :activatedAt,
+            expiresAt = :expiresAt,
+            reviewCompensationDays = :reviewCompensationDays,
+            doNotRenew = :doNotRenew,
+            isPastDue = :isPastDue,
+            markedForImmediateExpiry = :markedForImmediateExpiry,
+            gsi2pk = :gsi2pk,
+            gsi2sk = :gsi2sk,
+            updatedAt = :updatedAt
+      `,
+      ExpressionAttributeValues: {
+        ':isCommissionBased': false,
+        ':planId': planId,
+        ':activatedAt': now,
+        ':expiresAt': expiresAt,
+        ':reviewCompensationDays': 0,
+        ':doNotRenew': false,
+        ':isPastDue': false,
+        ':markedForImmediateExpiry': false,
+        ':gsi2pk': buildSlotGSI2PK(),
+        ':gsi2sk': buildSlotGSI2SK(expiresAt, slot.listingId, slot.slotId),
+        ':updatedAt': now,
+      },
+    })
+  );
+  
+  console.log(`✅ Converted slot ${slot.slotId} from commission-based to subscription-based`, {
+    expiresAt,
+    billingPeriod,
+    planId,
+  });
+  
+  // Return updated slot
+  return {
+    ...slot,
+    isCommissionBased: false,
+    planIdAtCreation: planId,
+    activatedAt: now,
+    expiresAt,
+    reviewCompensationDays: 0,
+    doNotRenew: false,
+    isPastDue: false,
+    markedForImmediateExpiry: false,
+    gsi2pk: buildSlotGSI2PK(),
+    gsi2sk: buildSlotGSI2SK(expiresAt, slot.listingId, slot.slotId),
+    updatedAt: now,
+  };
+}
+
+/**
+ * Convert a subscription-based slot to commission-based
+ * 
+ * This instantly converts the slot:
+ * - Removes expiry (slot runs indefinitely)
+ * - Removes from ExpiryIndex
+ * - Frees up a subscription token
+ */
+export async function convertSlotToCommissionBased(
+  slot: AdvertisingSlot
+): Promise<AdvertisingSlot> {
+  if (slot.isCommissionBased) {
+    throw new Error('Slot is already commission-based');
+  }
+  
+  const now = new Date().toISOString();
+  
+  // Update the slot - REMOVE expiry-related fields
+  await docClient.send(
+    new UpdateCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Key: {
+        pk: slot.pk,
+        sk: slot.sk,
+      },
+      UpdateExpression: `
+        SET isCommissionBased = :isCommissionBased,
+            updatedAt = :updatedAt
+        REMOVE expiresAt, reviewCompensationDays, doNotRenew, isPastDue, 
+               markedForImmediateExpiry, planIdAtCreation, gsi2pk, gsi2sk
+      `,
+      ExpressionAttributeValues: {
+        ':isCommissionBased': true,
+        ':updatedAt': now,
+      },
+    })
+  );
+  
+  console.log(`✅ Converted slot ${slot.slotId} from subscription-based to commission-based`);
+  
+  // Return updated slot
+  return {
+    ...slot,
+    isCommissionBased: true,
+    planIdAtCreation: undefined,
+    expiresAt: undefined,
+    reviewCompensationDays: undefined,
+    doNotRenew: undefined,
+    isPastDue: undefined,
+    markedForImmediateExpiry: undefined,
+    gsi2pk: undefined,
+    gsi2sk: undefined,
+    updatedAt: now,
+  };
+}
+
+/**
  * Calculate remaining compensation days for a slot
  * 
  * Compensation "burns down" over time - if the slot has been active for
@@ -707,7 +1014,8 @@ export async function markSlotsForImmediateExpiry(hostId: string): Promise<void>
  * @returns Remaining compensation days (0 or more)
  */
 function calculateRemainingCompensation(slot: AdvertisingSlot): number {
-  if (slot.reviewCompensationDays <= 0) {
+  // Commission-based slots don't have review compensation
+  if (!slot.reviewCompensationDays || slot.reviewCompensationDays <= 0) {
     return 0;
   }
   
@@ -739,8 +1047,9 @@ export async function updateSlotsToNewPeriod(
 ): Promise<number> {
   const slots = await getHostSlots(hostId);
   
-  // Only update slots that are NOT marked as doNotRenew
-  const eligibleSlots = slots.filter((s) => !s.doNotRenew);
+  // Only update subscription-based slots that are NOT marked as doNotRenew
+  // Commission-based slots don't have expiry dates and are not affected by subscription changes
+  const eligibleSlots = slots.filter((s) => !s.isCommissionBased && !s.doNotRenew);
   
   if (eligibleSlots.length === 0) {
     console.log(`No slots to update for host ${hostId}`);
@@ -799,8 +1108,9 @@ export async function extendSlotsAtRenewal(
 ): Promise<number> {
   const slots = await getHostSlots(hostId);
   
-  // Only extend slots that are NOT marked as doNotRenew
-  const eligibleSlots = slots.filter((s) => !s.doNotRenew);
+  // Only extend subscription-based slots that are NOT marked as doNotRenew
+  // Commission-based slots don't have expiry dates and are not affected by subscription changes
+  const eligibleSlots = slots.filter((s) => !s.isCommissionBased && !s.doNotRenew);
   
   if (eligibleSlots.length === 0) {
     console.log(`No slots to extend for host ${hostId}`);
@@ -811,6 +1121,11 @@ export async function extendSlotsAtRenewal(
   
   // Filter to only slots that would actually be extended (new expiry > current expiry)
   const slotsToExtend = eligibleSlots.filter((slot) => {
+    // Skip slots without expiry (should not happen since we filter isCommissionBased above)
+    if (!slot.expiresAt) {
+      return false;
+    }
+    
     // Calculate remaining compensation (burns down over time)
     const remainingCompensation = calculateRemainingCompensation(slot);
     const newExpiresAt = calculateSlotExpiry(newPeriodEnd, remainingCompensation);
@@ -895,12 +1210,28 @@ export function buildSlotSummary(
 ): SlotSummary {
   const displayStatus = getSlotDisplayStatus(slot, subscriptionCancelAtPeriodEnd);
   
+  // For commission-based slots, we return a simpler summary
+  if (slot.isCommissionBased) {
+    return {
+      slotId: slot.slotId,
+      listingId: slot.listingId,
+      listingName,
+      thumbnailUrl,
+      activatedAt: slot.activatedAt,
+      isCommissionBased: true,
+      displayStatus,
+      displayLabel: getSlotDisplayLabel(displayStatus, undefined, 'en'),
+      displayLabel_sr: getSlotDisplayLabel(displayStatus, undefined, 'sr'),
+    };
+  }
+  
   return {
     slotId: slot.slotId,
     listingId: slot.listingId,
     listingName,
     thumbnailUrl,
     activatedAt: slot.activatedAt,
+    isCommissionBased: false,
     expiresAt: slot.expiresAt,
     daysRemaining: calculateDaysRemaining(slot.expiresAt),
     reviewCompensationDays: slot.reviewCompensationDays,

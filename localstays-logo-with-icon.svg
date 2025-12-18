@@ -1,0 +1,11 @@
+<svg width="240" height="40" viewBox="0 0 240 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon -->
+  <rect x="0" y="5" width="32" height="32" rx="8" fill="#FFFFFF"/>
+  <text x="16" y="28" font-family="Geist, system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="#243447" text-anchor="middle">L</text>
+  
+  <!-- Text -->
+  <text x="44" y="30" font-family="Geist, system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="#FFFFFF">
+    <tspan fill="#FFFFFF">Local</tspan><tspan fill="#FF6B6B">Stays</tspan>
+  </text>
+</svg>
+

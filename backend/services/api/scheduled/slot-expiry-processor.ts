@@ -164,11 +164,13 @@ async function sendExpiryWarningNotifications(
   const language = normalizeLanguage(host.preferredLanguage);
   const subscriptionUrl = `${FRONTEND_URL}/${language}/subscription`;
 
-  // Prepare listings data for email
-  const listings = slots.map(slot => ({
-    listingName: slot.listingName || 'Unknown Listing',
-    expiresAt: slot.expiresAt,
-  }));
+  // Prepare listings data for email (only subscription-based slots have expiresAt)
+  const listings = slots
+    .filter(slot => slot.expiresAt) // Filter out any commission-based slots
+    .map(slot => ({
+      listingName: slot.listingName || 'Unknown Listing',
+      expiresAt: slot.expiresAt!,
+    }));
 
   // Send email
   try {
@@ -218,8 +220,14 @@ async function processExpiredSlots(): Promise<void> {
     return;
   }
 
-  // Filter out slots in grace period (unless marked for immediate expiry)
+  // Filter out slots that shouldn't be processed
   const slotsToProcess = expiredSlots.filter(slot => {
+    // Skip commission-based slots - they don't expire
+    // (This is a defensive check - commission slots shouldn't be in ExpiryIndex anyway)
+    if (slot.isCommissionBased) {
+      console.log(`⏸️ Skipping slot ${slot.slotId} - commission-based (no expiry)`);
+      return false;
+    }
     // Process if marked for immediate expiry
     if (slot.markedForImmediateExpiry) {
       return true;
@@ -560,6 +568,7 @@ async function updateListingStatus(
             slotExpiresAt = :null,
             slotDoNotRenew = :null,
             slotIsPastDue = :null,
+            isCommissionBased = :null,
             updatedAt = :now
       `,
       ExpressionAttributeNames: {

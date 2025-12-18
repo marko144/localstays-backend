@@ -26,77 +26,13 @@ interface EmailTemplate {
   updatedAt: string;
 }
 
+const now = new Date().toISOString();
+const currentYear = new Date().getFullYear();
+
 /**
  * Email templates to seed
  */
 const EMAIL_TEMPLATES: EmailTemplate[] = [
-  // ========================================
-  // PROFILE_SUBMISSION_CONFIRMATION - Serbian
-  // ========================================
-  {
-    pk: 'EMAIL_TEMPLATE#PROFILE_SUBMISSION_CONFIRMATION',
-    sk: 'LANG#sr',
-    templateName: 'PROFILE_SUBMISSION_CONFIRMATION',
-    language: 'sr',
-    subject: 'Profil uspešno poslat',
-    bodyText: `Poštovani/a {{name}},
-
-Hvala što ste poslali informacije o svom profilu.
-
-Verifikovaćemo vaše podatke i kontaktiraćemo vas ako nam bude potrebno više informacija.
-
-Srdačan pozdrav,
-Localstays tim`,
-    bodyHtml: `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profil uspešno poslat</title>
-  </head>
-  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <tr>
-              <td style="padding: 40px 40px 20px 40px;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Profil uspešno poslat</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 40px 20px 40px;">
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Poštovani/a {{name}},
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Hvala što ste poslali informacije o svom profilu.
-                </p>
-                <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Verifikovaćemo vaše podatke i kontaktiraćemo vas ako nam bude potrebno više informacija.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  Srdačan pozdrav,<br>
-                  Localstays tim
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`,
-    variables: ['name'],
-    version: '1.0.0',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-
   // ========================================
   // PROFILE_SUBMISSION_CONFIRMATION - English
   // ========================================
@@ -106,139 +42,191 @@ Localstays tim`,
     templateName: 'PROFILE_SUBMISSION_CONFIRMATION',
     language: 'en',
     subject: 'Profile Successfully Submitted',
-    bodyText: `Dear {{name}},
+    bodyText: `Hi {{name}},
 
 Thank you for submitting your profile information.
 
 We will verify your details and get in touch if we need more information.
 
 Best regards,
-Localstays Team`,
+The LocalStays Team
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile Successfully Submitted</title>
-  </head>
-  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <tr>
-              <td style="padding: 40px 40px 20px 40px;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Profile Successfully Submitted</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 40px 20px 40px;">
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Dear {{name}},
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Thank you for submitting your profile information.
-                </p>
-                <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  We will verify your details and get in touch if we need more information.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  Best regards,<br>
-                  Localstays Team
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile Successfully Submitted</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Info Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #eff6ff; padding: 8px 16px; border-radius: 20px; border: 1px solid #bfdbfe;">
+                    <span style="color: #1d4ed8; font-size: 14px; font-weight: 600;">📋 Submission Received</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hi {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Thank you for submitting your profile information.
+              </p>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                We will verify your details and get in touch if we need more information.
+              </p>
+              <!-- Closing -->
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Best regards,<br>
+                <span style="color: #374151; font-weight: 500;">The LocalStays Team</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>`,
     variables: ['name'],
     version: '1.0.0',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   },
-
-  // ========================================
-  // LIVE_ID_CHECK_REQUEST - Serbian
-  // ========================================
   {
-    pk: 'EMAIL_TEMPLATE#LIVE_ID_CHECK_REQUEST',
+    pk: 'EMAIL_TEMPLATE#PROFILE_SUBMISSION_CONFIRMATION',
     sk: 'LANG#sr',
-    templateName: 'LIVE_ID_CHECK_REQUEST',
+    templateName: 'PROFILE_SUBMISSION_CONFIRMATION',
     language: 'sr',
-    subject: 'Potrebna akcija: Završite proveru identiteta uživo',
-    bodyText: `Poštovani/a {{name}},
+    subject: 'Profil uspešno poslat',
+    bodyText: `Zdravo {{name}},
 
-Hvala vam što ste poslali informacije o svom profilu.
+Hvala što ste poslali informacije o svom profilu.
 
-Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
-
-Molimo vas prijavite se da završite ovaj korak.
-
-Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte.
+Verifikovaćemo vaše podatke i kontaktiraćemo vas ako nam bude potrebno više informacija.
 
 Srdačan pozdrav,
-Localstays tim`,
+LocalStays Tim
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Potrebna akcija: Završite proveru identiteta uživo</title>
-  </head>
-  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <tr>
-              <td style="padding: 40px 40px 20px 40px;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Potrebna akcija: Završite proveru identiteta uživo</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 40px 20px 40px;">
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Poštovani/a {{name}},
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Hvala vam što ste poslali informacije o svom profilu.
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
-                </p>
-                <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Molimo vas prijavite se da završite ovaj korak.
-                </p>
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  Srdačan pozdrav,<br>
-                  Localstays tim
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profil uspešno poslat</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Info Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #eff6ff; padding: 8px 16px; border-radius: 20px; border: 1px solid #bfdbfe;">
+                    <span style="color: #1d4ed8; font-size: 14px; font-weight: 600;">📋 Prijava primljena</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Zdravo {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hvala što ste poslali informacije o svom profilu.
+              </p>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Verifikovaćemo vaše podatke i kontaktiraćemo vas ako nam bude potrebno više informacija.
+              </p>
+              <!-- Closing -->
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Srdačan pozdrav,<br>
+                <span style="color: #374151; font-weight: 500;">LocalStays Tim</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. Sva prava zadržana.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>`,
     variables: ['name'],
     version: '1.0.0',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   },
 
   // ========================================
@@ -250,72 +238,221 @@ Localstays tim`,
     templateName: 'LIVE_ID_CHECK_REQUEST',
     language: 'en',
     subject: 'Action Required: Complete Your Live ID Check',
-    bodyText: `Dear {{name}},
+    bodyText: `Hi {{name}},
 
 Thank you for submitting your profile information.
 
 To complete your verification, please log in to your host portal and complete the Live ID check. This helps us verify your identity and keep our community safe.
 
-Please log in to complete this step.
+Go to Dashboard: {{dashboardUrl}}
 
-If you have any questions, please don't hesitate to contact us.
+If you have any questions, please don't hesitate to contact us at hello@localstays.me.
 
 Best regards,
-The Localstays Team`,
+The LocalStays Team
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
     bodyHtml: `<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Action Required: Complete Your Live ID Check</title>
-  </head>
-  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <tr>
-              <td style="padding: 40px 40px 20px 40px;">
-                <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #333333;">Action Required: Complete Your Live ID Check</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 40px 20px 40px;">
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Dear {{name}},
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Thank you for submitting your profile information.
-                </p>
-                <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  To complete your verification, please log in to your host portal and complete the Live ID check. This helps us verify your identity and keep our community safe.
-                </p>
-                <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.5; color: #666666;">
-                  Please log in to complete this step.
-                </p>
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  If you have any questions, please don't hesitate to contact us.
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 20px 40px 40px 40px; border-top: 1px solid #eeeeee;">
-                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #999999;">
-                  Best regards,<br>
-                  The Localstays Team
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action Required: Complete Your Live ID Check</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Action Required Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #fef3c7; padding: 8px 16px; border-radius: 20px; border: 1px solid #fcd34d;">
+                    <span style="color: #b45309; font-size: 14px; font-weight: 600;">⚠ Action Required</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hi {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Thank you for submitting your profile information.
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                To complete your verification, please log in to your host portal and complete the Live ID check. This helps us verify your identity and keep our community safe.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">Go to Dashboard</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                If you have any questions, please don't hesitate to contact us at <a href="mailto:hello@localstays.me" style="color: #243447; text-decoration: underline;">hello@localstays.me</a>.
+              </p>
+              <!-- Closing -->
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Best regards,<br>
+                <span style="color: #374151; font-weight: 500;">The LocalStays Team</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. All rights reserved.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>`,
-    variables: ['name'],
+    variables: ['name', 'dashboardUrl'],
     version: '1.0.0',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    pk: 'EMAIL_TEMPLATE#LIVE_ID_CHECK_REQUEST',
+    sk: 'LANG#sr',
+    templateName: 'LIVE_ID_CHECK_REQUEST',
+    language: 'sr',
+    subject: 'Potrebna akcija: Završite proveru identiteta uživo',
+    bodyText: `Zdravo {{name}},
+
+Hvala vam što ste poslali informacije o svom profilu.
+
+Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
+
+Idite na kontrolnu tablu: {{dashboardUrl}}
+
+Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte na hello@localstays.me.
+
+Srdačan pozdrav,
+LocalStays Tim
+
+---
+© ${currentYear} LocalStays
+hello@localstays.me`,
+    bodyHtml: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Potrebna akcija: Završite proveru identiteta uživo</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          <!-- HEADER -->
+          <tr>
+            <td style="background-color: #243447; padding: 24px 40px; border-radius: 12px 12px 0 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right: 12px; vertical-align: middle;">
+                    <div style="width: 36px; height: 36px; background-color: #ffffff; border-radius: 8px; text-align: center; line-height: 36px;">
+                      <span style="color: #243447; font-size: 20px; font-weight: 700;">L</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #ffffff; font-size: 24px; font-weight: 700;">Local</span><span style="color: #FF6B6B; font-size: 24px; font-weight: 700;">Stays</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- CONTENT -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <!-- Action Required Badge -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #fef3c7; padding: 8px 16px; border-radius: 20px; border: 1px solid #fcd34d;">
+                    <span style="color: #b45309; font-size: 14px; font-weight: 600;">⚠ Potrebna akcija</span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Greeting -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Zdravo {{name}},
+              </p>
+              <!-- Main Message -->
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Hvala vam što ste poslali informacije o svom profilu.
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Da biste završili verifikaciju, molimo vas da se prijavite na svoj portal i završite proveru identiteta uživo. Ovo nam pomaže da potvrdimo vaš identitet i održimo našu zajednicu bezbednom.
+              </p>
+              <!-- CTA Button -->
+              <table cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+                <tr>
+                  <td style="background-color: #243447; border-radius: 8px;">
+                    <a href="{{dashboardUrl}}" style="display: inline-block; padding: 14px 28px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">Idi na kontrolnu tablu</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 0 0 28px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                Ako imate bilo kakvih pitanja, slobodno nas kontaktirajte na <a href="mailto:hello@localstays.me" style="color: #243447; text-decoration: underline;">hello@localstays.me</a>.
+              </p>
+              <!-- Closing -->
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #6b7280;">
+                Srdačan pozdrav,<br>
+                <span style="color: #374151; font-weight: 500;">LocalStays Tim</span>
+              </p>
+            </td>
+          </tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 24px 40px; border-radius: 0 0 12px 12px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; text-align: center;">
+                © ${currentYear} LocalStays. Sva prava zadržana.<br>
+                <a href="mailto:hello@localstays.me" style="color: #6b7280; text-decoration: none;">hello@localstays.me</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+    variables: ['name', 'dashboardUrl'],
+    version: '1.0.0',
+    createdAt: now,
+    updatedAt: now,
   },
 ];
 
@@ -325,8 +462,11 @@ import { adminEmailTemplates } from './admin-email-templates';
 // Import subscription email templates
 import { subscriptionEmailTemplates } from './subscription-email-templates';
 
+// Import verification email templates
+import { verificationEmailTemplates } from './verification-email-templates';
+
 // Combine all templates
-const ALL_EMAIL_TEMPLATES = [...EMAIL_TEMPLATES, ...adminEmailTemplates, ...subscriptionEmailTemplates];
+const ALL_EMAIL_TEMPLATES = [...EMAIL_TEMPLATES, ...adminEmailTemplates, ...subscriptionEmailTemplates, ...verificationEmailTemplates];
 
 /**
  * Seed email templates into DynamoDB
