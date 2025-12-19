@@ -743,6 +743,18 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
+    // GET /api/v1/hosts/{hostId}/publishing-options
+    // Returns what publishing options are available (subscription vs commission-based)
+    const publishingOptionsResource = hostIdParam.addResource('publishing-options');
+    publishingOptionsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // ========================================
     // API Gateway Routes - Stripe
     // ========================================
@@ -1026,17 +1038,6 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
-    // GET /api/v1/hosts/{hostId}/listings/{listingId}/publishing-options
-    // Returns what publishing options are available (subscription vs commission-based)
-    const publishingOptionsResource = listingIdParam.addResource('publishing-options');
-    publishingOptionsResource.addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
-      {
-        authorizer: this.authorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      }
-    );
 
     // GET /api/v1/hosts/{hostId}/listings/{listingId}/requests
     const listingRequestsResource = listingIdParam.addResource('requests');

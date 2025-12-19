@@ -107,8 +107,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await convertSlotHandler(event);
     }
 
-    // Route: GET /api/v1/hosts/{hostId}/listings/{listingId}/publishing-options
-    if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/listings/{listingId}/publishing-options') {
+    // Route: GET /api/v1/hosts/{hostId}/publishing-options
+    if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/publishing-options') {
       return await getPublishingOptionsHandler(event);
     }
 

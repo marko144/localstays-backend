@@ -17,7 +17,7 @@ The frontend decides which type to use based on what's available.
 **Before showing publish UI**, call this to determine what options are available.
 
 ```
-GET /api/v1/hosts/{hostId}/listings/{listingId}/publishing-options
+GET /api/v1/hosts/{hostId}/publishing-options
 ```
 
 **Response:**
@@ -130,7 +130,7 @@ POST /api/v1/hosts/{hostId}/listings/{listingId}/slot/convert
 
 ```typescript
 // 1. Check options before showing publish dialog
-const options = await getPublishingOptions(hostId, listingId);
+const options = await getPublishingOptions(hostId);
 
 // 2. Determine what to show
 if (options.canPublishSubscriptionBased && options.canPublishCommissionBased) {

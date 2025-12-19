@@ -1,7 +1,7 @@
 /**
  * Get Publishing Options Handler
  * 
- * GET /api/v1/hosts/{hostId}/listings/{listingId}/publishing-options
+ * GET /api/v1/hosts/{hostId}/publishing-options
  * 
  * Returns what publishing options are available for a host:
  * - Can they publish subscription-based? (with available tokens)
@@ -33,10 +33,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     // Extract path parameters
     const hostId = event.pathParameters?.hostId;
-    const listingId = event.pathParameters?.listingId;
 
-    if (!hostId || !listingId) {
-      return response.badRequest('Missing hostId or listingId');
+    if (!hostId) {
+      return response.badRequest('Missing hostId');
     }
 
     // Extract user from JWT
