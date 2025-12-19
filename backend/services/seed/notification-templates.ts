@@ -64,7 +64,7 @@ export const notificationTemplates: NotificationTemplate[] = [
     templateName: 'LISTING_REJECTED',
     language: 'sr',
     title: '❌ Oglas odbijen',
-    body: 'Vaš oglas "{{listingName}}" je odbijen. Razlog: {{reason}}',
+    body: 'Vaš oglas "{{listingName}}" je odbijen. Pogledajte detalje u aplikaciji.',
     icon: '/icon-192x192.png',
     badge: '/badge-72x72.png',
     actionUrlPath: '/listings/{{listingId}}',
@@ -85,7 +85,7 @@ export const notificationTemplates: NotificationTemplate[] = [
     templateName: 'LISTING_REJECTED',
     language: 'en',
     title: '❌ Listing Rejected',
-    body: 'Your listing "{{listingName}}" has been rejected. Reason: {{reason}}',
+    body: 'Your listing "{{listingName}}" has been rejected. Check the app for details.',
     icon: '/icon-192x192.png',
     badge: '/badge-72x72.png',
     actionUrlPath: '/listings/{{listingId}}',
@@ -148,7 +148,7 @@ export const notificationTemplates: NotificationTemplate[] = [
     templateName: 'HOST_REJECTED',
     language: 'sr',
     title: '❌ Profil odbijen',
-    body: 'Vaš host profil je odbijen. Razlog: {{reason}}',
+    body: 'Vaš host profil je odbijen. Pogledajte detalje u aplikaciji.',
     icon: '/icon-192x192.png',
     badge: '/badge-72x72.png',
     actionUrlPath: '/profile',
@@ -169,7 +169,7 @@ export const notificationTemplates: NotificationTemplate[] = [
     templateName: 'HOST_REJECTED',
     language: 'en',
     title: '❌ Profile Rejected',
-    body: 'Your host profile has been rejected. Reason: {{reason}}',
+    body: 'Your host profile has been rejected. Check the app for details.',
     icon: '/icon-192x192.png',
     badge: '/badge-72x72.png',
     actionUrlPath: '/profile',
@@ -179,48 +179,6 @@ export const notificationTemplates: NotificationTemplate[] = [
     createdAt: now,
     updatedAt: now,
     notes: 'Notification sent when admin rejects a host profile (KYC)',
-  },
-
-  // ============================================================================
-  // REQUEST_UPDATE_NEEDED - Serbian
-  // ============================================================================
-  {
-    pk: 'NOTIFICATION_TEMPLATE#REQUEST_UPDATE_NEEDED',
-    sk: 'LANG#sr',
-    templateName: 'REQUEST_UPDATE_NEEDED',
-    language: 'sr',
-    title: '📝 Potrebne izmene',
-    body: 'Admin traži izmene za vaš {{requestType}} zahtev. Razlog: {{reason}}',
-    icon: '/icon-192x192.png',
-    badge: '/badge-72x72.png',
-    actionUrlPath: '/requests',
-    requireInteraction: true,
-    silent: false,
-    tag: 'request-update-needed',
-    createdAt: now,
-    updatedAt: now,
-    notes: 'Notification sent when admin requests changes to a host request',
-  },
-
-  // ============================================================================
-  // REQUEST_UPDATE_NEEDED - English
-  // ============================================================================
-  {
-    pk: 'NOTIFICATION_TEMPLATE#REQUEST_UPDATE_NEEDED',
-    sk: 'LANG#en',
-    templateName: 'REQUEST_UPDATE_NEEDED',
-    language: 'en',
-    title: '📝 Updates Needed',
-    body: 'Admin requested changes to your {{requestType}} request. Reason: {{reason}}',
-    icon: '/icon-192x192.png',
-    badge: '/badge-72x72.png',
-    actionUrlPath: '/requests',
-    requireInteraction: true,
-    silent: false,
-    tag: 'request-update-needed',
-    createdAt: now,
-    updatedAt: now,
-    notes: 'Notification sent when admin requests changes to a host request',
   },
 
   // ============================================================================

@@ -17,6 +17,7 @@ import { ListingMetadata } from '../../../types/listing.types';
 import { RejectListingRequest } from '../../../types/admin.types';
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendListingRejectedEmail } from '../../lib/email-service';
+import { sendTemplatedNotification } from '../../lib/notification-template-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -255,7 +256,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Listing ${listingId} rejected successfully`);
 
-    // 7. Send rejection email
+    // 7. Send rejection email and push notification
     try {
       // Fetch host details for email
       const hostResult = await docClient.send(
@@ -283,6 +284,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           rejectionReason
         );
         console.log(`📧 Rejection email sent to ${host.email}`);
+
+        // Send push notification
+        if (host.ownerUserSub) {
+          try {
+            const pushResult = await sendTemplatedNotification(
+              host.ownerUserSub,
+              'LISTING_REJECTED',
+              host.preferredLanguage || 'sr',
+              {
+                listingName: listing.listingName,
+                listingId: listingId,
+              }
+            );
+            console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+          } catch (pushError) {
+            console.error('Failed to send push notification:', pushError);
+          }
+        }
       }
     } catch (emailError) {
       console.error('Failed to send rejection email:', emailError);

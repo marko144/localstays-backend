@@ -39,6 +39,8 @@ import {
   sendSubscriptionRenewedEmail,
 } from '../api/lib/email-service';
 
+import { sendTemplatedNotification } from '../api/lib/notification-template-service';
+
 // ============================================================================
 // HOST PROFILE HELPERS
 // ============================================================================
@@ -49,6 +51,7 @@ interface HostProfile {
   firstName?: string;
   lastName?: string;
   preferredLanguage?: string;
+  ownerUserSub?: string;
 }
 
 async function getHostProfile(hostId: string): Promise<HostProfile | null> {
@@ -713,7 +716,7 @@ export async function handlePaymentFailed(
 
     console.log(`⚠️ Payment failed for host ${data.hostId} - subscription now PAST_DUE`);
 
-    // Send payment failed email
+    // Send payment failed email and push notification
     try {
       const host = await getHostProfile(data.hostId);
       if (host?.email) {
@@ -730,6 +733,21 @@ export async function handlePaymentFailed(
           customerPortalUrl
         );
         console.log(`📧 Payment failed email sent to ${host.email}`);
+
+        // Send push notification
+        if (host.ownerUserSub) {
+          try {
+            const pushResult = await sendTemplatedNotification(
+              host.ownerUserSub,
+              'PAYMENT_FAILED',
+              language,
+              {}
+            );
+            console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+          } catch (pushError) {
+            console.error('Failed to send payment failed push notification:', pushError);
+          }
+        }
       }
     } catch (emailError) {
       console.error('Failed to send payment failed email:', emailError);

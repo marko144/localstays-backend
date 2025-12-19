@@ -16,6 +16,7 @@ import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../../l
 import { Host, isIndividualHost } from '../../../types/host.types';
 import { sendHostProfileApprovedEmail } from '../../lib/email-service';
 import { syncHostVerificationStatus } from '../../../lib/host-verification-sync';
+import { sendTemplatedNotification } from '../../lib/notification-template-service';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -186,10 +187,26 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       // Don't fail the request if email fails
     }
 
-    // 8. Log admin action
+    // 8. Send push notification
+    if (host.ownerUserSub) {
+      try {
+        const pushResult = await sendTemplatedNotification(
+          host.ownerUserSub,
+          'HOST_APPROVED',
+          host.preferredLanguage || 'sr',
+          {}
+        );
+        console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+      } catch (pushError) {
+        console.error('Failed to send push notification:', pushError);
+        // Don't fail the request if push fails
+      }
+    }
+
+    // 9. Log admin action
     logAdminAction(user, 'APPROVE_HOST', 'HOST', hostId);
 
-    // 9. Return success response
+    // 10. Return success response
     return {
       statusCode: 200,
       headers: {
