@@ -95,8 +95,8 @@
         "geocodeLifetimeLimit": 100
       },
       "prod": {
-        "account": "TBD",
-        "region": "eu-central-1",
+        "account": "041608526793",
+        "region": "eu-north-1",
         "stage": "prod",
         "frontendUrl": "https://portal.localstays.me",
         "geocodeHourlyLimit": 50,

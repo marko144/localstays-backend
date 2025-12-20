@@ -303,7 +303,9 @@ guestApiStack.addDependency(rateLimitStack);
 // Stripe Event Source Names per environment (from Stripe Dashboard → Developers → Webhooks → EventBridge)
 const stripeEventSourceNames: Record<string, string> = {
   staging: 'aws.partner/stripe.com/ed_test_61Tk7Xvlo3KznFDAL16Tk6KN2VE9BfC6cP2LuQVWSC5I',
-  // prod: 'aws.partner/stripe.com/<prod_event_destination_id>', // Add when prod is configured
+  // TEMPORARY: Using staging Stripe event source for prod until LIVE Stripe is configured
+  // TODO: Replace with production event source when switching to sk_live_ keys
+  prod: 'aws.partner/stripe.com/ed_test_61Tk7Xvlo3KznFDAL16Tk6KN2VE9BfC6cP2LuQVWSC5I',
 };
 
 const stripeEventBridgeStack = new StripeEventBridgeStack(app, `${stackPrefix}StripeEventBridgeStack`, {

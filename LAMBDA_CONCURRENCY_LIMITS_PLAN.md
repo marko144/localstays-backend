@@ -1,6 +1,7 @@
 # Lambda Concurrency Limits - Production Readiness Plan
 
 **Date:** November 27, 2025  
+**Last Updated:** December 19, 2025  
 **Status:** ✅ Approved - Ready for Implementation
 
 ---
@@ -127,11 +128,13 @@ Functions without reserved concurrency share the remaining pool and compete for 
 | **Host API**               |
 | host-listings-handler      | 3       | 100        | High usage CRUD                   |
 | host-profile-handler       | 2       | 50         | Profile operations                |
+| host-legal-handler         | 1       | 10         | Legal document management         |
 | host-availability-handler  | 2       | 50         | Availability management           |
 | host-requests-handler      | 2       | 50         | Request management                |
 | publish-listing            | 2       | 20         | Rate-limited publish              |
-| unpublish-listing          | 2       | 20         | Rate-limited unpublish            |
 | get-subscription           | 2       | 10         | Subscription queries              |
+| customer-portal            | 1       | 5          | Stripe portal redirect            |
+| stripe-handler             | 2       | 10         | Checkout sessions (new subs only) |
 | subscribe-notification     | 2       | 10         | Notification subscription         |
 | unsubscribe-notification   | 2       | 10         | Notification unsubscribe          |
 | check-notification-status  | 2       | 10         | Notification status               |
@@ -139,10 +142,14 @@ Functions without reserved concurrency share the remaining pool and compete for 
 | admin-hosts-handler        | 2       | 5          | Admin host management             |
 | admin-listings-handler     | 2       | 5          | Admin listing management          |
 | admin-requests-handler     | 2       | 5          | Admin request management          |
+| admin-subscriptions-handler| 1       | 2          | Admin plan CRUD (rare)            |
+| admin-legal-handler        | 1       | 2          | Admin legal doc management        |
 | send-notification          | 2       | 5          | Admin notifications               |
 | **Shared Services**        |
 | image-processor            | 3       | 50         | Memory-intensive, longer duration |
 | verification-processor     | 3       | 30         | Document processing               |
+| **Scheduled Jobs**         |
+| slot-expiry-processor      | 1       | 2          | Cron job, runs 2x daily           |
 | **Auth Triggers**          |
 | pre-token-generation       | 2       | 50         | Login/token refresh               |
 | custom-email-sender        | 2       | 20         | Email sending                     |
@@ -151,20 +158,26 @@ Functions without reserved concurrency share the remaining pool and compete for 
 | **Data Seeding**           |
 | seed-handler               | 0       | 0          | Unreserved (one-time use)         |
 | seed-location-variants     | 0       | 0          | Unreserved (one-time use)         |
-| **TOTAL RESERVED**         | **56**  | **815**    | **871 total**                     |
-| **UNRESERVED POOL**        |         |            | **129 remaining**                 |
+| seed-subscription-plans    | 0       | 0          | Unreserved (one-time use)         |
+| seed-email-templates       | 0       | 0          | Unreserved (one-time use)         |
+| **TOTAL RESERVED**         | **62**  | **831**    | **893 total**                     |
+| **UNRESERVED POOL**        |         |            | **107 remaining**                 |
 
 **Account Limit:** 1,000  
-**Total Reserved (Staging + Production):** 871  
-**Remaining Unreserved:** 129
+**Total Reserved (Staging + Production):** 893  
+**Remaining Unreserved:** 107
 
 **Key Decisions:**
 
-- Staging kept minimal (56 total) for testing only
+- Staging kept minimal (62 total) for testing only
 - Production prioritizes public-facing APIs (search: 250 total)
 - Image/verification processors get higher limits due to longer execution times
-- Admin APIs kept low (5 each) - low traffic, can use unreserved pool if needed
+- Admin APIs kept very low (2-5 each) - low traffic, can use unreserved pool if needed
 - Geocoding rate limit reduced to 25 (infrequent operation during listing creation)
+- Stripe renewals handled via SQS queue (`stripe-eventbridge-handler`) with backpressure
+- `stripe-handler` only creates new checkout sessions (low volume, 10 prod)
+- Scheduled jobs (`slot-expiry-processor`) have minimal concurrency (1 at a time)
+- Removed `unpublish-listing` - now handled by `publish-listing` handler
 - 129 unreserved for burst capacity and flexibility
 
 ---

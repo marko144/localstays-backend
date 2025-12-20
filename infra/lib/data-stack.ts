@@ -696,61 +696,59 @@ export class DataStack extends cdk.Stack {
     // ========================================
     // Subscription Plans Seeding CustomResource
     // ========================================
-    
-    // Lambda function to seed subscription plans to the SubscriptionPlans table
-    const seedSubscriptionPlansLambda = new nodejs.NodejsFunction(this, 'SeedSubscriptionPlansHandler', {
-      functionName: `localstays-${stage}-subscription-plans-seed`,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      entry: 'backend/services/seed/seed-subscription-plans.ts',
-      handler: 'handler',
-      timeout: cdk.Duration.minutes(2),
-      memorySize: 256,
-      environment: {
-        SUBSCRIPTION_PLANS_TABLE_NAME: this.subscriptionPlansTable.tableName,
-      },
-      bundling: {
-        minify: true,
-        sourceMap: true,
-        target: 'es2022',
-        externalModules: ['@aws-sdk/*'],
-      },
-      logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansHandlerLogs', {
-        logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-seed`,
-        retention: stage === 'prod' 
-          ? logs.RetentionDays.ONE_MONTH 
-          : logs.RetentionDays.ONE_WEEK,
-        removalPolicy: stage === 'prod' 
-          ? cdk.RemovalPolicy.RETAIN 
-          : cdk.RemovalPolicy.DESTROY,
-      }),
-    });
+    // 
+    // NOTE: Only runs for dev/staging environments.
+    // Production should sync plans directly from Stripe using:
+    //   STAGE=prod npx ts-node backend/scripts/sync-stripe-plans.ts
+    //
+    if (stage !== 'prod') {
+      // Lambda function to seed subscription plans to the SubscriptionPlans table
+      const seedSubscriptionPlansLambda = new nodejs.NodejsFunction(this, 'SeedSubscriptionPlansHandler', {
+        functionName: `localstays-${stage}-subscription-plans-seed`,
+        runtime: lambda.Runtime.NODEJS_22_X,
+        entry: 'backend/services/seed/seed-subscription-plans.ts',
+        handler: 'handler',
+        timeout: cdk.Duration.minutes(2),
+        memorySize: 256,
+        environment: {
+          SUBSCRIPTION_PLANS_TABLE_NAME: this.subscriptionPlansTable.tableName,
+        },
+        bundling: {
+          minify: true,
+          sourceMap: true,
+          target: 'es2022',
+          externalModules: ['@aws-sdk/*'],
+        },
+        logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansHandlerLogs', {
+          logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-seed`,
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      });
 
-    // Grant permissions to write to SubscriptionPlans table
-    this.subscriptionPlansTable.grantWriteData(seedSubscriptionPlansLambda);
+      // Grant permissions to write to SubscriptionPlans table
+      this.subscriptionPlansTable.grantWriteData(seedSubscriptionPlansLambda);
 
-    // Create custom resource provider
-    const seedSubscriptionPlansProvider = new cr.Provider(this, 'SeedSubscriptionPlansProvider', {
-      onEventHandler: seedSubscriptionPlansLambda,
-      logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansProviderLogs', {
-        logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-provider`,
-        retention: stage === 'prod' 
-          ? logs.RetentionDays.ONE_MONTH 
-          : logs.RetentionDays.ONE_WEEK,
-        removalPolicy: stage === 'prod' 
-          ? cdk.RemovalPolicy.RETAIN 
-          : cdk.RemovalPolicy.DESTROY,
-      }),
-    });
+      // Create custom resource provider
+      const seedSubscriptionPlansProvider = new cr.Provider(this, 'SeedSubscriptionPlansProvider', {
+        onEventHandler: seedSubscriptionPlansLambda,
+        logGroup: new logs.LogGroup(this, 'SeedSubscriptionPlansProviderLogs', {
+          logGroupName: `/aws/lambda/localstays-${stage}-subscription-plans-provider`,
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      });
 
-    // Create custom resource (triggers seeding on stack create/update)
-    new cdk.CustomResource(this, 'SeedSubscriptionPlansCustomResource', {
-      serviceToken: seedSubscriptionPlansProvider.serviceToken,
-      properties: {
-        SubscriptionPlansTableName: this.subscriptionPlansTable.tableName,
-        // Change this value to trigger re-seeding
-        Version: '1.0.0', // Initial version with Basic, Standard, Pro, Agency plans
-      },
-    });
+      // Create custom resource (triggers seeding on stack create/update)
+      new cdk.CustomResource(this, 'SeedSubscriptionPlansCustomResource', {
+        serviceToken: seedSubscriptionPlansProvider.serviceToken,
+        properties: {
+          SubscriptionPlansTableName: this.subscriptionPlansTable.tableName,
+          // Change this value to trigger re-seeding
+          Version: '1.0.0', // Initial version with Basic, Standard, Pro, Agency plans
+        },
+      });
+    }
 
     // Outputs (with environment-specific export names)
     const capitalizedStage = this.capitalize(stage);

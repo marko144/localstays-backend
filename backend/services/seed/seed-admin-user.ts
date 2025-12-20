@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import * as crypto from 'crypto';
 
 /**
  * Script to seed the first admin user
@@ -16,15 +17,47 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dyn
  * 2. User record in DynamoDB with ADMIN role
  * 
  * Admin users do NOT have host profiles.
+ * 
+ * For production: generates a strong random password and outputs it.
+ * For dev/staging: uses default password or ADMIN_PASSWORD env var.
  */
 
 const REGION = process.env.AWS_REGION || 'eu-north-1';
 const USER_POOL_ID = process.env.USER_POOL_ID!;
 const TABLE_NAME = process.env.TABLE_NAME!;
+const STAGE = process.env.STAGE || 'dev1';
 
 // Admin user details
-const ADMIN_EMAIL = 'marko+admin@velocci.me';
-const ADMIN_PASSWORD = 'Password1*';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'marko+admin@velocci.me';
+
+/**
+ * Generate a cryptographically secure password
+ * Format: 4 random words + special chars + numbers
+ * Example: Kx7mPq2nRt5wYz!@#$1234
+ */
+function generateStrongPassword(): string {
+  // Generate 20 random bytes and convert to base64-like string
+  const randomBytes = crypto.randomBytes(20);
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let password = '';
+  
+  for (let i = 0; i < 16; i++) {
+    password += chars[randomBytes[i] % chars.length];
+  }
+  
+  // Add required character types for Cognito
+  password += '!@#$'[randomBytes[16] % 4];  // Special char
+  password += '!@#$'[randomBytes[17] % 4];  // Another special
+  password += String(randomBytes[18] % 10); // Number
+  password += String(randomBytes[19] % 10); // Another number
+  
+  return password;
+}
+
+// For production, generate a strong password; otherwise use env var or default
+const ADMIN_PASSWORD = STAGE === 'prod' 
+  ? generateStrongPassword()
+  : (process.env.ADMIN_PASSWORD || 'Password1*');
 
 const cognitoClient = new CognitoIdentityProviderClient({ region: REGION });
 const dynamoClient = new DynamoDBClient({ region: REGION });
