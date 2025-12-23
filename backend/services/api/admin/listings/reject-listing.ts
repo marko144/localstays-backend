@@ -256,9 +256,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Listing ${listingId} rejected successfully`);
 
-    // 7. Send rejection email and push notification
+    // 7. Fetch host details for notifications
+    let host: Host | undefined;
     try {
-      // Fetch host details for email
       const hostResult = await docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
@@ -269,13 +269,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           },
         })
       );
-      
-      const host = hostResult.Items?.[0] as Host;
-      if (host) {
-        const hostName = isIndividualHost(host)
-          ? `${host.forename} ${host.surname}`
-          : host.legalName || host.displayName || host.businessName || 'Host';
-          
+      host = hostResult.Items?.[0] as Host;
+    } catch (hostError) {
+      console.error('Failed to fetch host for notifications:', hostError);
+    }
+
+    // 8. Send rejection email (independent of push notification)
+    if (host) {
+      const hostName = isIndividualHost(host)
+        ? `${host.forename} ${host.surname}`
+        : host.legalName || host.displayName || host.businessName || 'Host';
+
+      try {
         await sendListingRejectedEmail(
           host.email,
           host.preferredLanguage || 'sr',
@@ -284,37 +289,38 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           rejectionReason
         );
         console.log(`📧 Rejection email sent to ${host.email}`);
+      } catch (emailError) {
+        console.error('Failed to send rejection email:', emailError);
+        // Don't fail the request if email fails
+      }
 
-        // Send push notification
-        if (host.ownerUserSub) {
-          try {
-            const pushResult = await sendTemplatedNotification(
-              host.ownerUserSub,
-              'LISTING_REJECTED',
-              host.preferredLanguage || 'sr',
-              {
-                listingName: listing.listingName,
-                listingId: listingId,
-              }
-            );
-            console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
-          } catch (pushError) {
-            console.error('Failed to send push notification:', pushError);
-          }
+      // 9. Send push notification (independent of email)
+      if (host.ownerUserSub) {
+        try {
+          const pushResult = await sendTemplatedNotification(
+            host.ownerUserSub,
+            'LISTING_REJECTED',
+            host.preferredLanguage || 'sr',
+            {
+              listingName: listing.listingName,
+              listingId: listingId,
+            }
+          );
+          console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+        } catch (pushError) {
+          console.error('Failed to send push notification:', pushError);
+          // Don't fail the request if push notification fails
         }
       }
-    } catch (emailError) {
-      console.error('Failed to send rejection email:', emailError);
-      // Don't fail the request if email fails
     }
 
-    // 8. Log admin action
+    // 10. Log admin action
     logAdminAction(user, 'REJECT_LISTING', 'LISTING', listingId, {
       hostId: listing.hostId,
       rejectionReason,
     });
 
-    // 9. Return success response
+    // 11. Return success response
     return {
       statusCode: 200,
       headers: {

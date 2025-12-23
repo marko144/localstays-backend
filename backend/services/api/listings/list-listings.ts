@@ -115,6 +115,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 thumbnailUrl: buildListingImageUrls(primaryImage.webpUrls, primaryImage.updatedAt).thumbnailUrl || primaryImage.s3Url || '', // Fallback for legacy
               }
             : undefined,
+          readyToApprove: listing.readyToApprove || false,
           createdAt: listing.createdAt,
           updatedAt: listing.updatedAt,
         };

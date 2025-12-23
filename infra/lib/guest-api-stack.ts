@@ -86,6 +86,8 @@ export class GuestApiStack extends cdk.Stack {
               'http://localhost:3001',
               'http://192.168.4.54:3000',
               'http://192.168.4.54:3001',
+              'http://192.168.4.58:3000',
+              'http://192.168.4.58:3001',
               'https://staging.localstays.me',
             ],
         allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

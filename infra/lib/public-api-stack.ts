@@ -106,6 +106,8 @@ export class PublicApiStack extends cdk.Stack {
               'http://localhost:3001',
               'http://192.168.4.54:3000',
               'http://192.168.4.54:3001',
+              'http://192.168.4.58:3000',
+              'http://192.168.4.58:3001',
               'https://staging.portal.localstays.me',
               'https://staging.localstays.me',
             ],

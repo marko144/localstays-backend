@@ -17,6 +17,7 @@ import { PublicApiStack } from '../lib/public-api-stack';
 import { GuestApiStack } from '../lib/guest-api-stack';
 import { StripeEventBridgeStack } from '../lib/stripe-eventbridge-stack';
 import { ScheduledJobsStack } from '../lib/scheduled-jobs-stack';
+import { WafStack } from '../lib/waf-stack';
 
 /**
  * Localstays Backend Infrastructure
@@ -344,6 +345,36 @@ scheduledJobsStack.addDependency(dataStack);
 scheduledJobsStack.addDependency(emailTemplateStack);
 scheduledJobsStack.addDependency(paramsStack);
 
+// Stack 17: WAF (Web Application Firewall) - Production only
+// Protects all API Gateways with AWS managed rules + custom rate limiting
+// Initially deployed in COUNT mode for monitoring before switching to BLOCK
+let wafStack: WafStack | undefined;
+if (stage === 'prod') {
+  // Build API Gateway stage ARNs for WAF association
+  // Format: arn:aws:apigateway:{region}::/restapis/{api-id}/stages/{stage-name}
+  const buildApiGatewayStageArn = (apiId: string) => 
+    `arn:aws:apigateway:${region}::/restapis/${apiId}/stages/${stage}`;
+
+  wafStack = new WafStack(app, `${stackPrefix}WafStack`, {
+    env,
+    description: `WAF Web Application Firewall for API protection (${stage})`,
+    stackName: `localstays-${stage}-waf`,
+    stage,
+    apiGatewayArns: [
+      // We need to use Fn.join to construct ARNs from deployed API IDs
+      // Since the APIs are already deployed, we'll pass them directly
+      buildApiGatewayStageArn(hostApiStack.api.restApiId),
+      buildApiGatewayStageArn(adminApiStack.api.restApiId),
+      buildApiGatewayStageArn(publicApiStack.api.restApiId),
+      buildApiGatewayStageArn(guestApiStack.api.restApiId),
+    ],
+  });
+  wafStack.addDependency(hostApiStack);
+  wafStack.addDependency(adminApiStack);
+  wafStack.addDependency(publicApiStack);
+  wafStack.addDependency(guestApiStack);
+}
+
 console.log(`✅ Stack dependencies configured for ${stage} environment`);
 console.log('📦 Stacks to deploy:');
 console.log(`   1. ${paramsStack.stackName} (SSM Parameters)`);
@@ -362,6 +393,9 @@ console.log(`  13. ${publicApiStack.stackName} (Public API Gateway + Lambdas - G
 console.log(`  14. ${guestApiStack.stackName} (Guest API Gateway + Lambdas - Search)`);
 console.log(`  15. ${stripeEventBridgeStack.stackName} (Stripe EventBridge - Subscriptions)`);
 console.log(`  16. ${scheduledJobsStack.stackName} (Scheduled Jobs - Slot Expiry)`);
+if (wafStack) {
+  console.log(`  17. ${wafStack.stackName} (WAF - Web Application Firewall)`);
+}
 
 // Add global tags to all resources
 cdk.Tags.of(app).add('Project', 'Localstays');

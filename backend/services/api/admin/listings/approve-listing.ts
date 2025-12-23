@@ -351,9 +351,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       console.log(`✅ Listing ${listingId} approved successfully (listingVerified=${listingVerified})`);
     }
 
-    // 7. Send appropriate email and push notification
+    // 7. Fetch host details for notifications
+    let host: Host | undefined;
     try {
-      // Fetch host details for email and notification
       const hostResult = await docClient.send(
         new QueryCommand({
           TableName: TABLE_NAME,
@@ -364,15 +364,20 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           },
         })
       );
-      
-      const host = hostResult.Items?.[0] as Host;
-      if (host) {
-        const hostName = isIndividualHost(host)
-          ? `${host.forename} ${host.surname}`
-          : host.legalName || host.displayName || host.businessName || 'Host';
-        
+      host = hostResult.Items?.[0] as Host;
+    } catch (hostError) {
+      console.error('Failed to fetch host for notifications:', hostError);
+    }
+
+    // 8. Send email notification (independent of push notification)
+    if (host) {
+      const hostName = isIndividualHost(host)
+        ? `${host.forename} ${host.surname}`
+        : host.legalName || host.displayName || host.businessName || 'Host';
+
+      // Send email
+      try {
         if (finalStatus === 'ONLINE') {
-          // Send published email notification
           await sendListingPublishedEmail(
             host.email,
             host.preferredLanguage || 'sr',
@@ -381,26 +386,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             slotExpiresAt
           );
           console.log(`📧 Published email sent to ${host.email}`);
-          
-          // Send push notification for auto-publish
-          if (host.ownerUserSub) {
-            try {
-              const pushResult = await sendTemplatedNotification(
-                host.ownerUserSub,
-                'LISTING_PUBLISHED',
-                host.preferredLanguage || 'sr',
-                {
-                  listingName: listing.listingName,
-                  listingId: listingId,
-                }
-              );
-              console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
-            } catch (pushError) {
-              console.error('Failed to send push notification:', pushError);
-            }
-          }
         } else {
-          // Send approval email notification
           await sendListingApprovedEmail(
             host.email,
             host.preferredLanguage || 'sr',
@@ -408,40 +394,41 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             listing.listingName
           );
           console.log(`📧 Approval email sent to ${host.email}`);
+        }
+      } catch (emailError) {
+        console.error('Failed to send email:', emailError);
+        // Don't fail the request if email fails
+      }
 
-          // Send push notification using template
-          if (host.ownerUserSub) {
-            try {
-              const pushResult = await sendTemplatedNotification(
-                host.ownerUserSub,
-                'LISTING_APPROVED',
-                host.preferredLanguage || 'sr',
-                {
-                  listingName: listing.listingName,
-                  listingId: listingId,
-                }
-              );
-              console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
-            } catch (pushError) {
-              console.error('Failed to send push notification:', pushError);
-              // Don't fail the request if push notification fails
+      // 9. Send push notification (independent of email)
+      if (host.ownerUserSub) {
+        try {
+          const templateName = finalStatus === 'ONLINE' ? 'LISTING_PUBLISHED' : 'LISTING_APPROVED';
+          const pushResult = await sendTemplatedNotification(
+            host.ownerUserSub,
+            templateName,
+            host.preferredLanguage || 'sr',
+            {
+              listingName: listing.listingName,
+              listingId: listingId,
             }
-          }
+          );
+          console.log(`📱 Push notification sent: ${pushResult.sent} sent, ${pushResult.failed} failed`);
+        } catch (pushError) {
+          console.error('Failed to send push notification:', pushError);
+          // Don't fail the request if push notification fails
         }
       }
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError);
-      // Don't fail the request if email fails
     }
 
-    // 8. Log admin action
+    // 10. Log admin action
     logAdminAction(user, finalStatus === 'ONLINE' ? 'APPROVE_AND_PUBLISH_LISTING' : 'APPROVE_LISTING', 'LISTING', listingId, {
       hostId: listing.hostId,
       autoPublished: finalStatus === 'ONLINE',
       slotId,
     });
 
-    // 9. Return success response
+    // 11. Return success response
     return {
       statusCode: 200,
       headers: {

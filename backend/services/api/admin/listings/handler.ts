@@ -16,7 +16,7 @@ import { handler as bulkApproveByIds } from './bulk-approve-by-ids';
 import { handler as searchByLocation } from './search-by-location';
 
 /**
- * Consolidated Admin Listings Handler (v1.6 - supports bulk approve by IDs)
+ * Consolidated Admin Listings Handler (v1.7 - supports multi-location search)
  * 
  * Routes all admin listing operations to their respective handlers based on
  * HTTP method and resource path.
@@ -24,7 +24,7 @@ import { handler as searchByLocation } from './search-by-location';
  * Supported routes:
  * - GET    /api/v1/admin/listings                              → list all listings
  * - GET    /api/v1/admin/listings/pending-review               → list pending review listings
- * - GET    /api/v1/admin/listings/by-location/{locationId}     → search listings by location (efficient GSI query)
+ * - POST   /api/v1/admin/listings/by-location                  → search listings by one or more locations
  * - GET    /api/v1/admin/hosts/{hostId}/listings               → list listings for a host
  * - GET    /api/v1/admin/listings/{listingId}                  → get listing details
  * - GET    /api/v1/admin/locations/search                      → search locations for manual association
@@ -61,8 +61,8 @@ export const handler: APIGatewayProxyHandler = async (
       return (await pendingReviewListings(event, context, callback)) as APIGatewayProxyResult;
     }
 
-    // GET /api/v1/admin/listings/by-location/{locationId}
-    if (method === 'GET' && resource === '/api/v1/admin/listings/by-location/{locationId}') {
+    // POST /api/v1/admin/listings/by-location (search by one or more location IDs)
+    if (method === 'POST' && resource === '/api/v1/admin/listings/by-location') {
       return (await searchByLocation(event, context, callback)) as APIGatewayProxyResult;
     }
 

@@ -703,6 +703,7 @@ export interface ListListingsResponse {
       imageId: string;
       thumbnailUrl: string;      // Thumbnail WebP for listing cards
     };
+    readyToApprove?: boolean;     // Internal flag: listing is pre-approved and ready for bulk launch
     createdAt: string;
     updatedAt: string;
   }>;

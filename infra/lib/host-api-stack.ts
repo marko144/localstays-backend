@@ -138,6 +138,7 @@ export class HostApiStack extends cdk.Stack {
           : [
               'http://localhost:3000',
               'http://192.168.4.54:3000',
+              'http://192.168.4.58:3000',
               'https://staging.portal.localstays.me',
             ],
         allowMethods: apigateway.Cors.ALL_METHODS,

@@ -1,20 +1,23 @@
 /**
- * Admin API: Search Listings by Location
+ * Admin API: Search Listings by Location(s)
  * 
- * GET /api/v1/admin/listings/by-location/{locationId}?limit=200&nextToken=xxx&readyToApprove=true
+ * POST /api/v1/admin/listings/by-location
  * 
- * Returns listings in a specific location using GSI8 (LocationIndex).
- * Efficient query - no table scan required.
+ * Body: { locationIds: string[], readyToApprove?: boolean, limit?: number, nextToken?: string }
  * 
- * Query Parameters:
+ * Returns listings in one or more locations using GSI8 (LocationIndex).
+ * Queries each location in parallel and merges results.
+ * 
+ * Request Body:
+ * - locationIds: Array of location IDs to search (required, 1-20 IDs)
+ * - readyToApprove: Optional filter - true or false (if omitted, no filter applied)
  * - limit: Number of items per page (default: 200, max: 500)
  * - nextToken: Pagination token from previous response (base64 encoded)
- * - readyToApprove: Optional filter - "true" or "false" (if omitted, no filter applied)
  * 
  * Response includes:
  * - listingId, listingName
  * - hostId, hostName, hostEmail
- * - locationName
+ * - locationId, locationName
  * - status, readyToApprove flag
  * - total count, nextToken (if more results exist)
  * 
@@ -29,12 +32,20 @@ import { Host, isIndividualHost } from '../../../types/host.types';
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
+const MAX_LOCATION_IDS = 20;
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
 const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
+
+interface SearchByLocationRequest {
+  locationIds: string[];
+  readyToApprove?: boolean;
+  limit?: number;
+  nextToken?: string;
+}
 
 interface ListingByLocationResult {
   listingId: string;
@@ -47,6 +58,26 @@ interface ListingByLocationResult {
   status: string;
   readyToApprove: boolean;
   createdAt: string;
+}
+
+/**
+ * Decode pagination token from base64
+ */
+function decodeNextToken(token: string | undefined): number {
+  if (!token) return 0;
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+    return decoded.offset || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Encode pagination token to base64
+ */
+function encodeNextToken(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset })).toString('base64');
 }
 
 /**
@@ -89,7 +120,6 @@ async function getHostDetails(hostId: string): Promise<{ name: string; email: st
  */
 async function getLocationName(locationId: string): Promise<string> {
   try {
-    // Query for any name variant of this location
     const result = await docClient.send(
       new QueryCommand({
         TableName: LOCATIONS_TABLE_NAME,
@@ -113,34 +143,54 @@ async function getLocationName(locationId: string): Promise<string> {
 }
 
 /**
- * Decode pagination token from base64
+ * Query listings for a single location
  */
-function decodeNextToken(token: string | undefined): Record<string, any> | undefined {
-  if (!token) return undefined;
-  try {
-    return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-  } catch {
-    return undefined;
+async function queryListingsForLocation(
+  locationId: string,
+  readyToApproveFilter: boolean | undefined
+): Promise<any[]> {
+  const pk = `LOCATION#${locationId}`;
+  
+  let keyConditionExpression: string;
+  const expressionAttributeValues: Record<string, any> = { ':pk': pk };
+  
+  if (readyToApproveFilter !== undefined) {
+    keyConditionExpression = 'gsi8pk = :pk AND begins_with(gsi8sk, :skPrefix)';
+    expressionAttributeValues[':skPrefix'] = `READY#${readyToApproveFilter}#`;
+  } else {
+    keyConditionExpression = 'gsi8pk = :pk';
   }
-}
 
-/**
- * Encode pagination token to base64
- */
-function encodeNextToken(lastEvaluatedKey: Record<string, any> | undefined): string | undefined {
-  if (!lastEvaluatedKey) return undefined;
-  return Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64');
+  const allListings: any[] = [];
+  let lastEvaluatedKey: Record<string, any> | undefined;
+
+  // Paginate through all results for this location
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: 'LocationIndex',
+        KeyConditionExpression: keyConditionExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ExclusiveStartKey: lastEvaluatedKey,
+      })
+    );
+
+    if (result.Items) {
+      allListings.push(...result.Items);
+    }
+    lastEvaluatedKey = result.LastEvaluatedKey;
+  } while (lastEvaluatedKey);
+
+  return allListings;
 }
 
 /**
  * Main handler
  */
 export const handler: APIGatewayProxyHandler = async (event) => {
-  const locationId = event.pathParameters?.locationId;
-  
-  console.log('Search listings by location request:', { 
-    locationId,
-    queryParams: event.queryStringParameters,
+  console.log('Search listings by location(s) request:', { 
+    body: event.body,
   });
 
   try {
@@ -151,10 +201,32 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     }
 
     const { user } = authResult;
-    console.log(`Admin ${user.email} searching listings by location: ${locationId}`);
 
-    // 2. Validate locationId
-    if (!locationId) {
+    // 2. Parse and validate request body
+    let requestBody: SearchByLocationRequest;
+    try {
+      requestBody = JSON.parse(event.body || '{}');
+    } catch {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'INVALID_JSON',
+            message: 'Request body must be valid JSON',
+          },
+        }),
+      };
+    }
+
+    const { locationIds, readyToApprove, limit: requestedLimit, nextToken } = requestBody;
+
+    // 3. Validate locationIds
+    if (!locationIds || !Array.isArray(locationIds) || locationIds.length === 0) {
       return {
         statusCode: 400,
         headers: {
@@ -165,76 +237,87 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'locationId is required',
+            message: 'locationIds is required and must be a non-empty array',
           },
         }),
       };
     }
 
-    // 3. Parse pagination and filter params
-    const limit = Math.min(
-      MAX_LIMIT,
-      Math.max(1, parseInt(event.queryStringParameters?.limit || String(DEFAULT_LIMIT), 10))
-    );
-    const nextToken = event.queryStringParameters?.nextToken;
-    const exclusiveStartKey = decodeNextToken(nextToken);
-    
-    // Parse optional readyToApprove filter (only apply if explicitly provided)
-    const readyToApproveParam = event.queryStringParameters?.readyToApprove;
-    const readyToApproveFilter = readyToApproveParam !== undefined 
-      ? readyToApproveParam === 'true' 
-      : undefined;
-
-    console.log('Query params:', { limit, readyToApproveFilter, hasNextToken: !!nextToken });
-
-    // 4. Build query using composite sort key for efficient filtering
-    // GSI8 sort key format: READY#<true|false>#LISTING#<listingId>
-    // This allows us to filter by readyToApprove using begins_with on the sort key
-    const pk = `LOCATION#${locationId}`;
-    
-    let keyConditionExpression: string;
-    const expressionAttributeValues: Record<string, any> = { ':pk': pk };
-    
-    if (readyToApproveFilter !== undefined) {
-      // Filter by readyToApprove using sort key prefix
-      keyConditionExpression = 'gsi8pk = :pk AND begins_with(gsi8sk, :skPrefix)';
-      expressionAttributeValues[':skPrefix'] = `READY#${readyToApproveFilter}#`;
-    } else {
-      // No filter - get all listings for this location
-      keyConditionExpression = 'gsi8pk = :pk';
+    if (locationIds.length > MAX_LOCATION_IDS) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Maximum ${MAX_LOCATION_IDS} location IDs allowed per request`,
+          },
+        }),
+      };
     }
 
-    // 5. Query GSI8 (LocationIndex) - efficient single query with composite key
-    const [queryResult, countResult] = await Promise.all([
-      docClient.send(
-        new QueryCommand({
-          TableName: TABLE_NAME,
-          IndexName: 'LocationIndex',
-          KeyConditionExpression: keyConditionExpression,
-          ExpressionAttributeValues: expressionAttributeValues,
-          Limit: limit,
-          ExclusiveStartKey: exclusiveStartKey,
-        })
-      ),
-      docClient.send(
-        new QueryCommand({
-          TableName: TABLE_NAME,
-          IndexName: 'LocationIndex',
-          KeyConditionExpression: keyConditionExpression,
-          ExpressionAttributeValues: expressionAttributeValues,
-          Select: 'COUNT',
-        })
-      ),
-    ]);
-    
-    const listings = queryResult.Items || [];
-    const lastEvaluatedKey = queryResult.LastEvaluatedKey;
-    const totalCount = countResult.Count || 0;
-    const responseNextToken = encodeNextToken(lastEvaluatedKey);
+    // Validate each locationId is a non-empty string
+    const invalidIds = locationIds.filter(id => typeof id !== 'string' || id.trim() === '');
+    if (invalidIds.length > 0) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'All locationIds must be non-empty strings',
+          },
+        }),
+      };
+    }
 
-    console.log(`Found ${listings.length} listings for location ${locationId}, total: ${totalCount}, hasMore: ${!!lastEvaluatedKey}`);
+    const uniqueLocationIds = [...new Set(locationIds.map(id => id.trim()))];
+    const limit = Math.min(MAX_LIMIT, Math.max(1, requestedLimit || DEFAULT_LIMIT));
+    const offset = decodeNextToken(nextToken);
 
-    if (listings.length === 0) {
+    console.log(`Admin ${user.email} searching listings for ${uniqueLocationIds.length} location(s):`, uniqueLocationIds);
+
+    // 4. Query all locations in parallel
+    const locationResults = await Promise.all(
+      uniqueLocationIds.map(locationId => queryListingsForLocation(locationId, readyToApprove))
+    );
+
+    // 5. Merge and deduplicate results by listingId
+    const listingsMap = new Map<string, any>();
+    for (const listings of locationResults) {
+      for (const listing of listings) {
+        if (!listingsMap.has(listing.listingId)) {
+          listingsMap.set(listing.listingId, listing);
+        }
+      }
+    }
+
+    const allListings = Array.from(listingsMap.values());
+    const totalCount = allListings.length;
+
+    console.log(`Found ${totalCount} unique listings across ${uniqueLocationIds.length} location(s)`);
+
+    // 6. Sort by createdAt descending (newest first)
+    allListings.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // 7. Apply pagination
+    const paginatedListings = allListings.slice(offset, offset + limit);
+    const hasMore = (offset + limit) < totalCount;
+    const responseNextToken = hasMore ? encodeNextToken(offset + limit) : null;
+
+    if (paginatedListings.length === 0) {
       return {
         statusCode: 200,
         headers: {
@@ -252,14 +335,21 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 5. Get location name (once, since all listings share the same location)
-    const locationName = await getLocationName(locationId);
+    // 8. Get location names for all unique locations in results
+    const resultLocationIds = [...new Set(paginatedListings.map(l => l.locationId))];
+    const locationNamesMap = new Map<string, string>();
+    
+    await Promise.all(
+      resultLocationIds.map(async (locId) => {
+        const name = await getLocationName(locId);
+        locationNamesMap.set(locId, name);
+      })
+    );
 
-    // 6. Get unique host IDs and fetch their details
-    const uniqueHostIds = [...new Set(listings.map(l => l.hostId))];
+    // 9. Get unique host IDs and fetch their details
+    const uniqueHostIds = [...new Set(paginatedListings.map(l => l.hostId))];
     const hostDetailsMap = new Map<string, { name: string; email: string }>();
     
-    // Fetch host details in parallel
     await Promise.all(
       uniqueHostIds.map(async (hostId) => {
         const details = await getHostDetails(hostId);
@@ -267,9 +357,10 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       })
     );
 
-    // 7. Build result array
-    const results: ListingByLocationResult[] = listings.map(listing => {
+    // 10. Build result array
+    const results: ListingByLocationResult[] = paginatedListings.map(listing => {
       const hostDetails = hostDetailsMap.get(listing.hostId) || { name: 'Unknown', email: 'unknown' };
+      const locationName = locationNamesMap.get(listing.locationId) || 'Unknown Location';
       
       return {
         listingId: listing.listingId,
@@ -287,7 +378,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`✅ Returning ${results.length} of ${totalCount} listings, nextToken: ${responseNextToken ? 'present' : 'none'}`);
 
-    // 8. Return response
+    // 11. Return response
     return {
       statusCode: 200,
       headers: {
@@ -299,7 +390,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         data: {
           items: results,
           total: totalCount,
-          nextToken: responseNextToken || null,
+          nextToken: responseNextToken,
         },
       }),
     };
@@ -322,4 +413,3 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     };
   }
 };
-

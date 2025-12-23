@@ -131,6 +131,7 @@ export class AdminApiStack extends cdk.Stack {
           : [
               'http://localhost:3000',
               'http://192.168.4.54:3000',
+              'http://192.168.4.58:3000',
               'https://staging.portal.localstays.me',
             ],
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -595,11 +596,10 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
-    // GET /api/v1/admin/listings/by-location/{locationId}
+    // POST /api/v1/admin/listings/by-location (search by one or more location IDs)
     const adminListingsByLocationResource = adminListingsResource.addResource('by-location');
-    const adminListingsByLocationIdResource = adminListingsByLocationResource.addResource('{locationId}');
-    adminListingsByLocationIdResource.addMethod(
-      'GET',
+    adminListingsByLocationResource.addMethod(
+      'POST',
       new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
       {
         authorizer: this.authorizer,
