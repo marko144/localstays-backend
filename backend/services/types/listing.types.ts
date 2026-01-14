@@ -212,7 +212,8 @@ export interface ListingMetadata {
   
   // Capacity
   capacity: {
-    beds: number;
+    singleBeds: number;
+    doubleBeds: number;
     bedrooms: number;
     bathrooms: number;
     sleeps: number;
@@ -500,7 +501,8 @@ export interface SubmitListingIntentRequest {
     };
   };
   capacity: {
-    beds: number;
+    singleBeds: number;
+    doubleBeds: number;
     bedrooms: number;
     bathrooms: number;
     sleeps: number;
@@ -717,7 +719,8 @@ export interface UpdateListingRequest {
   listingName?: string;
   description?: string;
   capacity?: {
-    beds: number;
+    singleBeds: number;
+    doubleBeds: number;
     bedrooms: number;
     bathrooms: number;
     sleeps: number;
@@ -790,7 +793,8 @@ export interface UpdateListingMetadataRequest {
       };
     };
     capacity?: {
-      beds: number;
+      singleBeds: number;
+      doubleBeds: number;
       bedrooms: number;
       bathrooms: number;
       sleeps: number;

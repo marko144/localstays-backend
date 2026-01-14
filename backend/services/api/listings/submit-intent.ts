@@ -492,8 +492,14 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
       return 'Google Maps link must be a valid HTTPS URL from maps.google.com or google.com/maps';
     }
   }
-  if (!body.capacity || body.capacity.beds < 1 || body.capacity.bedrooms < 0 || body.capacity.bathrooms < 1 || body.capacity.sleeps < 1) {
-    return 'capacity (beds, bedrooms, bathrooms, and sleeps) is required. beds, bathrooms, and sleeps must be > 0, bedrooms must be >= 0';
+  if (!body.capacity || 
+      typeof body.capacity.singleBeds !== 'number' || body.capacity.singleBeds < 0 ||
+      typeof body.capacity.doubleBeds !== 'number' || body.capacity.doubleBeds < 0 ||
+      (body.capacity.singleBeds + body.capacity.doubleBeds) < 1 ||
+      body.capacity.bedrooms < 0 || 
+      body.capacity.bathrooms < 1 || 
+      body.capacity.sleeps < 1) {
+    return 'capacity (singleBeds, doubleBeds, bedrooms, bathrooms, and sleeps) is required. singleBeds + doubleBeds must be >= 1, bathrooms and sleeps must be > 0, bedrooms must be >= 0';
   }
   if (!body.checkIn || !body.checkIn.type || !body.checkIn.checkInFrom || !body.checkIn.checkOutBy) {
     return 'checkIn details (type, checkInFrom, checkOutBy) are required';

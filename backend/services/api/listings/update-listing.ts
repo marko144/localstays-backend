@@ -596,11 +596,21 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
 
   // capacity
   if (updates.capacity !== undefined) {
-    if (!updates.capacity.beds || updates.capacity.bedrooms === undefined || !updates.capacity.bathrooms || !updates.capacity.sleeps) {
-      return 'When updating capacity, beds, bedrooms, bathrooms, and sleeps are required';
+    if (typeof updates.capacity.singleBeds !== 'number' || 
+        typeof updates.capacity.doubleBeds !== 'number' || 
+        updates.capacity.bedrooms === undefined || 
+        !updates.capacity.bathrooms || 
+        !updates.capacity.sleeps) {
+      return 'When updating capacity, singleBeds, doubleBeds, bedrooms, bathrooms, and sleeps are required';
     }
-    if (updates.capacity.beds < 1 || updates.capacity.beds > 50) {
-      return 'Beds must be between 1 and 50';
+    if (updates.capacity.singleBeds < 0 || updates.capacity.singleBeds > 50) {
+      return 'Single beds must be between 0 and 50';
+    }
+    if (updates.capacity.doubleBeds < 0 || updates.capacity.doubleBeds > 50) {
+      return 'Double beds must be between 0 and 50';
+    }
+    if ((updates.capacity.singleBeds + updates.capacity.doubleBeds) < 1) {
+      return 'Total beds (singleBeds + doubleBeds) must be at least 1';
     }
     if (updates.capacity.bedrooms < 0 || updates.capacity.bedrooms > 20) {
       return 'Bedrooms must be between 0 and 20';
@@ -1026,7 +1036,8 @@ async function updateListingWithTransaction(
 
     maxGuests: updatedListing.capacity.sleeps,
     bedrooms: updatedListing.capacity.bedrooms,
-    beds: updatedListing.capacity.beds,
+    singleBeds: updatedListing.capacity.singleBeds,
+    doubleBeds: updatedListing.capacity.doubleBeds,
     bathrooms: updatedListing.capacity.bathrooms,
 
     thumbnailUrl: buildCloudFrontUrl(primaryImage.webpUrls.thumbnail, primaryImage.updatedAt),

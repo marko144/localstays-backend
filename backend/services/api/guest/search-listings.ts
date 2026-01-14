@@ -108,10 +108,13 @@ interface SearchResult {
     latitude: number;
     longitude: number;
   };
-  maxGuests: number;
-  bedrooms: number;
-  beds: number;
-  bathrooms: number;
+  capacity: {
+    maxGuests: number;
+    bedrooms: number;
+    singleBeds: number;
+    doubleBeds: number;
+    bathrooms: number;
+  };
   petsAllowed: boolean;
   hasWIFI: boolean;
   hasAirConditioning: boolean;
@@ -376,10 +379,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             latitude: listing.latitude,
             longitude: listing.longitude,
           },
-          maxGuests: listing.maxGuests,
-          bedrooms: listing.bedrooms,
-          beds: listing.beds,
-          bathrooms: listing.bathrooms,
+          capacity: {
+            maxGuests: listing.maxGuests,
+            bedrooms: listing.bedrooms,
+            singleBeds: listing.singleBeds ?? 0,
+            doubleBeds: listing.doubleBeds ?? 0,
+            bathrooms: listing.bathrooms,
+          },
           petsAllowed: listing.petsAllowed,
           hasWIFI: listing.hasWIFI,
           hasAirConditioning: listing.hasAirConditioning,

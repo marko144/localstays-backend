@@ -332,7 +332,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       maxGuests: listing.capacity.sleeps,
       bedrooms: listing.capacity.bedrooms,
-      beds: listing.capacity.beds,
+      singleBeds: listing.capacity.singleBeds,
+      doubleBeds: listing.capacity.doubleBeds,
       bathrooms: listing.capacity.bathrooms,
 
       thumbnailUrl: buildCloudFrontUrl(primaryImage.webpUrls.thumbnail, primaryImage.updatedAt),
@@ -628,12 +629,14 @@ function validateListingForPublish(listing: any, images: any[]): string | null {
 
   // Capacity check
   if (
-    !listing.capacity?.beds ||
+    typeof listing.capacity?.singleBeds !== 'number' ||
+    typeof listing.capacity?.doubleBeds !== 'number' ||
+    (listing.capacity.singleBeds + listing.capacity.doubleBeds) < 1 ||
     listing.capacity?.bedrooms === undefined ||
     !listing.capacity?.bathrooms ||
     !listing.capacity?.sleeps
   ) {
-    return 'Missing capacity information (beds, bedrooms, bathrooms, sleeps required)';
+    return 'Missing capacity information (singleBeds, doubleBeds, bedrooms, bathrooms, sleeps required)';
   }
 
   // Check-in check

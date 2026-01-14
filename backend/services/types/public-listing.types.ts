@@ -34,7 +34,8 @@ export interface PublicListingRecord {
   // Capacity
   maxGuests: number;
   bedrooms: number;
-  beds: number;
+  singleBeds: number;
+  doubleBeds: number;
   bathrooms: number;
 
   // Thumbnail
@@ -120,7 +121,8 @@ export interface PublicListingResponse {
   capacity: {
     maxGuests: number;
     bedrooms: number;
-    beds: number;
+    singleBeds: number;
+    doubleBeds: number;
     bathrooms: number;
   };
   thumbnailUrl: string;
@@ -166,7 +168,8 @@ export function toPublicListingResponse(record: PublicListingRecord): PublicList
     capacity: {
       maxGuests: record.maxGuests,
       bedrooms: record.bedrooms,
-      beds: record.beds,
+      singleBeds: record.singleBeds,
+      doubleBeds: record.doubleBeds,
       bathrooms: record.bathrooms,
     },
     thumbnailUrl: record.thumbnailUrl,
