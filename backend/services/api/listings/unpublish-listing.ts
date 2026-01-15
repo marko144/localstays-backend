@@ -18,7 +18,6 @@ const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
-const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
 const PUBLIC_LISTING_MEDIA_TABLE_NAME = process.env.PUBLIC_LISTING_MEDIA_TABLE_NAME!;
 
@@ -81,7 +80,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 3: Get location IDs from listing
-    const countryId = listing.mapboxMetadata?.country?.mapbox_id;
     const placeId = listing.mapboxMetadata?.place?.mapbox_id;
     if (!placeId) {
       return response.badRequest('Missing location information on listing');
@@ -176,22 +174,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Listing status updated to OFFLINE');
 
-    // Step 6c: Decrement location listings count for ALL name variants
-    // This is done outside the transaction to avoid transaction size limits
-    // Order: COUNTRY, PLACE, LOCALITY (if exists)
-    
-    // Decrement country count if we have country ID
-    if (countryId) {
-      await decrementLocationListingsCount(countryId, now);
-    }
-    
-    // Decrement place count
-    await decrementLocationListingsCount(placeId, now);
-    
-    // If locality exists, also decrement its listings count
-    if (hasLocality && localityId) {
-      await decrementLocationListingsCount(localityId, now);
-    }
+    // Note: listingsCount is NOT decremented here - unpublishing doesn't remove the listing,
+    // it just takes it offline. The count represents total listings in a location, not just published ones.
+    // Count is only decremented when a listing is deleted.
 
     // Step 7: Return success
     const responseData: UnpublishListingResponse = {
@@ -241,53 +226,5 @@ async function fetchPublicListingMedia(listingId: string): Promise<any[]> {
   return result.Items || [];
 }
 
-/**
- * Decrement listingsCount for ALL name variants of a location
- * This ensures all variants (e.g., "Belgrade" and "Beograd") have the same count
- */
-async function decrementLocationListingsCount(placeId: string, timestamp: string): Promise<void> {
-  try {
-    // Query all name variants for this location
-    const variants = await docClient.send(
-      new QueryCommand({
-        TableName: LOCATIONS_TABLE_NAME,
-        KeyConditionExpression: 'pk = :pk',
-        ExpressionAttributeValues: {
-          ':pk': `LOCATION#${placeId}`,
-        },
-      })
-    );
-
-    if (!variants.Items || variants.Items.length === 0) {
-      console.warn(`No location variants found for placeId: ${placeId}`);
-      return;
-    }
-
-    console.log(`Decrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
-
-    // Update each variant
-    for (const variant of variants.Items) {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: LOCATIONS_TABLE_NAME,
-          Key: {
-            pk: variant.pk,
-            sk: variant.sk,
-          },
-          UpdateExpression: 'ADD listingsCount :dec SET updatedAt = :now',
-          ExpressionAttributeValues: {
-            ':dec': -1,
-            ':now': timestamp,
-          },
-        })
-      );
-    }
-
-    console.log(`Successfully decremented listingsCount for all variants`);
-  } catch (error) {
-    console.error(`Failed to decrement location listings count for ${placeId}:`, error);
-    // Don't throw - this is not critical
-  }
-}
-
-
+// Note: decrementLocationListingsCount has been removed from this file.
+// Location count is only decremented when a listing is deleted, not when unpublished.

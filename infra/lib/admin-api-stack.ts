@@ -67,6 +67,7 @@ export class AdminApiStack extends cdk.Stack {
   public readonly adminSubscriptionsHandlerLambda: nodejs.NodejsFunction;
   public readonly sendNotificationLambda: nodejs.NodejsFunction;
   public readonly adminLegalHandlerLambda: nodejs.NodejsFunction;
+  public readonly adminLocationsHandlerLambda: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: AdminApiStackProps) {
     super(scope, id, props);
@@ -438,6 +439,23 @@ export class AdminApiStack extends cdk.Stack {
     }));
 
     // ========================================
+    // ADMIN LOCATIONS LAMBDA (for location management)
+    // ========================================
+
+    this.adminLocationsHandlerLambda = new nodejs.NodejsFunction(this, 'AdminLocationsHandlerLambda', {
+      ...commonLambdaProps,
+      functionName: `localstays-${stage}-admin-locations-handler`,
+      entry: 'backend/services/api/admin/locations/handler.ts',
+      handler: 'handler',
+      description: 'Admin: Handler for location management (list, create, update)',
+      environment: commonEnvironment,
+    });
+    
+    // Grant permissions for location operations
+    table.grantReadData(this.adminLocationsHandlerLambda); // For reading admin user permissions
+    locationsTable.grantReadWriteData(this.adminLocationsHandlerLambda);
+
+    // ========================================
     // API Gateway Routes - Admin
     // ========================================
 
@@ -684,6 +702,17 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // PUT /api/v1/admin/listings/{listingId}/coordinates
+    const adminCoordinatesResource = adminListingIdParam.addResource('coordinates');
+    adminCoordinatesResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // POST /api/v1/admin/listings/bulk-approve
     const adminBulkApproveResource = adminListingsResource.addResource('bulk-approve');
     adminBulkApproveResource.addMethod(
@@ -744,11 +773,42 @@ export class AdminApiStack extends cdk.Stack {
     );
 
     // ========================================
-    // Admin Locations Routes (for manual location association)
+    // Admin Locations Routes (for location management)
     // ========================================
     const adminLocationsResource = adminResource.addResource('locations');
 
-    // GET /api/v1/admin/locations/search
+    // GET /api/v1/admin/locations - List/search locations
+    adminLocationsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminLocationsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // POST /api/v1/admin/locations - Create new location
+    adminLocationsResource.addMethod(
+      'POST',
+      new apigateway.LambdaIntegration(this.adminLocationsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PUT /api/v1/admin/locations/{locationId} - Update location
+    const adminLocationIdParam = adminLocationsResource.addResource('{locationId}');
+    adminLocationIdParam.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminLocationsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // GET /api/v1/admin/locations/search (legacy - for backward compatibility with listing association)
     const adminLocationsSearchResource = adminLocationsResource.addResource('search');
     adminLocationsSearchResource.addMethod(
       'GET',

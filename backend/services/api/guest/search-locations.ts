@@ -102,11 +102,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`Found ${locations.length} location name variant(s) matching "${query}"`);
 
-    // 4. Deduplicate by locationId (in case multiple name variants match)
+    // 4. Filter to only live locations (isLive = true or undefined for backward compatibility)
+    const liveLocations = locations.filter((loc: any) => loc.isLive !== false);
+    console.log(`Filtered to ${liveLocations.length} live location(s)`);
+
+    // 5. Deduplicate by locationId (in case multiple name variants match)
     // Keep the variant with the highest priority (prefer exact match, then alphabetical)
     const locationMap = new Map<string, any>();
     
-    for (const loc of locations) {
+    for (const loc of liveLocations) {
       const existing = locationMap.get(loc.locationId);
       
       if (!existing) {
@@ -130,12 +134,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const uniqueLocations = Array.from(locationMap.values());
     console.log(`Deduplicated to ${uniqueLocations.length} unique location(s)`);
 
-    // 5. Sort by listingsCount DESC and take top 10
+    // 6. Sort by listingsCount DESC and take top 10
     const sortedLocations = uniqueLocations
       .sort((a, b) => (b.listingsCount || 0) - (a.listingsCount || 0))
       .slice(0, 10);
 
-    // 6. Map to response format
+    // 7. Map to response format
     const results: LocationSearchResult[] = sortedLocations.map((loc) => {
       const result: LocationSearchResult = {
         locationId: loc.locationId,
@@ -158,7 +162,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return result;
     });
 
-    // 7. Build response
+    // 8. Build response
     const response: LocationSearchResponse = {
       locations: results,
     };

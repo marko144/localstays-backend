@@ -9,7 +9,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import * as response from '../lib/response';
 import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
 import { buildPublicListingMediaPK, buildPublicListingMediaSK } from '../../types/public-listing-media.types';
@@ -196,26 +196,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('Property location information missing - please contact support');
     }
 
-    let countryId: string | null = null;
     let placeId: string;
     let placeName: string;
     let regionName: string;
-    let regionId: string;
     let localityId: string | null = null;
     let localityName: string | null = null;
     let hasLocality = false;
     const countryName = listing.address.country;
-    const countryCode = listing.address.countryCode;
 
     if (hasMapboxMetadata) {
       // Use mapboxMetadata (primary path)
       placeId = listing.mapboxMetadata!.place!.mapbox_id;
       placeName = listing.mapboxMetadata!.place!.name;
       regionName = listing.mapboxMetadata!.region!.name;
-      regionId = listing.mapboxMetadata!.region!.mapbox_id;
-
-      // Extract country ID if available
-      countryId = listing.mapboxMetadata?.country?.mapbox_id || null;
+      // Note: regionId and countryId extraction removed - location creation now happens at submission time
 
       // Check if locality exists in mapbox metadata
       hasLocality = !!(listing.mapboxMetadata?.locality?.mapbox_id && listing.mapboxMetadata?.locality?.name);
@@ -226,46 +220,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       console.log(`Using mapboxMetadata for location: COUNTRY (${countryName}) > PLACE (${placeName})${hasLocality ? ` > LOCALITY (${localityName})` : ''}`);
 
-      // Step 7: Check/create location hierarchy from mapbox metadata
-      // Order: COUNTRY first, then PLACE (linked to country), then LOCALITY (linked to place)
-
-      // 7a. Create COUNTRY location if we have the ID
-      if (countryId) {
-        await ensureLocationExists({
-          locationId: countryId,
-          locationName: countryName,
-          locationType: 'COUNTRY',
-          countryName: countryName,
-          countryCode: countryCode,
-        });
-      }
-
-      // 7b. Create PLACE location (linked to country)
-      await ensureLocationExists({
-        locationId: placeId,
-        locationName: placeName,
-        locationType: 'PLACE',
-        countryName: countryName,
-        countryCode: countryCode,
-        regionName: regionName,
-        regionId: regionId,
-        parentCountryId: countryId || undefined,
-      });
-
-      // 7c. Create LOCALITY location if exists (linked to place)
-      if (hasLocality && localityId && localityName) {
-        await ensureLocationExists({
-          locationId: localityId,
-          locationName: localityName,
-          locationType: 'LOCALITY',
-          countryName: countryName,
-          countryCode: countryCode,
-          regionName: regionName,
-          regionId: regionId,
-          parentPlaceId: placeId,
-          parentPlaceName: placeName,
-        });
-      }
+      // Note: Location creation and listingsCount increment now happens in confirm-submission.ts
+      // when the listing is first submitted for review. This ensures locations are tracked
+      // from submission, not just when published.
     } else {
       // Use manualLocationIds (fallback path)
       console.log(`Using manualLocationIds for location: ${listing.manualLocationIds.join(', ')}`);
@@ -279,7 +236,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       placeId = locationData.placeId;
       placeName = locationData.placeName;
       regionName = locationData.regionName;
-      regionId = locationData.regionId;
+      // Note: regionId extraction removed - location creation now happens at submission time
       hasLocality = locationData.hasLocality;
       localityId = locationData.localityId;
       localityName = locationData.localityName;
@@ -503,23 +460,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Listing status updated to ONLINE with slot info');
 
-    // Step 12d: Increment location listings count for ALL name variants
-    // This is done outside the transaction to avoid transaction size limits
-    // and because it's not critical if it fails (can be fixed with a script)
-    // Order: COUNTRY, PLACE, LOCALITY (if exists)
-    
-    // Increment country count if we have country ID
-    if (countryId) {
-      await incrementLocationListingsCount(countryId, now);
-    }
-    
-    // Increment place count
-    await incrementLocationListingsCount(placeId, now);
-    
-    // If locality exists, also increment its listings count
-    if (hasLocality && localityId) {
-      await incrementLocationListingsCount(localityId, now);
-    }
+    // Note: listingsCount increment now happens in confirm-submission.ts when listing is first submitted.
+    // We no longer increment here to avoid double-counting.
 
     // Step 13: Return success
     const responseData: PublishListingResponse = {
@@ -662,152 +604,8 @@ function validateListingForPublish(listing: any, images: any[]): string | null {
   return null; // All validations passed
 }
 
-/**
- * Ensure location exists in Locations table, create if not
- * 
- * Supports three location types in hierarchy: COUNTRY > PLACE > LOCALITY
- * 
- * Note: Multiple name variants can exist for the same location (e.g., "Belgrade" and "Beograd")
- * This function checks if ANY name variant exists for this locationId, and creates one if not.
- */
-async function ensureLocationExists(locationData: {
-  locationId: string;           // The mapbox ID for this location
-  locationName: string;         // The name of this location
-  locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';
-  countryName: string;
-  countryCode: string;
-  // For PLACE and LOCALITY
-  regionName?: string;
-  regionId?: string;
-  // For PLACE - parent country reference
-  parentCountryId?: string;
-  // For LOCALITY - parent place reference
-  parentPlaceId?: string;
-  parentPlaceName?: string;
-}): Promise<void> {
-  const { 
-    locationId, 
-    locationName, 
-    locationType,
-    countryName, 
-    countryCode, 
-    regionName,
-    regionId,
-    parentCountryId,
-    parentPlaceId,
-    parentPlaceName,
-  } = locationData;
-
-  // Check if this specific name variant exists
-  const existingLocation = await docClient.send(
-    new GetCommand({
-      TableName: LOCATIONS_TABLE_NAME,
-      Key: {
-        pk: `LOCATION#${locationId}`,
-        sk: `NAME#${locationName}`,
-      },
-    })
-  );
-
-  if (existingLocation.Item) {
-    // This name variant already exists, no need to create
-    console.log(`Location already exists: ${locationType} "${locationName}" (${locationId})`);
-    return;
-  }
-
-  // Check if ANY name variant exists for this location (to get listingsCount)
-  const anyVariant = await docClient.send(
-    new QueryCommand({
-      TableName: LOCATIONS_TABLE_NAME,
-      KeyConditionExpression: 'pk = :pk',
-      ExpressionAttributeValues: {
-        ':pk': `LOCATION#${locationId}`,
-      },
-      Limit: 1,
-    })
-  );
-
-  const existingListingsCount = anyVariant.Items?.[0]?.listingsCount || 0;
-
-  // Generate slug based on location type
-  let slug: string;
-  if (locationType === 'COUNTRY') {
-    // Country slug is just the country code (e.g., "rs" for Serbia)
-    slug = countryCode.toLowerCase();
-  } else {
-    // Place and Locality use name-countrycode format
-    slug = generateLocationSlug(locationName, countryCode);
-  }
-
-  // Generate searchName based on location type
-  let searchName: string;
-  if (locationType === 'COUNTRY') {
-    searchName = locationName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  } else {
-    searchName = generateSearchName(locationName, regionName || '');
-  }
-
-  // Generate displayName based on locationType
-  let displayName: string;
-  if (locationType === 'LOCALITY' && parentPlaceName) {
-    displayName = `${locationName}, ${parentPlaceName}`;
-  } else {
-    displayName = locationName;
-  }
-
-  // Create new location record
-  const now = new Date().toISOString();
-  const newLocation: any = {
-    pk: `LOCATION#${locationId}`,
-    sk: `NAME#${locationName}`,
-
-    locationId: locationId,
-    locationType: locationType,
-    name: locationName,
-    displayName: displayName,
-    countryName: countryName,
-
-    slug: slug,
-    searchName: searchName,
-    entityType: 'LOCATION', // Constant for GSI partition key
-
-    listingsCount: existingListingsCount, // Inherit from existing variants
-
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  // Add type-specific fields
-  if (locationType === 'COUNTRY') {
-    newLocation.countryCode = countryCode;
-  } else if (locationType === 'PLACE') {
-    newLocation.regionName = regionName;
-    newLocation.mapboxPlaceId = locationId;
-    newLocation.mapboxRegionId = regionId;
-    if (parentCountryId) {
-      newLocation.mapboxCountryId = parentCountryId;
-    }
-  } else if (locationType === 'LOCALITY') {
-    newLocation.regionName = regionName;
-    newLocation.mapboxLocalityId = locationId;
-    newLocation.mapboxRegionId = regionId;
-    if (parentPlaceId) {
-      newLocation.mapboxPlaceId = parentPlaceId;
-    }
-    if (parentPlaceName) {
-      newLocation.parentPlaceName = parentPlaceName;
-    }
-  }
-
-  await docClient.send(
-    new PutCommand({
-      TableName: LOCATIONS_TABLE_NAME,
-      Item: newLocation,
-    })
-  );
-
-  console.log(`Created new ${locationType} location: "${locationName}" (${locationId})`);
-}
+// Note: ensureLocationExists has been moved to confirm-submission.ts
+// Location creation now happens when a listing is submitted for review, not when published.
 
 /**
  * Fetch location data from Locations table for manual location IDs
@@ -900,77 +698,7 @@ async function fetchLocationDataForManualIds(manualLocationIds: string[]): Promi
   };
 }
 
-/**
- * Generate location slug: "place-name-countrycode" (e.g., "zlatibor-rs")
- */
-function generateLocationSlug(name: string, countryCode: string): string {
-  const normalize = (str: string) =>
-    str
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single
-      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
-
-  return `${normalize(name)}-${countryCode.toLowerCase()}`;
-}
-
-/**
- * Generate search name: "placename regionname" (lowercase, space-separated)
- */
-function generateSearchName(name: string, regionName: string): string {
-  return `${name.toLowerCase()} ${regionName.toLowerCase()}`;
-}
-
-/**
- * Increment listingsCount for ALL name variants of a location
- * This ensures all variants (e.g., "Belgrade" and "Beograd") have the same count
- */
-async function incrementLocationListingsCount(placeId: string, timestamp: string): Promise<void> {
-  try {
-    // Query all name variants for this location
-    const variants = await docClient.send(
-      new QueryCommand({
-        TableName: LOCATIONS_TABLE_NAME,
-        KeyConditionExpression: 'pk = :pk',
-        ExpressionAttributeValues: {
-          ':pk': `LOCATION#${placeId}`,
-        },
-      })
-    );
-
-    if (!variants.Items || variants.Items.length === 0) {
-      console.warn(`No location variants found for placeId: ${placeId}`);
-      return;
-    }
-
-    console.log(`Incrementing listingsCount for ${variants.Items.length} name variant(s) of location ${placeId}`);
-
-    // Update each variant
-    for (const variant of variants.Items) {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: LOCATIONS_TABLE_NAME,
-          Key: {
-            pk: variant.pk,
-            sk: variant.sk,
-          },
-          UpdateExpression: 'ADD listingsCount :inc SET updatedAt = :now',
-          ExpressionAttributeValues: {
-            ':inc': 1,
-            ':now': timestamp,
-          },
-        })
-      );
-    }
-
-    console.log(`Successfully incremented listingsCount for all variants`);
-  } catch (error) {
-    console.error(`Failed to increment location listings count for ${placeId}:`, error);
-    // Don't throw - this is not critical
-  }
-}
+// Note: generateLocationSlug, generateSearchName, and incrementLocationListingsCount
+// have been moved to confirm-submission.ts. Location count management now happens at submission time.
 
 

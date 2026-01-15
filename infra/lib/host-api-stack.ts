@@ -403,6 +403,7 @@ export class HostApiStack extends cdk.Stack {
     props.publicListingsTable.grantWriteData(this.hostListingsHandlerLambda); // For syncing updates to PublicListings
     props.advertisingSlotsTable.grantReadWriteData(this.hostListingsHandlerLambda); // For reading/updating slot info on listing details
     rateLimitTable.grantReadWriteData(this.hostListingsHandlerLambda); // For write operation rate limiting
+    props.locationsTable.grantReadWriteData(this.hostListingsHandlerLambda); // For creating/updating locations on confirm-submission
 
     // Grant S3 permissions (for pre-signed URLs and verification)
     this.hostListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({

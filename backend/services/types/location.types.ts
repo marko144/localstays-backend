@@ -51,20 +51,63 @@ export interface LocationRecord {
   // Metrics
   listingsCount: number;         // Number of active listings in this location (shared across all name variants)
   
+  // Visibility
+  isLive: boolean;               // Whether visible to public search (default: true for existing, false for new)
+  
   // Timestamps
   createdAt: string;             // ISO timestamp
   updatedAt: string;             // ISO timestamp
 }
 
 /**
- * Request to create or update a location
+ * Base request fields for creating a location
  */
-export interface CreateLocationRequest {
-  mapboxPlaceId: string;
-  name: string;
-  regionName: string;
-  countryName: string;
-  mapboxRegionId: string;
+interface CreateLocationBaseRequest {
+  locationId: string;            // Mapbox ID (admin provides this)
+  name: string;                  // Location name
+  isLive?: boolean;              // Default: false
+}
+
+/**
+ * Request to create a COUNTRY location
+ */
+export interface CreateCountryRequest extends CreateLocationBaseRequest {
+  locationType: 'COUNTRY';
+  countryCode: string;           // ISO country code (e.g., "RS")
+}
+
+/**
+ * Request to create a PLACE location
+ */
+export interface CreatePlaceRequest extends CreateLocationBaseRequest {
+  locationType: 'PLACE';
+  regionName: string;            // Region/District name
+  countryName: string;           // Country name
+  mapboxCountryId: string;       // Parent country's Mapbox ID (validated)
+  mapboxRegionId: string;        // Mapbox region ID
+}
+
+/**
+ * Request to create a LOCALITY location
+ */
+export interface CreateLocalityRequest extends CreateLocationBaseRequest {
+  locationType: 'LOCALITY';
+  regionName: string;            // Region/District name
+  countryName: string;           // Country name
+  mapboxPlaceId: string;         // Parent place's Mapbox ID (validated)
+  parentPlaceName: string;       // Parent place name (e.g., "Užice")
+}
+
+/**
+ * Union type for create location requests
+ */
+export type CreateLocationRequest = CreateCountryRequest | CreatePlaceRequest | CreateLocalityRequest;
+
+/**
+ * Request to update a location
+ */
+export interface UpdateLocationRequest {
+  isLive: boolean;
 }
 
 /**
@@ -90,6 +133,24 @@ export interface LocationSearchResult {
   locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';  // Location type indicator
   countryName?: string;          // Country name (for PLACE and LOCALITY)
   parentPlaceName?: string;      // Parent place name (for LOCALITY only)
+}
+
+/**
+ * Admin location search result (includes additional fields for management)
+ */
+export interface AdminLocationSearchResult {
+  locationId: string;
+  locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';
+  name: string;
+  displayName: string;
+  countryName: string;
+  countryCode?: string;          // For COUNTRY type
+  regionName?: string;           // For PLACE/LOCALITY
+  parentPlaceName?: string;      // For LOCALITY
+  slug: string;
+  isLive: boolean;
+  listingsCount: number;
+  createdAt: string;
 }
 
 /**

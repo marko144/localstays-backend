@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { checkAndIncrementWriteOperationRateLimit, extractUserId } from '../lib/write-operation-rate-limiter';
@@ -8,11 +8,13 @@ import {
   ConfirmListingSubmissionRequest,
   ConfirmListingSubmissionResponse,
 } from '../../types/listing.types';
+import { generateLocationSlug, generateSearchName } from '../../types/location.types';
 
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const TABLE_NAME = process.env.TABLE_NAME!;
+const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 
 /**
  * POST /api/v1/hosts/{hostId}/listings/{listingId}/confirm-submission
@@ -310,7 +312,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       status: 'IN_REVIEW',
     });
 
-    // 12. Build response
+    // 12. Create/update locations and increment listing counts
+    // This happens after successful submission - locations start with isLive: false
+    await handleLocationCreationAndCounts(listing, now);
+
+    // 13. Build response
     const confirmResponse: ConfirmListingSubmissionResponse = {
       success: true,
       listingId,
@@ -327,4 +333,256 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 }
 
+/**
+ * Handle location creation and listing count increments
+ * Creates locations if they don't exist (with isLive: false)
+ * Increments listingsCount for all location levels (COUNTRY, PLACE, LOCALITY)
+ */
+async function handleLocationCreationAndCounts(listing: any, now: string): Promise<void> {
+  try {
+    const mapboxMetadata = listing.mapboxMetadata;
+    if (!mapboxMetadata) {
+      console.log('No mapboxMetadata found - skipping location handling');
+      return;
+    }
 
+    const countryData = mapboxMetadata.country;
+    const placeData = mapboxMetadata.place;
+    const localityData = mapboxMetadata.locality;
+    const regionData = mapboxMetadata.region;
+
+    const countryName = listing.address?.country || countryData?.name || '';
+    const countryCode = listing.address?.countryCode || '';
+
+    // Handle COUNTRY
+    if (countryData?.mapbox_id) {
+      await ensureLocationExists({
+        locationId: countryData.mapbox_id,
+        locationName: countryData.name,
+        locationType: 'COUNTRY',
+        countryName: countryData.name,
+        countryCode: countryCode,
+      }, now);
+      await incrementLocationListingsCount(countryData.mapbox_id, now);
+    }
+
+    // Handle PLACE
+    if (placeData?.mapbox_id) {
+      await ensureLocationExists({
+        locationId: placeData.mapbox_id,
+        locationName: placeData.name,
+        locationType: 'PLACE',
+        countryName: countryName,
+        countryCode: countryCode,
+        regionName: regionData?.name,
+        regionId: regionData?.mapbox_id,
+        parentCountryId: countryData?.mapbox_id,
+      }, now);
+      await incrementLocationListingsCount(placeData.mapbox_id, now);
+    }
+
+    // Handle LOCALITY
+    if (localityData?.mapbox_id) {
+      await ensureLocationExists({
+        locationId: localityData.mapbox_id,
+        locationName: localityData.name,
+        locationType: 'LOCALITY',
+        countryName: countryName,
+        countryCode: countryCode,
+        regionName: regionData?.name,
+        regionId: regionData?.mapbox_id,
+        parentPlaceId: placeData?.mapbox_id,
+        parentPlaceName: placeData?.name,
+      }, now);
+      await incrementLocationListingsCount(localityData.mapbox_id, now);
+    }
+
+    console.log('Location creation and count increments completed');
+  } catch (error) {
+    console.error('Error handling location creation/counts:', error);
+    // Don't throw - this is not critical to the submission
+  }
+}
+
+/**
+ * Ensure location exists in Locations table, create if not
+ * New locations start with isLive: false (admin must enable)
+ */
+async function ensureLocationExists(locationData: {
+  locationId: string;
+  locationName: string;
+  locationType: 'COUNTRY' | 'PLACE' | 'LOCALITY';
+  countryName: string;
+  countryCode: string;
+  regionName?: string;
+  regionId?: string;
+  parentCountryId?: string;
+  parentPlaceId?: string;
+  parentPlaceName?: string;
+}, now: string): Promise<void> {
+  const {
+    locationId,
+    locationName,
+    locationType,
+    countryName,
+    countryCode,
+    regionName,
+    regionId,
+    parentCountryId,
+    parentPlaceId,
+    parentPlaceName,
+  } = locationData;
+
+  // Check if this specific name variant exists
+  const existingLocation = await docClient.send(
+    new GetCommand({
+      TableName: LOCATIONS_TABLE_NAME,
+      Key: {
+        pk: `LOCATION#${locationId}`,
+        sk: `NAME#${locationName}`,
+      },
+    })
+  );
+
+  if (existingLocation.Item) {
+    console.log(`Location already exists: ${locationType} "${locationName}" (${locationId})`);
+    return;
+  }
+
+  // Check if ANY name variant exists for this location (to get listingsCount)
+  const anyVariant = await docClient.send(
+    new QueryCommand({
+      TableName: LOCATIONS_TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: {
+        ':pk': `LOCATION#${locationId}`,
+      },
+      Limit: 1,
+    })
+  );
+
+  const existingListingsCount = anyVariant.Items?.[0]?.listingsCount || 0;
+  const existingIsLive = anyVariant.Items?.[0]?.isLive;
+
+  // Generate slug based on location type
+  let slug: string;
+  if (locationType === 'COUNTRY') {
+    slug = countryCode.toLowerCase();
+  } else {
+    slug = generateLocationSlug(locationName, countryCode);
+  }
+
+  // Generate searchName based on location type
+  let searchName: string;
+  if (locationType === 'COUNTRY') {
+    searchName = locationName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  } else {
+    searchName = generateSearchName(locationName, regionName || '');
+  }
+
+  // Generate displayName based on locationType
+  let displayName: string;
+  if (locationType === 'LOCALITY' && parentPlaceName) {
+    displayName = `${locationName}, ${parentPlaceName}`;
+  } else {
+    displayName = locationName;
+  }
+
+  // Create new location record
+  const newLocation: any = {
+    pk: `LOCATION#${locationId}`,
+    sk: `NAME#${locationName}`,
+
+    locationId: locationId,
+    locationType: locationType,
+    name: locationName,
+    displayName: displayName,
+    countryName: countryName,
+
+    slug: slug,
+    searchName: searchName,
+    entityType: 'LOCATION',
+
+    listingsCount: existingListingsCount,
+    isLive: existingIsLive ?? false, // New locations start as not live (admin enables)
+
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Add type-specific fields
+  if (locationType === 'COUNTRY') {
+    newLocation.countryCode = countryCode;
+  } else if (locationType === 'PLACE') {
+    newLocation.regionName = regionName;
+    newLocation.mapboxPlaceId = locationId;
+    newLocation.mapboxRegionId = regionId;
+    if (parentCountryId) {
+      newLocation.mapboxCountryId = parentCountryId;
+    }
+  } else if (locationType === 'LOCALITY') {
+    newLocation.regionName = regionName;
+    newLocation.mapboxLocalityId = locationId;
+    newLocation.mapboxRegionId = regionId;
+    if (parentPlaceId) {
+      newLocation.mapboxPlaceId = parentPlaceId;
+    }
+    if (parentPlaceName) {
+      newLocation.parentPlaceName = parentPlaceName;
+    }
+  }
+
+  await docClient.send(
+    new PutCommand({
+      TableName: LOCATIONS_TABLE_NAME,
+      Item: newLocation,
+    })
+  );
+
+  console.log(`Created new ${locationType} location: "${locationName}" (${locationId}) with isLive: false`);
+}
+
+/**
+ * Increment listingsCount for ALL name variants of a location
+ */
+async function incrementLocationListingsCount(locationId: string, timestamp: string): Promise<void> {
+  try {
+    const variants = await docClient.send(
+      new QueryCommand({
+        TableName: LOCATIONS_TABLE_NAME,
+        KeyConditionExpression: 'pk = :pk',
+        ExpressionAttributeValues: {
+          ':pk': `LOCATION#${locationId}`,
+        },
+      })
+    );
+
+    if (!variants.Items || variants.Items.length === 0) {
+      console.warn(`No location variants found for locationId: ${locationId}`);
+      return;
+    }
+
+    console.log(`Incrementing listingsCount for ${variants.Items.length} name variant(s) of location ${locationId}`);
+
+    for (const variant of variants.Items) {
+      await docClient.send(
+        new UpdateCommand({
+          TableName: LOCATIONS_TABLE_NAME,
+          Key: {
+            pk: variant.pk,
+            sk: variant.sk,
+          },
+          UpdateExpression: 'ADD listingsCount :inc SET updatedAt = :now',
+          ExpressionAttributeValues: {
+            ':inc': 1,
+            ':now': timestamp,
+          },
+        })
+      );
+    }
+
+    console.log(`Successfully incremented listingsCount for location ${locationId}`);
+  } catch (error) {
+    console.error(`Failed to increment location listings count for ${locationId}:`, error);
+  }
+}

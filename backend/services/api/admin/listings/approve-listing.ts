@@ -665,13 +665,12 @@ async function autoPublishListing(
   let localityId: string | null = null;
   let localityName: string | null = null;
   let hasLocality = false;
-  let countryId: string | null = null;
 
   if (hasMapboxMetadata) {
     placeId = listing.mapboxMetadata!.place!.mapbox_id;
     placeName = listing.mapboxMetadata!.place!.name;
     regionName = listing.mapboxMetadata!.region!.name;
-    countryId = listing.mapboxMetadata?.country?.mapbox_id || null;
+    // Note: countryId extraction removed - location count increment now happens at submission time
     
     hasLocality = !!(listing.mapboxMetadata?.locality?.mapbox_id && listing.mapboxMetadata?.locality?.name);
     if (hasLocality) {
@@ -909,14 +908,8 @@ async function autoPublishListing(
     })
   );
 
-  // Increment location listings count
-  if (countryId) {
-    await incrementLocationListingsCount(countryId, now);
-  }
-  await incrementLocationListingsCount(placeId, now);
-  if (hasLocality && localityId) {
-    await incrementLocationListingsCount(localityId, now);
-  }
+  // Note: listingsCount increment now happens in confirm-submission.ts when listing is first submitted.
+  // We no longer increment here to avoid double-counting.
 
   return {
     success: true,
@@ -1005,43 +998,6 @@ async function fetchLocationDataForManualIds(manualLocationIds: string[]): Promi
   };
 }
 
-/**
- * Increment listingsCount for all name variants of a location
- */
-async function incrementLocationListingsCount(locationId: string, timestamp: string): Promise<void> {
-  try {
-    const variants = await docClient.send(
-      new QueryCommand({
-        TableName: LOCATIONS_TABLE_NAME,
-        KeyConditionExpression: 'pk = :pk',
-        ExpressionAttributeValues: {
-          ':pk': `LOCATION#${locationId}`,
-        },
-      })
-    );
-
-    if (!variants.Items || variants.Items.length === 0) {
-      return;
-    }
-
-    for (const variant of variants.Items) {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: LOCATIONS_TABLE_NAME,
-          Key: {
-            pk: variant.pk,
-            sk: variant.sk,
-          },
-          UpdateExpression: 'ADD listingsCount :inc SET updatedAt = :now',
-          ExpressionAttributeValues: {
-            ':inc': 1,
-            ':now': timestamp,
-          },
-        })
-      );
-    }
-  } catch (error) {
-    console.error(`Failed to increment location listings count for ${locationId}:`, error);
-  }
-}
+// Note: incrementLocationListingsCount has been moved to confirm-submission.ts
+// Location count management now happens at submission time, not approval time.
 

@@ -25,7 +25,6 @@ const docClient = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.TABLE_NAME!;
 const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
 const PUBLIC_LISTING_MEDIA_TABLE_NAME = process.env.PUBLIC_LISTING_MEDIA_TABLE_NAME!;
-const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 const MAX_REASON_LENGTH = 500;
 
 /**
@@ -96,29 +95,8 @@ async function fetchPublicListingMedia(listingId: string): Promise<any[]> {
   return result.Items || [];
 }
 
-/**
- * Decrement location listings count
- */
-async function decrementLocationListingsCount(locationId: string): Promise<void> {
-  try {
-    await docClient.send(
-      new UpdateCommand({
-        TableName: LOCATIONS_TABLE_NAME,
-        Key: {
-          pk: 'LOCATION',
-          sk: `LOCATION#${locationId}`,
-        },
-        UpdateExpression: 'SET listingsCount = if_not_exists(listingsCount, :zero) - :dec',
-        ExpressionAttributeValues: {
-          ':dec': 1,
-          ':zero': 0,
-        },
-      })
-    );
-  } catch (error) {
-    console.error(`Failed to decrement listings count for location ${locationId}:`, error);
-  }
-}
+// Note: decrementLocationListingsCount has been removed from this file.
+// Location count is only decremented when a listing is deleted, not when suspended.
 
 /**
  * Main handler
@@ -363,11 +341,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         })
       );
 
-      // Decrement location listings counts
-      await decrementLocationListingsCount(placeId);
-      if (localityId) {
-        await decrementLocationListingsCount(localityId);
-      }
+      // Note: listingsCount is NOT decremented here - suspension doesn't remove the listing,
+      // it just takes it offline. The count represents total listings, not just published ones.
+      // Count is only decremented when a listing is deleted.
 
       console.log(`✅ Listing ${listingId} suspended and removed from public listings`);
     } else {

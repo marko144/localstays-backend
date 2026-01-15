@@ -14,9 +14,10 @@ import { handler as setManualLocations } from './set-manual-locations';
 import { handler as bulkApprove } from './bulk-approve';
 import { handler as bulkApproveByIds } from './bulk-approve-by-ids';
 import { handler as searchByLocation } from './search-by-location';
+import { handler as setCoordinates } from './set-coordinates';
 
 /**
- * Consolidated Admin Listings Handler (v1.7 - supports multi-location search)
+ * Consolidated Admin Listings Handler (v1.8 - adds coordinates management)
  * 
  * Routes all admin listing operations to their respective handlers based on
  * HTTP method and resource path.
@@ -36,6 +37,7 @@ import { handler as searchByLocation } from './search-by-location';
  * - PUT    /api/v1/admin/listings/{listingId}/reject           → reject listing (IN_REVIEW/REVIEWING/LOCKED)
  * - PUT    /api/v1/admin/listings/{listingId}/suspend          → suspend listing
  * - PUT    /api/v1/admin/listings/{listingId}/manual-locations → set manual locations for listing
+ * - PUT    /api/v1/admin/listings/{listingId}/coordinates      → set/update coordinates for listing
  */
 export const handler: APIGatewayProxyHandler = async (
   event: APIGatewayProxyEvent,
@@ -125,6 +127,11 @@ export const handler: APIGatewayProxyHandler = async (
     // PUT /api/v1/admin/listings/{listingId}/manual-locations
     if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/manual-locations') {
       return (await setManualLocations(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PUT /api/v1/admin/listings/{listingId}/coordinates
+    if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/coordinates') {
+      return (await setCoordinates(event, context, callback)) as APIGatewayProxyResult;
     }
 
     // Route not found

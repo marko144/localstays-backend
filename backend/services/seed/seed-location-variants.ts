@@ -147,6 +147,7 @@ async function seedLocationVariant(variant: {
     entityType: 'LOCATION',
 
     listingsCount: listingsCount, // Inherit from primary variant
+    isLive: true, // Seeded locations are live by default
 
     createdAt: now,
     updatedAt: now,
