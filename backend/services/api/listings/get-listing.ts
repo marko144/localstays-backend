@@ -5,7 +5,7 @@ import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
 import { GetListingResponse } from '../../types/listing.types';
 import { buildListingImageUrls } from '../lib/cloudfront-urls';
-import { getSlotByListingId } from '../../lib/subscription-service';
+import { getSlotByHostAndListingId } from '../../lib/subscription-service';
 import { calculateDaysRemaining, getSlotDisplayStatus, getSlotDisplayLabel } from '../../types/advertising-slot.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -135,7 +135,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // 6. Fetch slot information if listing is ONLINE or OFFLINE (has active slot)
     let slotInfo: any = undefined;
     if (listing.status === 'ONLINE' || listing.status === 'OFFLINE') {
-      const slot = await getSlotByListingId(listingId);
+      const slot = await getSlotByHostAndListingId(hostId, listingId);
       if (slot) {
         // We need to check if subscription is cancelled to show correct status
         // For now, assume not cancelled (we'd need to fetch subscription to know)

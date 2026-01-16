@@ -5,14 +5,20 @@
  * A slot is created when a listing goes ONLINE and tracks the ad's duration and renewal status.
  * 
  * Key Design:
- * - Primary key: LISTING#<listingId> / SLOT#<slotId> (one slot per listing at a time)
- * - GSI1 (HostSlotsIndex): HOST#<hostId> / <activatedAt> (get all slots for a host)
- * - GSI2 (ExpiryIndex): SLOT_EXPIRY / <expiresAt>#<listingId>#<slotId> (query expiring slots)
+ * - Primary key: HOST#<hostId> / SLOT#<slotId> (slots belong to hosts, can be reused)
+ * - GSI1 (HostSlotsIndex): HOST#<hostId> / <activatedAt> (get all slots for a host - same as PK)
+ * - GSI2 (ExpiryIndex): SLOT_EXPIRY / <expiresAt>#<hostId>#<slotId> (query expiring slots)
  *   Note: Commission-based slots are excluded from GSI2 (sparse index) as they don't expire
  * 
  * Ad Models:
  * - Subscription-based (isCommissionBased: false): Has expiry, renews with subscription, uses tokens
  * - Commission-based (isCommissionBased: true): No expiry, no renewal, monetized via booking commission
+ * 
+ * Slot Reusability (token-based only):
+ * - When a token-based listing is deleted, the slot becomes "empty" (listingId = null)
+ * - Empty slots can be reused when publishing a new listing
+ * - Empty slots are deleted at subscription renewal
+ * - Commission-based slots are always deleted with their listing (not reusable)
  */
 
 import { BillingPeriod } from './subscription-plan.types';
@@ -26,21 +32,26 @@ import { BillingPeriod } from './subscription-plan.types';
  * 
  * Created when a listing is published (goes ONLINE).
  * Tracks the ad's duration, expiry, and renewal preferences.
- * Permanently bound to one listing (no swapping).
  * 
  * Two ad models:
- * - Subscription-based: Has expiry, renews with subscription, consumes tokens
- * - Commission-based: No expiry, no renewal, monetized via booking commission
+ * - Subscription-based: Has expiry, renews with subscription, consumes tokens, reusable
+ * - Commission-based: No expiry, no renewal, monetized via booking commission, not reusable
+ * 
+ * Slot Lifecycle (token-based):
+ * - Created: listingId is set to the published listing
+ * - Listing deleted: listingId set to null (slot becomes "empty" and reusable)
+ * - Reused: listingId set to a new listing
+ * - Renewal: empty slots are deleted, active slots are extended
  */
 export interface AdvertisingSlot {
   // Keys
-  pk: string;                      // LISTING#<listingId>
+  pk: string;                      // HOST#<hostId>
   sk: string;                      // SLOT#<slotId>
 
   // Identifiers
   slotId: string;                  // UUID
-  listingId: string;               // Permanently bound to this listing
-  hostId: string;                  // Denormalized for GSI1 queries
+  listingId: string | null;        // null = empty slot (reusable). Set when listing attached.
+  hostId: string;                  // Host who owns this slot
 
   // Ad Model
   isCommissionBased: boolean;      // true = free ad (commission model), false = subscription-based
@@ -81,8 +92,8 @@ export interface AdvertisingSlot {
 /**
  * Build the partition key for an advertising slot
  */
-export function buildAdvertisingSlotPK(listingId: string): string {
-  return `LISTING#${listingId}`;
+export function buildAdvertisingSlotPK(hostId: string): string {
+  return `HOST#${hostId}`;
 }
 
 /**
@@ -115,16 +126,25 @@ export function buildSlotGSI2PK(): string {
 
 /**
  * Build GSI2 sort key (ExpiryIndex)
+ * Note: Uses hostId instead of listingId since slots now belong to hosts
  */
-export function buildSlotGSI2SK(expiresAt: string, listingId: string, slotId: string): string {
-  return `${expiresAt}#${listingId}#${slotId}`;
+export function buildSlotGSI2SK(expiresAt: string, hostId: string, slotId: string): string {
+  return `${expiresAt}#${hostId}#${slotId}`;
 }
 
 /**
- * Extract listingId from partition key
+ * Extract hostId from partition key
  */
-export function extractListingIdFromSlotPK(pk: string): string {
-  return pk.replace('LISTING#', '');
+export function extractHostIdFromSlotPK(pk: string): string {
+  return pk.replace('HOST#', '');
+}
+
+/**
+ * Check if a slot is empty (no listing attached)
+ * Only token-based slots can be empty; commission-based slots are always deleted with their listing
+ */
+export function isEmptySlot(slot: AdvertisingSlot): boolean {
+  return !slot.isCommissionBased && (slot.listingId === null || slot.listingId === undefined);
 }
 
 /**
@@ -261,18 +281,20 @@ export type SlotDisplayStatus =
   | 'EXPIRES'          // Will expire (doNotRenew = true or subscription cancelled)
   | 'PAST_DUE'         // Payment failed, in grace period
   | 'EXPIRING_SOON'    // Expires within 7 days
-  | 'COMMISSION_BASED';// Commission-based (no expiry)
+  | 'COMMISSION_BASED' // Commission-based (no expiry)
+  | 'EMPTY';           // Token-based slot with no listing attached (reusable)
 
 /**
  * Slot summary for host dashboard
  */
 export interface SlotSummary {
   slotId: string;
-  listingId: string;
-  listingName: string;
-  thumbnailUrl: string;
+  listingId: string | null;        // null for empty slots
+  listingName: string | null;      // null for empty slots
+  thumbnailUrl: string | null;     // null for empty slots
   activatedAt: string;
   isCommissionBased: boolean;
+  isEmpty: boolean;                // true if slot has no listing attached
   // The following are undefined for commission-based slots
   expiresAt?: string;
   daysRemaining?: number;
@@ -306,12 +328,17 @@ export interface SlotsSummary {
  * Get display status for a slot
  */
 export function getSlotDisplayStatus(
-  slot: Pick<AdvertisingSlot, 'isCommissionBased' | 'doNotRenew' | 'isPastDue' | 'expiresAt'>,
+  slot: Pick<AdvertisingSlot, 'isCommissionBased' | 'doNotRenew' | 'isPastDue' | 'expiresAt' | 'listingId'>,
   subscriptionCancelAtPeriodEnd: boolean
 ): SlotDisplayStatus {
   // Commission-based slots have a special status
   if (slot.isCommissionBased) {
     return 'COMMISSION_BASED';
+  }
+  
+  // Empty token-based slots (no listing attached)
+  if (!slot.listingId) {
+    return 'EMPTY';
   }
   
   if (slot.isPastDue) {
@@ -349,6 +376,23 @@ export function getSlotDisplayLabel(
     return language === 'sr'
       ? 'Besplatan oglas (provizija)'
       : 'Free ad (commission-based)';
+  }
+  
+  // Handle empty slots
+  if (displayStatus === 'EMPTY') {
+    if (!expiresAt) {
+      return language === 'sr'
+        ? 'Prazan slot - dostupan za korišćenje'
+        : 'Empty slot - available for use';
+    }
+    const date = new Date(expiresAt);
+    const formattedDate = date.toLocaleDateString(language === 'sr' ? 'sr-Latn' : 'en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    return language === 'sr'
+      ? `Prazan slot - ističe ${formattedDate}`
+      : `Empty slot - expires ${formattedDate}`;
   }
   
   // For status that require expiry date

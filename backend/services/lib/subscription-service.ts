@@ -44,6 +44,7 @@ import {
   getSlotDisplayStatus,
   getSlotDisplayLabel,
   calculateDaysRemaining,
+  isEmptySlot,
 } from '../types/advertising-slot.types';
 
 import {
@@ -304,22 +305,43 @@ export async function getHostSlots(hostId: string): Promise<AdvertisingSlot[]> {
 }
 
 /**
- * Get a specific slot by listing ID
- * Since a listing can only have one active slot, we query by listing
+ * Get a specific slot by hostId and listingId
+ * Queries by HOST# pk and filters by listingId
  */
-export async function getSlotByListingId(listingId: string): Promise<AdvertisingSlot | null> {
+export async function getSlotByHostAndListingId(
+  hostId: string, 
+  listingId: string
+): Promise<AdvertisingSlot | null> {
   const result = await docClient.send(
     new QueryCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       KeyConditionExpression: 'pk = :pk',
+      FilterExpression: 'listingId = :listingId',
       ExpressionAttributeValues: {
-        ':pk': buildAdvertisingSlotPK(listingId),
+        ':pk': buildAdvertisingSlotPK(hostId),
+        ':listingId': listingId,
       },
-      Limit: 1,
     })
   );
 
   return (result.Items?.[0] as AdvertisingSlot) || null;
+}
+
+/**
+ * Get a specific slot by hostId and slotId (direct lookup)
+ */
+export async function getSlot(hostId: string, slotId: string): Promise<AdvertisingSlot | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Key: {
+        pk: buildAdvertisingSlotPK(hostId),
+        sk: buildAdvertisingSlotSK(slotId),
+      },
+    })
+  );
+
+  return (result.Item as AdvertisingSlot) || null;
 }
 
 /**
@@ -638,7 +660,7 @@ export async function createAdvertisingSlot(params: {
   }
   
   const slot: AdvertisingSlot = {
-    pk: buildAdvertisingSlotPK(listingId),
+    pk: buildAdvertisingSlotPK(hostId),
     sk: buildAdvertisingSlotSK(slotId),
     
     slotId,
@@ -660,7 +682,7 @@ export async function createAdvertisingSlot(params: {
     gsi1sk: buildSlotGSI1SK(now),
     
     gsi2pk: buildSlotGSI2PK(),
-    gsi2sk: buildSlotGSI2SK(expiresAt, listingId, slotId),
+    gsi2sk: buildSlotGSI2SK(expiresAt, hostId, slotId),
     
     createdAt: now,
     updatedAt: now,
@@ -703,7 +725,7 @@ export async function createCommissionBasedSlot(params: {
   const now = new Date().toISOString();
   
   const slot: AdvertisingSlot = {
-    pk: buildAdvertisingSlotPK(listingId),
+    pk: buildAdvertisingSlotPK(hostId),
     sk: buildAdvertisingSlotSK(slotId),
     
     slotId,
@@ -754,7 +776,7 @@ export async function createCommissionBasedSlot(params: {
  * Mark a slot as "do not renew"
  */
 export async function setSlotDoNotRenew(
-  listingId: string,
+  hostId: string,
   slotId: string,
   doNotRenew: boolean
 ): Promise<void> {
@@ -762,7 +784,7 @@ export async function setSlotDoNotRenew(
     new UpdateCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       Key: {
-        pk: buildAdvertisingSlotPK(listingId),
+        pk: buildAdvertisingSlotPK(hostId),
         sk: buildAdvertisingSlotSK(slotId),
       },
       UpdateExpression: 'SET doNotRenew = :doNotRenew, updatedAt = :updatedAt',
@@ -779,11 +801,12 @@ export async function setSlotDoNotRenew(
 /**
  * Mark all subscription-based slots for a host as past due (payment failed)
  * Commission-based slots are not affected by subscription payment status
+ * Empty slots are also affected (they still need to show payment status)
  */
 export async function markHostSlotsPastDue(hostId: string, isPastDue: boolean): Promise<void> {
   const slots = await getHostSlots(hostId);
   
-  // Only affect subscription-based slots
+  // Only affect subscription-based slots (includes empty slots which are token-based)
   const subscriptionSlots = slots.filter((s) => !s.isCommissionBased);
   
   if (subscriptionSlots.length === 0) {
@@ -793,15 +816,15 @@ export async function markHostSlotsPastDue(hostId: string, isPastDue: boolean): 
   
   const now = new Date().toISOString();
   
-  // Update each subscription-based slot
+  // Update each subscription-based slot using new key structure
   await Promise.all(
     subscriptionSlots.map((slot) =>
       docClient.send(
         new UpdateCommand({
           TableName: ADVERTISING_SLOTS_TABLE_NAME,
           Key: {
-            pk: slot.pk,
-            sk: slot.sk,
+            pk: buildAdvertisingSlotPK(hostId),
+            sk: buildAdvertisingSlotSK(slot.slotId),
           },
           UpdateExpression: 'SET isPastDue = :isPastDue, updatedAt = :updatedAt',
           ExpressionAttributeValues: {
@@ -838,8 +861,8 @@ export async function markSlotsForImmediateExpiry(hostId: string): Promise<void>
         new UpdateCommand({
           TableName: ADVERTISING_SLOTS_TABLE_NAME,
           Key: {
-            pk: slot.pk,
-            sk: slot.sk,
+            pk: buildAdvertisingSlotPK(hostId),
+            sk: buildAdvertisingSlotSK(slot.slotId),
           },
           UpdateExpression: 'SET markedForImmediateExpiry = :marked, updatedAt = :updatedAt',
           ExpressionAttributeValues: {
@@ -888,13 +911,13 @@ export async function convertSlotToSubscriptionBased(
     expiresAt = calculateNewSlotExpiry(now, billingPeriod, 0);
   }
   
-  // Update the slot
+  // Update the slot using new key structure
   await docClient.send(
     new UpdateCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       Key: {
-        pk: slot.pk,
-        sk: slot.sk,
+        pk: buildAdvertisingSlotPK(slot.hostId),
+        sk: buildAdvertisingSlotSK(slot.slotId),
       },
       UpdateExpression: `
         SET isCommissionBased = :isCommissionBased,
@@ -919,7 +942,7 @@ export async function convertSlotToSubscriptionBased(
         ':isPastDue': false,
         ':markedForImmediateExpiry': false,
         ':gsi2pk': buildSlotGSI2PK(),
-        ':gsi2sk': buildSlotGSI2SK(expiresAt, slot.listingId, slot.slotId),
+        ':gsi2sk': buildSlotGSI2SK(expiresAt, slot.hostId, slot.slotId),
         ':updatedAt': now,
       },
     })
@@ -943,7 +966,7 @@ export async function convertSlotToSubscriptionBased(
     isPastDue: false,
     markedForImmediateExpiry: false,
     gsi2pk: buildSlotGSI2PK(),
-    gsi2sk: buildSlotGSI2SK(expiresAt, slot.listingId, slot.slotId),
+    gsi2sk: buildSlotGSI2SK(expiresAt, slot.hostId, slot.slotId),
     updatedAt: now,
   };
 }
@@ -965,13 +988,13 @@ export async function convertSlotToCommissionBased(
   
   const now = new Date().toISOString();
   
-  // Update the slot - REMOVE expiry-related fields
+  // Update the slot - REMOVE expiry-related fields, using new key structure
   await docClient.send(
     new UpdateCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       Key: {
-        pk: slot.pk,
-        sk: slot.sk,
+        pk: buildAdvertisingSlotPK(slot.hostId),
+        sk: buildAdvertisingSlotSK(slot.slotId),
       },
       UpdateExpression: `
         SET isCommissionBased = :isCommissionBased,
@@ -1063,7 +1086,7 @@ export async function updateSlotsToNewPeriod(
       // Calculate remaining compensation (burns down over time)
       const remainingCompensation = calculateRemainingCompensation(slot);
       const newExpiresAt = calculateSlotExpiry(newPeriodEnd, remainingCompensation);
-      const newGsi2sk = buildSlotGSI2SK(newExpiresAt, slot.listingId, slot.slotId);
+      const newGsi2sk = buildSlotGSI2SK(newExpiresAt, hostId, slot.slotId);
       
       console.log(`📅 Updating slot ${slot.slotId} expiry: ${slot.expiresAt} → ${newExpiresAt} (remaining comp: ${remainingCompensation} days)`);
       
@@ -1071,8 +1094,8 @@ export async function updateSlotsToNewPeriod(
         new UpdateCommand({
           TableName: ADVERTISING_SLOTS_TABLE_NAME,
           Key: {
-            pk: slot.pk,
-            sk: slot.sk,
+            pk: buildAdvertisingSlotPK(hostId),
+            sk: buildAdvertisingSlotSK(slot.slotId),
           },
           UpdateExpression: 'SET expiresAt = :expiresAt, gsi2sk = :gsi2sk, isPastDue = :isPastDue, updatedAt = :updatedAt',
           ExpressionAttributeValues: {
@@ -1108,9 +1131,16 @@ export async function extendSlotsAtRenewal(
 ): Promise<number> {
   const slots = await getHostSlots(hostId);
   
-  // Only extend subscription-based slots that are NOT marked as doNotRenew
+  // Only extend subscription-based slots that:
+  // - Are NOT marked as doNotRenew
+  // - Have a listing attached (not empty)
   // Commission-based slots don't have expiry dates and are not affected by subscription changes
-  const eligibleSlots = slots.filter((s) => !s.isCommissionBased && !s.doNotRenew);
+  // Empty slots will be deleted separately - they should not be extended
+  const eligibleSlots = slots.filter((s) => 
+    !s.isCommissionBased && 
+    !s.doNotRenew && 
+    s.listingId // Only slots with a listing attached
+  );
   
   if (eligibleSlots.length === 0) {
     console.log(`No slots to extend for host ${hostId}`);
@@ -1148,14 +1178,14 @@ export async function extendSlotsAtRenewal(
       // Calculate remaining compensation (burns down over time)
       const remainingCompensation = calculateRemainingCompensation(slot);
       const newExpiresAt = calculateSlotExpiry(newPeriodEnd, remainingCompensation);
-      const newGsi2sk = buildSlotGSI2SK(newExpiresAt, slot.listingId, slot.slotId);
+      const newGsi2sk = buildSlotGSI2SK(newExpiresAt, hostId, slot.slotId);
       
       return docClient.send(
         new UpdateCommand({
           TableName: ADVERTISING_SLOTS_TABLE_NAME,
           Key: {
-            pk: slot.pk,
-            sk: slot.sk,
+            pk: buildAdvertisingSlotPK(hostId),
+            sk: buildAdvertisingSlotSK(slot.slotId),
           },
           UpdateExpression: 'SET expiresAt = :expiresAt, gsi2sk = :gsi2sk, isPastDue = :isPastDue, updatedAt = :updatedAt',
           ExpressionAttributeValues: {
@@ -1181,18 +1211,107 @@ export async function extendSlotsAtRenewal(
 /**
  * Delete an advertising slot
  */
-export async function deleteAdvertisingSlot(listingId: string, slotId: string): Promise<void> {
+export async function deleteAdvertisingSlot(hostId: string, slotId: string): Promise<void> {
   await docClient.send(
     new DeleteCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       Key: {
-        pk: buildAdvertisingSlotPK(listingId),
+        pk: buildAdvertisingSlotPK(hostId),
         sk: buildAdvertisingSlotSK(slotId),
       },
     })
   );
   
-  console.log(`✅ Deleted advertising slot ${slotId} for listing ${listingId}`);
+  console.log(`✅ Deleted advertising slot ${slotId} for host ${hostId}`);
+}
+
+// ============================================================================
+// EMPTY SLOT MANAGEMENT
+// ============================================================================
+
+/**
+ * Get all empty slots for a host (token-based slots with no listing attached)
+ * Used when a host wants to reuse an existing slot for a new listing
+ */
+export async function getHostEmptySlots(hostId: string): Promise<AdvertisingSlot[]> {
+  const allSlots = await getHostSlots(hostId);
+  return allSlots.filter(slot => isEmptySlot(slot));
+}
+
+/**
+ * Detach a listing from its slot (make slot empty/reusable)
+ * Used when deleting a token-based listing
+ */
+export async function detachListingFromSlot(
+  hostId: string, 
+  slotId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Key: {
+        pk: buildAdvertisingSlotPK(hostId),
+        sk: buildAdvertisingSlotSK(slotId),
+      },
+      UpdateExpression: 'SET listingId = :null, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':null': null,
+        ':now': now,
+      },
+    })
+  );
+  console.log(`✅ Detached listing from slot ${slotId} - slot is now empty`);
+}
+
+/**
+ * Attach a listing to an empty slot
+ * Used when publishing with an existing slot
+ * Uses a conditional write to prevent race conditions
+ */
+export async function attachListingToSlot(
+  hostId: string, 
+  slotId: string, 
+  listingId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: ADVERTISING_SLOTS_TABLE_NAME,
+      Key: {
+        pk: buildAdvertisingSlotPK(hostId),
+        sk: buildAdvertisingSlotSK(slotId),
+      },
+      UpdateExpression: 'SET listingId = :listingId, updatedAt = :now',
+      ConditionExpression: 'attribute_not_exists(listingId) OR listingId = :null',
+      ExpressionAttributeValues: {
+        ':listingId': listingId,
+        ':null': null,
+        ':now': now,
+      },
+    })
+  );
+  console.log(`✅ Attached listing ${listingId} to slot ${slotId}`);
+}
+
+/**
+ * Delete all empty slots for a host
+ * Used at subscription renewal - empty slots are lost
+ */
+export async function deleteHostEmptySlots(hostId: string): Promise<number> {
+  const emptySlots = await getHostEmptySlots(hostId);
+  
+  if (emptySlots.length === 0) {
+    console.log(`No empty slots to delete for host ${hostId}`);
+    return 0;
+  }
+  
+  await Promise.all(
+    emptySlots.map(slot => deleteAdvertisingSlot(hostId, slot.slotId))
+  );
+  
+  console.log(`✅ Deleted ${emptySlots.length} empty slots for host ${hostId}`);
+  return emptySlots.length;
 }
 
 // ============================================================================
@@ -1201,14 +1320,20 @@ export async function deleteAdvertisingSlot(listingId: string, slotId: string): 
 
 /**
  * Build slot summary for API response
+ * 
+ * @param slot - The advertising slot
+ * @param listingName - Name of the listing (null for empty slots)
+ * @param thumbnailUrl - Thumbnail URL (null for empty slots)
+ * @param subscriptionCancelAtPeriodEnd - Whether subscription will cancel
  */
 export function buildSlotSummary(
   slot: AdvertisingSlot,
-  listingName: string,
-  thumbnailUrl: string,
+  listingName: string | null,
+  thumbnailUrl: string | null,
   subscriptionCancelAtPeriodEnd: boolean
 ): SlotSummary {
   const displayStatus = getSlotDisplayStatus(slot, subscriptionCancelAtPeriodEnd);
+  const isEmpty = isEmptySlot(slot);
   
   // For commission-based slots, we return a simpler summary
   if (slot.isCommissionBased) {
@@ -1219,6 +1344,7 @@ export function buildSlotSummary(
       thumbnailUrl,
       activatedAt: slot.activatedAt,
       isCommissionBased: true,
+      isEmpty: false, // Commission-based slots cannot be empty
       displayStatus,
       displayLabel: getSlotDisplayLabel(displayStatus, undefined, 'en'),
       displayLabel_sr: getSlotDisplayLabel(displayStatus, undefined, 'sr'),
@@ -1232,6 +1358,7 @@ export function buildSlotSummary(
     thumbnailUrl,
     activatedAt: slot.activatedAt,
     isCommissionBased: false,
+    isEmpty,
     expiresAt: slot.expiresAt,
     daysRemaining: calculateDaysRemaining(slot.expiresAt),
     reviewCompensationDays: slot.reviewCompensationDays,

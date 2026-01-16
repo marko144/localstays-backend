@@ -27,6 +27,7 @@ import {
   markHostSlotsPastDue,
   markSlotsForImmediateExpiry,
   saveHostSubscription,
+  deleteHostEmptySlots,
 } from './subscription-service';
 
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
@@ -561,6 +562,11 @@ export async function handleSubscriptionCreated(
  * Called when:
  * - Stripe: invoice.paid (for subscription invoices)
  * - Dev: simulate-payment
+ * 
+ * At renewal:
+ * 1. Delete empty slots (slots with no listing attached are lost at renewal)
+ * 2. Extend active slots to new period end
+ * 3. Clear any past_due flags
  */
 export async function handlePaymentSucceeded(
   data: PaymentEventData
@@ -580,7 +586,15 @@ export async function handlePaymentSucceeded(
 
     const now = new Date().toISOString();
 
-    // Update subscription with new period dates
+    // Step 1: Delete empty slots FIRST
+    // Empty slots are token-based slots with no listing attached.
+    // These are lost at renewal - the host should have used them.
+    const deletedEmptySlots = await deleteHostEmptySlots(data.hostId);
+    if (deletedEmptySlots > 0) {
+      console.log(`🗑️ Deleted ${deletedEmptySlots} empty slots at renewal for host ${data.hostId}`);
+    }
+
+    // Step 2: Update subscription with new period dates
     await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
@@ -606,16 +620,17 @@ export async function handlePaymentSucceeded(
       })
     );
 
-    // Extend all active slots (that aren't marked doNotRenew) to new period end
+    // Step 3: Extend all active slots (that have a listing and aren't marked doNotRenew) to new period end
     const extendedCount = await extendSlotsAtRenewal(data.hostId, data.periodEnd);
 
-    // Clear any past_due flags on slots
+    // Step 4: Clear any past_due flags on slots
     if (subscription.status === 'PAST_DUE') {
       await markHostSlotsPastDue(data.hostId, false);
     }
 
     console.log(`✅ Payment succeeded for host ${data.hostId}`, {
       newPeriodEnd: data.periodEnd,
+      deletedEmptySlots,
       slotsExtended: extendedCount,
     });
 
@@ -651,6 +666,7 @@ export async function handlePaymentSucceeded(
         hostId: data.hostId,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
+        deletedEmptySlots,
         slotsExtended: extendedCount,
       },
     };

@@ -470,7 +470,7 @@ export class DataStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
       sortKey: {
-        name: 'gsi2sk', // <expiresAt>#<listingId>#<slotId> (sortable by expiry date)
+        name: 'gsi2sk', // <expiresAt>#<hostId>#<slotId> (sortable by expiry date)
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,

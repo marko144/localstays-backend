@@ -18,8 +18,11 @@ import {
   getPublishingOptions,
   createAdvertisingSlot,
   createCommissionBasedSlot,
-  getSlotByListingId,
+  getSlotByHostAndListingId,
+  getSlot,
+  attachListingToSlot,
 } from '../../lib/subscription-service';
+import { AdvertisingSlot } from '../../types/advertising-slot.types';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -37,6 +40,7 @@ interface PublishListingResponse {
   slotId?: string;
   slotExpiresAt?: string;
   isCommissionBased?: boolean;
+  reusedExistingSlot?: boolean; // true if an existing empty slot was reused
 }
 
 /**
@@ -116,14 +120,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 5b: Check if listing already has an active slot (prevent duplicate slots)
-    const existingSlot = await getSlotByListingId(listingId);
+    const existingSlot = await getSlotByHostAndListingId(hostId, listingId);
     if (existingSlot) {
       return response.badRequest('Listing already has an active advertising slot');
     }
 
     // Step 5c: Parse request body to get the chosen ad type
     // Frontend decides: isCommissionBased = true for free ad, false for subscription-based
-    let body: { isCommissionBased?: boolean } = {};
+    // Optionally, frontend can pass useSlotId to reuse an existing empty slot
+    let body: { isCommissionBased?: boolean; useSlotId?: string } = {};
     if (event.body) {
       try {
         body = JSON.parse(event.body);
@@ -135,7 +140,41 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Default to commission-based if not specified (backward compatibility / no subscription)
     const requestedCommissionBased = body.isCommissionBased !== false;
     
-    // Step 5d: Check publishing options and validate the user's choice
+    // Validate useSlotId - can only be used with token-based (not commission-based)
+    if (body.useSlotId && requestedCommissionBased) {
+      return response.badRequest('Cannot use useSlotId with commission-based listings. Empty slots are only for token-based ads.');
+    }
+    
+    // Step 5d: Check if reusing an existing empty slot
+    let useExistingSlot = false;
+    let existingEmptySlot: AdvertisingSlot | null = null;
+    
+    if (!requestedCommissionBased && body.useSlotId) {
+      console.log(`Checking if slot ${body.useSlotId} can be reused...`);
+      
+      existingEmptySlot = await getSlot(hostId, body.useSlotId);
+      
+      if (!existingEmptySlot) {
+        return response.badRequest('Specified slot not found');
+      }
+      
+      if (existingEmptySlot.hostId !== hostId) {
+        return response.forbidden('Slot does not belong to this host');
+      }
+      
+      if (existingEmptySlot.listingId) {
+        return response.badRequest('Slot is already in use by another listing');
+      }
+      
+      if (existingEmptySlot.isCommissionBased) {
+        return response.badRequest('Cannot reuse a commission-based slot');
+      }
+      
+      useExistingSlot = true;
+      console.log(`Will reuse existing empty slot: ${body.useSlotId}, expires: ${existingEmptySlot.expiresAt}`);
+    }
+    
+    // Step 5e: Check publishing options and validate the user's choice
     const publishOptions = await getPublishingOptions(hostId);
     
     let useCommissionBased: boolean;
@@ -156,33 +195,48 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       useCommissionBased = true;
     } else {
       // User wants subscription-based
-      if (!publishOptions.canPublishSubscriptionBased) {
-        let errorMessage: string;
-        let errorMessage_sr: string;
-        
-        switch (publishOptions.subscriptionReason) {
-          case 'NO_SUBSCRIPTION':
-            errorMessage = 'No active subscription found. Please subscribe to publish subscription-based listings.';
-            errorMessage_sr = 'Nije pronađena aktivna pretplata. Pretplatite se da biste objavili pretplatne oglase.';
-            break;
-          case 'SUBSCRIPTION_PAST_DUE':
-            errorMessage = 'Your subscription payment is past due. Please update your payment method.';
-            errorMessage_sr = 'Vaše plaćanje pretplate je zaostalo. Molimo ažurirajte način plaćanja.';
-            break;
-          case 'NO_TOKENS_AVAILABLE':
-            errorMessage = 'No advertising slots available. All your tokens are in use.';
-            errorMessage_sr = 'Nema dostupnih oglasnih slotova. Svi vaši tokeni su u upotrebi.';
-            break;
-          default:
-            errorMessage = 'Unable to publish subscription-based listing. Please check your subscription status.';
-            errorMessage_sr = 'Nije moguće objaviti pretplatni oglas. Proverite status pretplate.';
+      // If using existing slot, we don't need available tokens - just check subscription is active
+      if (useExistingSlot) {
+        // Just validate subscription is not past due
+        if (publishOptions.subscriptionReason === 'SUBSCRIPTION_PAST_DUE') {
+          const errorMessage = 'Your subscription payment is past due. Please update your payment method.';
+          const errorMessage_sr = 'Vaše plaćanje pretplate je zaostalo. Molimo ažurirajte način plaćanja.';
+          return response.badRequest(errorMessage, { 
+            message_sr: errorMessage_sr, 
+            reason: 'SUBSCRIPTION_PAST_DUE',
+          });
         }
-        
-        return response.badRequest(errorMessage, { 
-          message_sr: errorMessage_sr, 
-          reason: publishOptions.subscriptionReason,
-          availableTokens: publishOptions.availableTokens,
-        });
+        console.log('Using existing slot - skipping token availability check');
+      } else {
+        // Standard flow - need available tokens
+        if (!publishOptions.canPublishSubscriptionBased) {
+          let errorMessage: string;
+          let errorMessage_sr: string;
+          
+          switch (publishOptions.subscriptionReason) {
+            case 'NO_SUBSCRIPTION':
+              errorMessage = 'No active subscription found. Please subscribe to publish subscription-based listings.';
+              errorMessage_sr = 'Nije pronađena aktivna pretplata. Pretplatite se da biste objavili pretplatne oglase.';
+              break;
+            case 'SUBSCRIPTION_PAST_DUE':
+              errorMessage = 'Your subscription payment is past due. Please update your payment method.';
+              errorMessage_sr = 'Vaše plaćanje pretplate je zaostalo. Molimo ažurirajte način plaćanja.';
+              break;
+            case 'NO_TOKENS_AVAILABLE':
+              errorMessage = 'No advertising slots available. All your tokens are in use.';
+              errorMessage_sr = 'Nema dostupnih oglasnih slotova. Svi vaši tokeni su u upotrebi.';
+              break;
+            default:
+              errorMessage = 'Unable to publish subscription-based listing. Please check your subscription status.';
+              errorMessage_sr = 'Nije moguće objaviti pretplatni oglas. Proverite status pretplate.';
+          }
+          
+          return response.badRequest(errorMessage, { 
+            message_sr: errorMessage_sr, 
+            reason: publishOptions.subscriptionReason,
+            availableTokens: publishOptions.availableTokens,
+          });
+        }
       }
       useCommissionBased = false;
     }
@@ -401,9 +455,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Public listing records created successfully via transaction');
 
-    // Step 12b: Create advertising slot (subscription-based or commission-based)
+    // Step 12b: Create or attach advertising slot
     // This is done outside the main transaction because it writes to a different table
-    let slot;
+    let slot: AdvertisingSlot;
     
     if (useCommissionBased) {
       // Create commission-based (free) slot - no expiry
@@ -412,8 +466,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         listingId,
       });
       console.log(`Created commission-based slot for listing ${listingId}`);
+    } else if (useExistingSlot && existingEmptySlot) {
+      // Attach listing to existing empty slot (reuse slot)
+      // Uses conditional write to prevent race conditions
+      try {
+        await attachListingToSlot(hostId, existingEmptySlot.slotId, listingId);
+        slot = {
+          ...existingEmptySlot,
+          listingId, // Now attached
+        };
+        console.log(`Attached listing ${listingId} to existing slot ${slot.slotId}, expires: ${slot.expiresAt}`);
+      } catch (err: any) {
+        // Conditional check failed - slot was claimed by another request
+        if (err.name === 'ConditionalCheckFailedException') {
+          return response.badRequest('Slot is no longer available - it may have been used by another listing');
+        }
+        throw err;
+      }
     } else {
-      // Create subscription-based slot with expiry
+      // Create new subscription-based slot with expiry
       slot = await createAdvertisingSlot({
         hostId,
         listingId,
@@ -472,6 +543,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       slotId: slot.slotId,
       isCommissionBased: slot.isCommissionBased,
       ...(slot.expiresAt && { slotExpiresAt: slot.expiresAt }),
+      ...(useExistingSlot && { reusedExistingSlot: true }),
     };
 
     return response.success(responseData);

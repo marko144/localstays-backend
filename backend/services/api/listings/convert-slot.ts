@@ -25,7 +25,7 @@ import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import * as response from '../lib/response';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import {
-  getSlotByListingId,
+  getSlotByHostAndListingId,
   getHostSubscription,
   getTokenAvailability,
   convertSlotToSubscriptionBased,
@@ -83,7 +83,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 3. Get the current slot
-    const slot = await getSlotByListingId(listingId);
+    const slot = await getSlotByHostAndListingId(hostId, listingId);
     
     if (!slot) {
       return response.notFound('No active slot found for this listing');

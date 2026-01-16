@@ -22,6 +22,7 @@ import { handler as setPricingHandler } from './set-pricing';
 import { handler as setSlotDoNotRenewHandler } from './set-slot-do-not-renew';
 import { handler as convertSlotHandler } from './convert-slot';
 import { handler as getPublishingOptionsHandler } from './get-publishing-options';
+import { handler as getEmptySlotsHandler } from './get-empty-slots';
 
 /**
  * Main router handler - dispatches to appropriate operation based on route and method
@@ -110,6 +111,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Route: GET /api/v1/hosts/{hostId}/publishing-options
     if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/publishing-options') {
       return await getPublishingOptionsHandler(event);
+    }
+
+    // Route: GET /api/v1/hosts/{hostId}/slots/empty
+    if (method === 'GET' && resource === '/api/v1/hosts/{hostId}/slots/empty') {
+      return await getEmptySlotsHandler(event);
     }
 
     // Unknown route

@@ -3,6 +3,11 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
+import { 
+  getSlot, 
+  deleteAdvertisingSlot, 
+  detachListingFromSlot 
+} from '../../lib/subscription-service';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -24,10 +29,13 @@ const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
  * - Cascade soft delete to all child records (images, documents, amenities)
  * - Hard delete all pricing records
  * - Soft delete all requests for this listing
+ * - Handle advertising slot:
+ *   - Commission-based: DELETE the slot entirely
+ *   - Token-based: DETACH listing (slot becomes empty/reusable)
  * - If listing was ONLINE:
  *   - Delete PublicListing records
  *   - Delete PublicListingMedia records
- *   - Decrement location listingsCount
+ * - Decrement location listingsCount (if listing was ever submitted)
  * - S3 files remain (for audit purposes)
  */
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
@@ -283,6 +291,38 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`Deleted ${pricingRecords.length} pricing records`);
     }
 
+    // 6b. Handle advertising slot (if exists)
+    let slotAction: 'DELETED' | 'DETACHED' | 'NONE' = 'NONE';
+    
+    if (listing.activeSlotId) {
+      console.log(`Listing has active slot: ${listing.activeSlotId}`);
+      
+      try {
+        const slot = await getSlot(hostId, listing.activeSlotId);
+        
+        if (slot) {
+          if (slot.isCommissionBased) {
+            // Commission-based: DELETE the slot entirely
+            // Commission slots are tied to the listing and cannot be reused
+            await deleteAdvertisingSlot(hostId, slot.slotId);
+            slotAction = 'DELETED';
+            console.log(`Deleted commission-based slot ${slot.slotId}`);
+          } else {
+            // Token-based: DETACH listing (slot becomes empty/reusable)
+            // The slot remains and can be used for a new listing
+            await detachListingFromSlot(hostId, slot.slotId);
+            slotAction = 'DETACHED';
+            console.log(`Detached token-based slot ${slot.slotId} - now empty and reusable`);
+          }
+        } else {
+          console.warn(`Slot ${listing.activeSlotId} not found - may have already been deleted`);
+        }
+      } catch (err) {
+        console.error(`Failed to handle slot ${listing.activeSlotId}:`, err);
+        // Continue with deletion - slot cleanup is not critical
+      }
+    }
+
     // 7. Clean up public listings (if was ONLINE) and decrement location counts (if ever submitted)
     const countryId = listing.mapboxMetadata?.country?.mapbox_id;
     const placeId = listing.mapboxMetadata?.place?.mapbox_id;
@@ -384,6 +424,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log('Listing deleted successfully:', {
       listingId,
       wasOnline,
+      slotAction,
       imagesDeleted: images.length,
       documentsDeleted: documents.length,
       amenitiesDeleted: amenities ? 1 : 0,
@@ -396,6 +437,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       listingId,
       message: 'Listing deleted successfully',
       deletedAt: now,
+      slotAction, // Inform frontend what happened to the slot
     });
 
   } catch (error: any) {

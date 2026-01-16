@@ -23,7 +23,7 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-
 
 import { getAuthContext, assertCanAccessHost } from '../lib/auth';
 import * as response from '../lib/response';
-import { getSlotByListingId, setSlotDoNotRenew } from '../../lib/subscription-service';
+import { getSlotByHostAndListingId, setSlotDoNotRenew } from '../../lib/subscription-service';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -95,7 +95,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 5. Get the active slot for this listing
-    const slot = await getSlotByListingId(listingId);
+    const slot = await getSlotByHostAndListingId(hostId, listingId);
 
     if (!slot) {
       return response.badRequest(
@@ -110,7 +110,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // 6. Update the slot
-    await setSlotDoNotRenew(listingId, slot.slotId, body.doNotRenew);
+    await setSlotDoNotRenew(hostId, slot.slotId, body.doNotRenew);
 
     // 7. Also update the listing metadata to keep in sync
     const now = new Date().toISOString();

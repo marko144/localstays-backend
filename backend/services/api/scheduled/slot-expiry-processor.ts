@@ -276,6 +276,16 @@ async function processExpiredSlots(): Promise<void> {
 }
 
 async function processExpiredSlot(slot: AdvertisingSlot): Promise<void> {
+  // Handle empty slots (no listing attached)
+  // These are token-based slots where the listing was deleted
+  // Just delete the slot - no unpublishing needed
+  if (!slot.listingId) {
+    console.log(`Processing expired EMPTY slot ${slot.slotId} (no listing attached)`);
+    await deleteSlot(slot);
+    console.log(`✅ Empty slot ${slot.slotId} deleted`);
+    return;
+  }
+
   console.log(`Processing expired slot ${slot.slotId} for listing ${slot.listingId}`);
 
   // 1. Get listing metadata to find location IDs
@@ -290,7 +300,7 @@ async function processExpiredSlot(slot: AdvertisingSlot): Promise<void> {
   // 2. Get location IDs from listing (mapbox or manual)
   const locationIds = await getListingLocationIds(listing);
 
-  // 3. Delete public listing records and decrement location counts
+  // 3. Delete public listing records (don't decrement location counts)
   if (locationIds.length > 0) {
     await unpublishFromLocations(slot.listingId, locationIds);
   }
@@ -565,12 +575,14 @@ async function updateListingStatus(
 }
 
 async function deleteSlot(slot: AdvertisingSlot): Promise<void> {
+  // Use the new key structure: HOST#hostId / SLOT#slotId
+  // The slot.pk already contains HOST#hostId after migration
   await docClient.send(
     new DeleteCommand({
       TableName: ADVERTISING_SLOTS_TABLE_NAME,
       Key: {
-        pk: slot.pk,
-        sk: slot.sk,
+        pk: `HOST#${slot.hostId}`,
+        sk: `SLOT#${slot.slotId}`,
       },
     })
   );
@@ -595,11 +607,16 @@ async function groupSlotsByHost(
 
     const hostData = slotsByHost.get(slot.hostId);
     if (hostData) {
-      // Get listing name for the slot
-      const listing = await getListing(slot.hostId, slot.listingId);
+      // Get listing name for the slot (empty slots won't have a listingId)
+      let listingName: string | undefined;
+      if (slot.listingId) {
+        const listing = await getListing(slot.hostId, slot.listingId);
+        listingName = listing?.listingName;
+      }
+      
       const slotWithListing: SlotWithListing = {
         ...slot,
-        listingName: listing?.listingName,
+        listingName,
       };
       hostData.slots.push(slotWithListing);
     }

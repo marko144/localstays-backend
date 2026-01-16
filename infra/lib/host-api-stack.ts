@@ -757,6 +757,19 @@ export class HostApiStack extends cdk.Stack {
       }
     );
 
+    // GET /api/v1/hosts/{hostId}/slots/empty
+    // Returns empty slots (token-based slots with no listing) available for reuse
+    const hostSlotsResource = hostIdParam.addResource('slots');
+    const emptySlotsResource = hostSlotsResource.addResource('empty');
+    emptySlotsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.hostListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // ========================================
     // API Gateway Routes - Stripe
     // ========================================
