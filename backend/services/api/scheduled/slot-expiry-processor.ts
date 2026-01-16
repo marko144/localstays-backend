@@ -41,7 +41,6 @@ const docClient = DynamoDBDocumentClient.from(client, {
 });
 
 const TABLE_NAME = process.env.TABLE_NAME!;
-const LOCATIONS_TABLE_NAME = process.env.LOCATIONS_TABLE_NAME!;
 const PUBLIC_LISTINGS_TABLE_NAME = process.env.PUBLIC_LISTINGS_TABLE_NAME!;
 const PUBLIC_LISTING_MEDIA_TABLE_NAME = process.env.PUBLIC_LISTING_MEDIA_TABLE_NAME!;
 const ADVERTISING_SLOTS_TABLE_NAME = process.env.ADVERTISING_SLOTS_TABLE_NAME!;
@@ -476,31 +475,9 @@ async function unpublishFromLocations(listingId: string, locationIds: string[]):
     );
   }
 
-  // Decrement listing counts for each location
-  for (const locationId of locationIds) {
-    try {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: LOCATIONS_TABLE_NAME,
-          Key: {
-            pk: `LOCATION#${locationId}`,
-            sk: 'META',
-          },
-          UpdateExpression: 'SET listingsCount = if_not_exists(listingsCount, :zero) - :one',
-          ConditionExpression: 'attribute_exists(pk)',
-          ExpressionAttributeValues: {
-            ':zero': 0,
-            ':one': 1,
-          },
-        })
-      );
-    } catch (error: any) {
-      // Ignore condition check failures (location might not exist)
-      if (error.name !== 'ConditionalCheckFailedException') {
-        console.error(`Failed to decrement count for location ${locationId}:`, error);
-      }
-    }
-  }
+  // Note: listingsCount is NOT decremented here.
+  // Location counts are only decremented when a listing is permanently deleted.
+  // Slot expiry just takes the listing offline - it can be re-published later.
 
   console.log(`Deleted public listing records from ${locationIds.length} locations`);
 }
@@ -564,6 +541,8 @@ async function updateListingStatus(
       },
       UpdateExpression: `
         SET #status = :status,
+            gsi2pk = :gsi2pk,
+            gsi2sk = :gsi2sk,
             activeSlotId = :null,
             slotExpiresAt = :null,
             slotDoNotRenew = :null,
@@ -576,6 +555,8 @@ async function updateListingStatus(
       },
       ExpressionAttributeValues: {
         ':status': status,
+        ':gsi2pk': `LISTING_STATUS#${status}`,
+        ':gsi2sk': now,
         ':null': null,
         ':now': now,
       },

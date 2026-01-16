@@ -80,17 +80,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           pk: `HOST#${hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: 'SET #status = :status, #updatedAt = :updatedAt, submittedForReviewAt = :now, #gsi2sk = :gsi2sk',
+        UpdateExpression: 'SET #status = :status, #updatedAt = :updatedAt, submittedForReviewAt = :now, gsi2pk = :gsi2pk, gsi2sk = :gsi2sk',
         ExpressionAttributeNames: {
           '#status': 'status',
           '#updatedAt': 'updatedAt',
-          '#gsi2sk': 'gsi2sk',
         },
         ExpressionAttributeValues: {
           ':status': 'IN_REVIEW',
           ':updatedAt': now,
           ':now': now,
-          ':gsi2sk': `LISTING_STATUS#IN_REVIEW#${now}`,
+          ':gsi2pk': 'LISTING_STATUS#IN_REVIEW',
+          ':gsi2sk': now,
         },
       })
     );

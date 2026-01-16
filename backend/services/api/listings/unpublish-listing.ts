@@ -160,13 +160,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           pk: `HOST#${hostId}`,
           sk: `LISTING_META#${listingId}`,
         },
-        UpdateExpression: 'SET #status = :offline, #updatedAt = :now',
+        UpdateExpression: 'SET #status = :offline, gsi2pk = :gsi2pk, gsi2sk = :gsi2sk, #updatedAt = :now',
         ExpressionAttributeNames: {
           '#status': 'status',
           '#updatedAt': 'updatedAt',
         },
         ExpressionAttributeValues: {
           ':offline': 'OFFLINE',
+          ':gsi2pk': 'LISTING_STATUS#OFFLINE',
+          ':gsi2sk': now,
           ':now': now,
         },
       })

@@ -72,6 +72,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const wasOnline = listing.status === 'ONLINE';
+    
+    // Check if location count was incremented (happens when listing is submitted for review or later)
+    // Statuses that indicate the count was incremented: IN_REVIEW, APPROVED, ONLINE, SUSPENDED, REJECTED, CHANGES_REQUESTED
+    const statusesWithLocationCountIncremented = ['IN_REVIEW', 'APPROVED', 'ONLINE', 'SUSPENDED', 'REJECTED', 'CHANGES_REQUESTED'];
+    const shouldDecrementLocationCount = statusesWithLocationCountIncremented.includes(listing.status);
 
     // 3. Fetch all child records (images, documents, amenities, pricing, requests)
     const [imagesResult, documentsResult, amenitiesResult, pricingResult, requestsResult] = await Promise.all([
@@ -278,14 +283,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       console.log(`Deleted ${pricingRecords.length} pricing records`);
     }
 
-    // 7. If listing was ONLINE, clean up public listings and decrement location counts
+    // 7. Clean up public listings (if was ONLINE) and decrement location counts (if ever submitted)
+    const countryId = listing.mapboxMetadata?.country?.mapbox_id;
+    const placeId = listing.mapboxMetadata?.place?.mapbox_id;
+    const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
+    const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
+
+    // If listing was ONLINE, clean up public listing records
     if (wasOnline) {
       console.log('Listing was ONLINE, cleaning up public records...');
-
-      const countryId = listing.mapboxMetadata?.country?.mapbox_id;
-      const placeId = listing.mapboxMetadata?.place?.mapbox_id;
-      const hasLocality = listing.mapboxMetadata?.locality?.mapbox_id;
-      const localityId = hasLocality ? listing.mapboxMetadata.locality.mapbox_id : null;
 
       // Delete PublicListing records
       if (placeId) {
@@ -303,9 +309,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         } catch (err) {
           console.error(`Failed to delete PublicListing for PLACE:`, err);
         }
-
-        // Decrement location count for PLACE
-        await decrementLocationListingsCount(placeId, now);
       }
 
       if (localityId) {
@@ -323,15 +326,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         } catch (err) {
           console.error(`Failed to delete PublicListing for LOCALITY:`, err);
         }
-
-        // Decrement location count for LOCALITY
-        await decrementLocationListingsCount(localityId, now);
-      }
-
-      // Decrement location count for COUNTRY
-      if (countryId) {
-        await decrementLocationListingsCount(countryId, now);
-        console.log(`Decremented listings count for COUNTRY: ${countryId}`);
       }
 
       // Delete PublicListingMedia records
@@ -364,6 +358,27 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       } catch (err) {
         console.error('Failed to delete PublicListingMedia records:', err);
       }
+    }
+
+    // Decrement location counts if listing was ever submitted (IN_REVIEW or beyond)
+    // This is separate from public listing cleanup because counts are incremented at submission, not publish
+    if (shouldDecrementLocationCount) {
+      console.log(`Decrementing location counts (listing status was: ${listing.status})...`);
+
+      if (placeId) {
+        await decrementLocationListingsCount(placeId, now);
+      }
+
+      if (localityId) {
+        await decrementLocationListingsCount(localityId, now);
+      }
+
+      if (countryId) {
+        await decrementLocationListingsCount(countryId, now);
+        console.log(`Decremented listings count for COUNTRY: ${countryId}`);
+      }
+    } else {
+      console.log(`Skipping location count decrement (listing status: ${listing.status} - never submitted)`);
     }
 
     console.log('Listing deleted successfully:', {
