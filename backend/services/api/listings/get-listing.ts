@@ -174,7 +174,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         pets: listing.pets,
         checkIn: listing.checkIn,
         parking: listing.parking,
-        paymentType: listing.paymentType,
+        paymentTypes: listing.paymentTypes,
         smokingAllowed: listing.smokingAllowed,
         advanceBooking: listing.advanceBooking,
         maxBookingDuration: listing.maxBookingDuration,

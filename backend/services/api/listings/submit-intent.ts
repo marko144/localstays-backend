@@ -101,24 +101,28 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       propertyTypeEnum,
       checkInTypeEnum,
       parkingTypeEnum,
-      paymentTypeEnum,
       advanceBookingEnum,
       maxBookingDurationEnum,
       cancellationPolicyEnum,
       amenityEnums,
+      paymentTypeEnums,
     ] = await Promise.all([
       fetchEnumTranslation('PROPERTY_TYPE', body.propertyType),
       fetchEnumTranslation('CHECKIN_TYPE', body.checkIn.type),
       fetchEnumTranslation('PARKING_TYPE', body.parking.type),
-      fetchEnumTranslation('PAYMENT_TYPE', body.paymentType),
       fetchEnumTranslation('ADVANCE_BOOKING', body.advanceBooking),
       fetchEnumTranslation('MAX_BOOKING_DURATION', body.maxBookingDuration),
       fetchEnumTranslation('CANCELLATION_POLICY', body.cancellationPolicy.type),
       fetchAmenityTranslations(body.amenities),
+      fetchPaymentTypeTranslations(body.paymentTypes),
     ]);
 
-    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !paymentTypeEnum || !advanceBookingEnum || !maxBookingDurationEnum || !cancellationPolicyEnum) {
+    if (!propertyTypeEnum || !checkInTypeEnum || !parkingTypeEnum || !advanceBookingEnum || !maxBookingDurationEnum || !cancellationPolicyEnum) {
       return response.badRequest('Invalid enum values provided');
+    }
+    
+    if (!paymentTypeEnums || paymentTypeEnums.length === 0) {
+      return response.badRequest('Invalid payment types provided');
     }
 
     // 6. Generate IDs and timestamps
@@ -170,7 +174,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             type: parkingTypeEnum,
             ...(body.parking.description && { description: body.parking.description }),
           },
-          paymentType: paymentTypeEnum,
+          paymentTypes: paymentTypeEnums,
           smokingAllowed: body.smokingAllowed,
           advanceBooking: advanceBookingEnum,
           maxBookingDuration: maxBookingDurationEnum,
@@ -507,8 +511,8 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.parking || !body.parking.type) {
     return 'parking.type is required';
   }
-  if (!body.paymentType) {
-    return 'paymentType is required';
+  if (!body.paymentTypes || !Array.isArray(body.paymentTypes) || body.paymentTypes.length === 0) {
+    return 'paymentTypes is required (must be an array with at least one payment type)';
   }
   if (!body.advanceBooking) {
     return 'advanceBooking is required';
@@ -743,6 +747,37 @@ async function fetchEnumTranslation(
       nights: result.Item.metadata.nights,
     }),
   };
+}
+
+/**
+ * Fetch payment type translations (array of payment types)
+ */
+async function fetchPaymentTypeTranslations(
+  paymentTypeKeys: string[]
+): Promise<BilingualEnum[]> {
+  const paymentTypes: BilingualEnum[] = [];
+
+  for (const key of paymentTypeKeys) {
+    const result = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: 'ENUM#PAYMENT_TYPE',
+          sk: `VALUE#${key}`,
+        },
+      })
+    );
+
+    if (result.Item) {
+      paymentTypes.push({
+        key: result.Item.enumValue,
+        en: result.Item.translations.en,
+        sr: result.Item.translations.sr,
+      });
+    }
+  }
+
+  return paymentTypes;
 }
 
 /**

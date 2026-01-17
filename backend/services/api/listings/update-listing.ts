@@ -52,7 +52,7 @@ const EDITABLE_STATUSES = ['IN_REVIEW', 'REJECTED', 'APPROVED', 'ONLINE', 'OFFLI
 const VALID_PROPERTY_TYPES: PropertyType[] = ['APARTMENT', 'HOUSE', 'VILLA', 'STUDIO', 'ROOM'];
 const VALID_CHECKIN_TYPES: CheckInType[] = ['SELF_CHECKIN', 'HOST_GREETING', 'LOCKBOX', 'DOORMAN'];
 const VALID_PARKING_TYPES: ParkingType[] = ['NO_PARKING', 'FREE', 'PAID'];
-const VALID_PAYMENT_TYPES: PaymentType[] = ['PAY_LATER', 'PAY_LATER_CASH_ONLY'];
+const VALID_PAYMENT_TYPES: PaymentType[] = ['PAY_LATER', 'PAY_LATER_CASH_ONLY', 'LOKALSTAYS_ONLINE'];
 const VALID_ADVANCE_BOOKING: AdvanceBookingType[] = [
   'DAYS_30', 'DAYS_60', 'DAYS_90', 'DAYS_180', 'DAYS_240', 'DAYS_300', 'DAYS_365'
 ];
@@ -322,16 +322,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('parking');
     }
 
-    // paymentType
-    if (updates.paymentType !== undefined) {
-      const paymentTypeEnum = await fetchEnumTranslation('PAYMENT_TYPE', updates.paymentType);
-      if (!paymentTypeEnum) {
-        return response.badRequest(`Invalid payment type: ${updates.paymentType}`, 'VALIDATION_ERROR');
+    // paymentTypes (array)
+    if (updates.paymentTypes !== undefined) {
+      const paymentTypeEnums = await fetchPaymentTypeTranslations(updates.paymentTypes);
+      if (!paymentTypeEnums || paymentTypeEnums.length === 0) {
+        return response.badRequest('Invalid payment types provided', 'VALIDATION_ERROR');
       }
-      updateExpressionParts.push('#paymentType = :paymentType');
-      expressionAttributeNames['#paymentType'] = 'paymentType';
-      expressionAttributeValues[':paymentType'] = paymentTypeEnum;
-      updatedFields.push('paymentType');
+      updateExpressionParts.push('#paymentTypes = :paymentTypes');
+      expressionAttributeNames['#paymentTypes'] = 'paymentTypes';
+      expressionAttributeValues[':paymentTypes'] = paymentTypeEnums;
+      updatedFields.push('paymentTypes');
     }
 
     // smokingAllowed
@@ -678,10 +678,15 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
   }
 
-  // paymentType
-  if (updates.paymentType !== undefined) {
-    if (!VALID_PAYMENT_TYPES.includes(updates.paymentType)) {
-      return `Invalid payment type: ${updates.paymentType}`;
+  // paymentTypes (array)
+  if (updates.paymentTypes !== undefined) {
+    if (!Array.isArray(updates.paymentTypes) || updates.paymentTypes.length === 0) {
+      return 'paymentTypes must be an array with at least one payment type';
+    }
+    for (const pt of updates.paymentTypes) {
+      if (!VALID_PAYMENT_TYPES.includes(pt)) {
+        return `Invalid payment type: ${pt}`;
+      }
     }
   }
 
@@ -750,6 +755,37 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
   }
 
   return null;
+}
+
+/**
+ * Fetch payment type translations (array of payment types)
+ */
+async function fetchPaymentTypeTranslations(
+  paymentTypeKeys: string[]
+): Promise<BilingualEnum[]> {
+  const paymentTypes: BilingualEnum[] = [];
+
+  for (const key of paymentTypeKeys) {
+    const result = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: 'ENUM#PAYMENT_TYPE',
+          sk: `VALUE#${key}`,
+        },
+      })
+    );
+
+    if (result.Item) {
+      paymentTypes.push({
+        key: result.Item.enumValue,
+        en: result.Item.translations.en,
+        sr: result.Item.translations.sr,
+      });
+    }
+  }
+
+  return paymentTypes;
 }
 
 /**

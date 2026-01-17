@@ -588,6 +588,17 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // PUT /api/v1/admin/hosts/{hostId}/online-payment
+    const adminOnlinePaymentResource = adminHostIdParam.addResource('online-payment');
+    adminOnlinePaymentResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminHostsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // ========================================
     // Admin Listing Routes
     // ========================================

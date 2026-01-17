@@ -149,6 +149,12 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
           // GSI2: Query Hosts by status
           gsi2pk: 'STATUS#NOT_SUBMITTED',
           gsi2sk: `HOST#${hostId}`,
+          // Online payment handling - initialized as not requested
+          onlinePaymentStatus: 'NOT_REQUESTED',
+          onlinePaymentRequestedAt: null,
+          onlinePaymentDecidedAt: null,
+          onlinePaymentDecidedBy: null,
+          onlinePaymentRejectReason: null,
         },
       })
     );

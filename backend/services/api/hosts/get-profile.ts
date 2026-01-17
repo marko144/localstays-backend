@@ -124,13 +124,17 @@ function buildProfileResponse(host: Host, documents: Document[]) {
     
     // KYC status
     kyc: {
-      status: host.kyc.status,
-      submittedAt: host.kyc.submittedAt,
-      approvedAt: host.kyc.approvedAt,
-      rejectedAt: host.kyc.rejectedAt,
-      rejectReason: host.kyc.rejectReason,
-      notes: host.kyc.notes,
+      status: host.kyc?.status,
+      submittedAt: host.kyc?.submittedAt,
+      approvedAt: host.kyc?.approvedAt,
+      rejectedAt: host.kyc?.rejectedAt,
+      rejectReason: host.kyc?.rejectReason,
+      notes: host.kyc?.notes,
     },
+    
+    // Online payment handling status
+    onlinePaymentStatus: host.onlinePaymentStatus || 'NOT_REQUESTED',
+    onlinePaymentRequestedAt: host.onlinePaymentRequestedAt || null,
     
     // Document metadata (no S3 URLs, just metadata)
     documents: documents

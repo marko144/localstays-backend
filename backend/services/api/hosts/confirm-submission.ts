@@ -344,10 +344,38 @@ async function executeProfileSubmissionTransaction(
     throw new Error(`Host ${hostId} not found`);
   }
 
+  // Check if host is requesting online payment handling
+  const requestOnlinePayment = 'requestOnlinePayment' in tokenRecord.profileData 
+    ? tokenRecord.profileData.requestOnlinePayment 
+    : false;
+  
+  // Determine online payment status - only update if status is NOT_REQUESTED or this is a new request
+  let onlinePaymentFields = {};
+  if (requestOnlinePayment && hostRecord.onlinePaymentStatus !== 'APPROVED') {
+    // Host is requesting online payment handling
+    onlinePaymentFields = {
+      onlinePaymentStatus: 'REQUESTED',
+      onlinePaymentRequestedAt: submittedAt,
+      // Don't clear decision fields - admin may have previously rejected
+    };
+  } else if (!requestOnlinePayment && hostRecord.onlinePaymentStatus === 'NOT_REQUESTED') {
+    // Host doesn't want online payment - ensure fields are initialized
+    onlinePaymentFields = {
+      onlinePaymentStatus: 'NOT_REQUESTED',
+      onlinePaymentRequestedAt: null,
+      onlinePaymentDecidedAt: null,
+      onlinePaymentDecidedBy: null,
+      onlinePaymentRejectReason: null,
+    };
+  }
+  // If host already has APPROVED status, don't change it
+  // If host has REJECTED status and doesn't request again, leave it
+
   // Apply profile data from submission
   const updatedHost = {
     ...hostRecord,
     ...tokenRecord.profileData,
+    ...onlinePaymentFields,
     status: 'VERIFICATION',
     previousStatus: hostRecord.status, // Track previous status (for detecting resubmissions)
     kyc: {
@@ -369,6 +397,9 @@ async function executeProfileSubmissionTransaction(
     gsi6pk: tokenRecord.profileData.email.toLowerCase(),
     gsi6sk: `HOST#${hostId}`,
   };
+  
+  // Remove requestOnlinePayment from profile data as it's stored separately
+  delete updatedHost.requestOnlinePayment;
 
   transactItems.push({
     Put: {

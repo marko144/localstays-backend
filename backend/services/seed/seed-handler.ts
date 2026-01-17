@@ -499,6 +499,7 @@ async function seedListingEnums() {
   const paymentTypes = [
     { key: 'PAY_LATER', en: 'Pay Later', sr: 'Plaćanje kasnije', sortOrder: 1 },
     { key: 'PAY_LATER_CASH_ONLY', en: 'Pay Later - Cash Only', sr: 'Plaćanje kasnije - Samo gotovina', sortOrder: 2 },
+    { key: 'LOKALSTAYS_ONLINE', en: 'LokalStays Online Payment', sr: 'LokalStays online naplate', sortOrder: 3 },
   ];
 
   paymentTypes.forEach((type) => {

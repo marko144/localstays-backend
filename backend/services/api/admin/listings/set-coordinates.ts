@@ -237,25 +237,53 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     console.log(`Updated listing ${listingId} with coordinates: ${body.latitude}, ${body.longitude}`);
 
-    // 7. If listing is published, sync to PublicListings table
-    if (listing.status === 'PUBLISHED') {
+    // 7. If listing is ONLINE, sync to PublicListings table (PLACE and LOCALITY records)
+    if (listing.status === 'ONLINE') {
       try {
-        await docClient.send(
-          new UpdateCommand({
-            TableName: PUBLIC_LISTINGS_TABLE_NAME,
-            Key: {
-              pk: `LISTING#${listingId}`,
-              sk: 'METADATA',
-            },
-            UpdateExpression: 'SET latitude = :lat, longitude = :lng, updatedAt = :now',
-            ExpressionAttributeValues: {
-              ':lat': body.latitude,
-              ':lng': body.longitude,
-              ':now': now,
-            },
-          })
-        );
-        console.log(`Synced coordinates to PublicListings for listing ${listingId}`);
+        const placeId = listing.mapboxMetadata?.place?.mapbox_id;
+        const localityId = listing.mapboxMetadata?.locality?.mapbox_id;
+
+        if (placeId) {
+          // Update PLACE record
+          await docClient.send(
+            new UpdateCommand({
+              TableName: PUBLIC_LISTINGS_TABLE_NAME,
+              Key: {
+                pk: `LOCATION#${placeId}`,
+                sk: `LISTING#${listingId}`,
+              },
+              UpdateExpression: 'SET latitude = :lat, longitude = :lng, updatedAt = :now',
+              ExpressionAttributeValues: {
+                ':lat': body.latitude,
+                ':lng': body.longitude,
+                ':now': now,
+              },
+            })
+          );
+          console.log(`Synced coordinates to PublicListings PLACE record for listing ${listingId}`);
+
+          // Update LOCALITY record if exists
+          if (localityId) {
+            await docClient.send(
+              new UpdateCommand({
+                TableName: PUBLIC_LISTINGS_TABLE_NAME,
+                Key: {
+                  pk: `LOCATION#${localityId}`,
+                  sk: `LISTING#${listingId}`,
+                },
+                UpdateExpression: 'SET latitude = :lat, longitude = :lng, updatedAt = :now',
+                ExpressionAttributeValues: {
+                  ':lat': body.latitude,
+                  ':lng': body.longitude,
+                  ':now': now,
+                },
+              })
+            );
+            console.log(`Synced coordinates to PublicListings LOCALITY record for listing ${listingId}`);
+          }
+        } else {
+          console.warn(`Listing ${listingId} is ONLINE but has no place mapbox_id - cannot sync to PublicListings`);
+        }
       } catch (syncError) {
         // Log but don't fail - the main update succeeded
         console.error('Failed to sync coordinates to PublicListings:', syncError);
@@ -277,7 +305,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             latitude: body.latitude,
             longitude: body.longitude,
           },
-          synced: listing.status === 'PUBLISHED',
+          synced: listing.status === 'ONLINE',
           message: 'Coordinates updated successfully',
         },
       }),

@@ -1,23 +1,22 @@
-# Payment Type - Frontend Integration Guide
+# Payment Types - Frontend Integration Guide
 
 ## Overview
 
-Payment type is a **required field** for listing creation. Users select one payment method from 4 options.
+Payment types is a **required field** for listing creation. Users can now select **multiple payment methods** from the available options.
 
 ---
 
 ## Payment Type Options
 
-| Key                  | English Label      | Serbian Label               |
-| -------------------- | ------------------ | --------------------------- |
-| `PAY_ONLINE`         | Pay Online         | Plaćanje online             |
-| `PAY_DEPOSIT_ONLINE` | Pay Deposit Online | Plaćanje depozita online    |
-| `PAY_LATER_CASH`     | Pay Later (Cash)   | Plaćanje kasnije (Gotovina) |
-| `PAY_LATER_CARD`     | Pay Later (Card)   | Plaćanje kasnije (Kartica)  |
+| Key                   | English Label             | Serbian Label                    |
+| --------------------- | ------------------------- | -------------------------------- |
+| `PAY_LATER`           | Pay Later                 | Plaćanje kasnije                 |
+| `PAY_LATER_CASH_ONLY` | Pay Later - Cash Only     | Plaćanje kasnije - Samo gotovina |
+| `LOKALSTAYS_ONLINE`   | LokalStays Online Payment | LokalStays online naplate        |
 
 ---
 
-## Getting Payment Types for Dropdown
+## Getting Payment Types for Multi-Select
 
 ### Endpoint
 
@@ -31,28 +30,22 @@ GET /api/v1/listings/metadata
 {
   "paymentTypes": [
     {
-      "key": "PAY_ONLINE",
-      "en": "Pay Online",
-      "sr": "Plaćanje online",
+      "key": "PAY_LATER",
+      "en": "Pay Later",
+      "sr": "Plaćanje kasnije",
       "sortOrder": 1
     },
     {
-      "key": "PAY_DEPOSIT_ONLINE",
-      "en": "Pay Deposit Online",
-      "sr": "Plaćanje depozita online",
+      "key": "PAY_LATER_CASH_ONLY",
+      "en": "Pay Later - Cash Only",
+      "sr": "Plaćanje kasnije - Samo gotovina",
       "sortOrder": 2
     },
     {
-      "key": "PAY_LATER_CASH",
-      "en": "Pay Later (Cash)",
-      "sr": "Plaćanje kasnije (Gotovina)",
+      "key": "LOKALSTAYS_ONLINE",
+      "en": "LokalStays Online Payment",
+      "sr": "LokalStays online naplate",
       "sortOrder": 3
-    },
-    {
-      "key": "PAY_LATER_CARD",
-      "en": "Pay Later (Card)",
-      "sr": "Plaćanje kaldes (Kartica)",
-      "sortOrder": 4
     }
   ]
 }
@@ -65,8 +58,8 @@ GET /api/v1/listings/metadata
 const metadata = await fetch("/api/v1/listings/metadata");
 const { paymentTypes } = await metadata.json();
 
-// Populate dropdown
-const dropdown = paymentTypes.map((pt) => ({
+// Populate multi-select/checkbox group
+const options = paymentTypes.map((pt) => ({
   value: pt.key,
   label: currentLanguage === "en" ? pt.en : pt.sr,
 }));
@@ -82,13 +75,13 @@ const dropdown = paymentTypes.map((pt) => ({
 POST /api/v1/hosts/{hostId}/listings/submit-intent
 ```
 
-### Request Body (New Field)
+### Request Body
 
 ```json
 {
   "listingName": "My Apartment",
   "propertyType": "APARTMENT",
-  "paymentType": "PAY_ONLINE", // ← NEW REQUIRED FIELD
+  "paymentTypes": ["PAY_LATER", "LOKALSTAYS_ONLINE"], // ← ARRAY of keys
   "parking": {
     "type": "FREE"
   }
@@ -99,7 +92,9 @@ POST /api/v1/hosts/{hostId}/listings/submit-intent
 ### Validation
 
 - **Required**: Must be provided
-- **Valid values**: `PAY_ONLINE`, `PAY_DEPOSIT_ONLINE`, `PAY_LATER_CASH`, `PAY_LATER_CARD`
+- **Type**: Array of strings
+- **Minimum**: At least 1 payment type must be selected
+- **Valid values**: `PAY_LATER`, `PAY_LATER_CASH_ONLY`, `LOKALSTAYS_ONLINE`
 
 ---
 
@@ -118,12 +113,18 @@ GET /api/v1/hosts/{hostId}/listings/{listingId}
   "listing": {
     "listingId": "listing_123",
     "listingName": "My Apartment",
-    "paymentType": {
-      // ← NEW FIELD
-      "key": "PAY_ONLINE",
-      "en": "Pay Online",
-      "sr": "Plaćanje online"
-    },
+    "paymentTypes": [
+      {
+        "key": "PAY_LATER",
+        "en": "Pay Later",
+        "sr": "Plaćanje kasnije"
+      },
+      {
+        "key": "LOKALSTAYS_ONLINE",
+        "en": "LokalStays Online Payment",
+        "sr": "LokalStays online naplate"
+      }
+    ],
     "parking": {
       "type": {
         "key": "FREE",
@@ -138,7 +139,7 @@ GET /api/v1/hosts/{hostId}/listings/{listingId}
 
 ---
 
-## Updating Payment Type
+## Updating Payment Types
 
 ### Endpoint
 
@@ -151,7 +152,7 @@ PUT /api/v1/hosts/{hostId}/listings/{listingId}/update
 ```json
 {
   "updates": {
-    "paymentType": "PAY_LATER_CASH" // ← Send only the key
+    "paymentTypes": ["PAY_LATER_CASH_ONLY"] // ← Send array of keys (replaces existing)
   }
 }
 ```
@@ -160,9 +161,8 @@ PUT /api/v1/hosts/{hostId}/listings/{listingId}/update
 
 ## Notes
 
-- Payment type is stored as a **bilingual enum** (same pattern as parking, check-in, etc.)
-- Always send the **key** (`PAY_ONLINE`) in requests
-- Backend returns the **full bilingual object** in responses
-- All existing listings have been migrated to default: `PAY_ONLINE`
-
-
+- Payment types are stored as an **array of bilingual enums**
+- Always send an **array of keys** in requests (e.g., `["PAY_LATER", "LOKALSTAYS_ONLINE"]`)
+- Backend returns the **full bilingual objects array** in responses
+- At least one payment type must be selected
+- The array is a full replacement - send all desired payment types each time

@@ -14,7 +14,8 @@ export type CheckInType = 'SELF_CHECKIN' | 'HOST_GREETING' | 'LOCKBOX' | 'DOORMA
 export type ParkingType = 'NO_PARKING' | 'FREE' | 'PAID';
 export type PaymentType = 
   | 'PAY_LATER'
-  | 'PAY_LATER_CASH_ONLY';
+  | 'PAY_LATER_CASH_ONLY'
+  | 'LOKALSTAYS_ONLINE';
 export type CancellationPolicyType = 
   | 'NO_CANCELLATION'
   | '24_HOURS'
@@ -248,8 +249,8 @@ export interface ListingMetadata {
     description?: string;
   };
   
-  // Payment Type
-  paymentType: BilingualEnum;
+  // Payment Types (multiple selection)
+  paymentTypes: BilingualEnum[];
   
   // Smoking Policy
   smokingAllowed: boolean;
@@ -525,7 +526,7 @@ export interface SubmitListingIntentRequest {
     type: ParkingType;
     description?: string;
   };
-  paymentType: PaymentType;
+  paymentTypes: PaymentType[];
   smokingAllowed: boolean;
   advanceBooking: AdvanceBookingType;
   maxBookingDuration: MaxBookingDurationType;
@@ -629,7 +630,7 @@ export interface GetListingResponse {
       type: BilingualEnum;
       description?: string;
     };
-    paymentType: BilingualEnum;
+    paymentTypes: BilingualEnum[];
     smokingAllowed: boolean;
     advanceBooking: BilingualEnum & { days: number };
     maxBookingDuration: BilingualEnum & { nights: number };
@@ -743,7 +744,7 @@ export interface UpdateListingRequest {
     type: ParkingType;
     description?: string;
   };
-  paymentType?: PaymentType;
+  paymentTypes?: PaymentType[];
   amenities?: AmenityKey[];
 }
 
@@ -817,7 +818,7 @@ export interface UpdateListingMetadataRequest {
       type: ParkingType;
       description?: string;
     };
-    paymentType?: PaymentType;
+    paymentTypes?: PaymentType[];
     smokingAllowed?: boolean;
     advanceBooking?: AdvanceBookingType;
     maxBookingDuration?: MaxBookingDurationType;

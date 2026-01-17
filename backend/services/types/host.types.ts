@@ -20,6 +20,16 @@ export type KycStatus =
   | 'REJECTED';
 
 /**
+ * Online payment handling status
+ * Tracks whether a host has requested LokalStays to handle online payments
+ */
+export type OnlinePaymentStatus = 
+  | 'NOT_REQUESTED'  // Host hasn't opted into this feature
+  | 'REQUESTED'      // Host requested during profile creation/update
+  | 'APPROVED'       // Admin has approved the request
+  | 'REJECTED';      // Admin has rejected the request
+
+/**
  * Address structure (ISO-3166 compliant)
  */
 export interface Address {
@@ -156,6 +166,13 @@ export interface BaseHost {
   acceptedTosAt: string | null;           // ISO timestamp when ToS was accepted
   acceptedPrivacyVersion: string | null;  // Version of Privacy Policy accepted
   acceptedPrivacyAt: string | null;       // ISO timestamp when Privacy was accepted
+  
+  // Online payment handling preference
+  onlinePaymentStatus: OnlinePaymentStatus;
+  onlinePaymentRequestedAt: string | null;   // When host requested this feature
+  onlinePaymentDecidedAt: string | null;     // When admin approved/rejected
+  onlinePaymentDecidedBy: string | null;     // Admin user sub who made the decision
+  onlinePaymentRejectReason: string | null;  // Reason if rejected (max 500 chars)
 }
 
 /**
@@ -207,6 +224,7 @@ export interface IndividualProfileData {
   billingAddress?: Address | null;  // Optional in submission
   forename: string;
   surname: string;
+  requestOnlinePayment?: boolean;   // Host requests LokalStays to handle online payments
 }
 
 export interface BusinessProfileData {
@@ -223,6 +241,7 @@ export interface BusinessProfileData {
   vatRegistered: boolean;
   vatNumber?: string | null;
   displayName?: string | null;
+  requestOnlinePayment?: boolean;   // Host requests LokalStays to handle online payments
 }
 
 export type ProfileData = IndividualProfileData | BusinessProfileData;

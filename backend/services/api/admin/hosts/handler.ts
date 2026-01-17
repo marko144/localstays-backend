@@ -10,6 +10,7 @@ import { handler as approveHost } from './approve-host';
 import { handler as rejectHost } from './reject-host';
 import { handler as suspendHost } from './suspend-host';
 import { handler as reinstateHost } from './reinstate-host';
+import { handler as updateOnlinePayment } from './update-online-payment';
 
 /**
  * Consolidated Admin Hosts Handler (v1.0)
@@ -25,8 +26,9 @@ import { handler as reinstateHost } from './reinstate-host';
  * - GET    /api/v1/admin/hosts/{hostId}/documents  → list host documents
  * - PUT    /api/v1/admin/hosts/{hostId}/approve    → approve host
  * - PUT    /api/v1/admin/hosts/{hostId}/reject     → reject host
- * - PUT    /api/v1/admin/hosts/{hostId}/suspend    → suspend host
- * - PUT    /api/v1/admin/hosts/{hostId}/reinstate  → reinstate host
+ * - PUT    /api/v1/admin/hosts/{hostId}/suspend         → suspend host
+ * - PUT    /api/v1/admin/hosts/{hostId}/reinstate       → reinstate host
+ * - PUT    /api/v1/admin/hosts/{hostId}/online-payment  → update online payment status
  */
 export const handler: APIGatewayProxyHandler = async (
   event: APIGatewayProxyEvent,
@@ -84,6 +86,11 @@ export const handler: APIGatewayProxyHandler = async (
     // PUT /api/v1/admin/hosts/{hostId}/reinstate
     if (method === 'PUT' && resource === '/api/v1/admin/hosts/{hostId}/reinstate') {
       return (await reinstateHost(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PUT /api/v1/admin/hosts/{hostId}/online-payment
+    if (method === 'PUT' && resource === '/api/v1/admin/hosts/{hostId}/online-payment') {
+      return (await updateOnlinePayment(event, context, callback)) as APIGatewayProxyResult;
     }
 
     // Route not found
