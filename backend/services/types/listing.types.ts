@@ -16,6 +16,13 @@ export type PaymentType =
   | 'PAY_LATER'
   | 'PAY_LATER_CASH_ONLY'
   | 'LOKALSTAYS_ONLINE';
+
+// Online payment configuration (only applicable when LOKALSTAYS_ONLINE is in paymentTypes)
+export interface OnlinePaymentConfig {
+  allowFullPayment: boolean;      // Host accepts full payment online
+  allowDeposit: boolean;          // Host accepts deposit payment
+  depositPercentage?: number;     // 1-70%, required if allowDeposit is true
+}
 export type CancellationPolicyType = 
   | 'NO_CANCELLATION'
   | '24_HOURS'
@@ -251,6 +258,9 @@ export interface ListingMetadata {
   
   // Payment Types (multiple selection)
   paymentTypes: BilingualEnum[];
+  
+  // Online Payment Configuration (only set when LOKALSTAYS_ONLINE is in paymentTypes)
+  onlinePaymentConfig?: OnlinePaymentConfig;
   
   // Smoking Policy
   smokingAllowed: boolean;
@@ -527,6 +537,11 @@ export interface SubmitListingIntentRequest {
     description?: string;
   };
   paymentTypes: PaymentType[];
+  onlinePaymentConfig?: {
+    allowFullPayment: boolean;
+    allowDeposit: boolean;
+    depositPercentage?: number;  // 1-70%, required if allowDeposit is true
+  };
   smokingAllowed: boolean;
   advanceBooking: AdvanceBookingType;
   maxBookingDuration: MaxBookingDurationType;
@@ -631,6 +646,11 @@ export interface GetListingResponse {
       description?: string;
     };
     paymentTypes: BilingualEnum[];
+    onlinePaymentConfig?: {
+      allowFullPayment: boolean;
+      allowDeposit: boolean;
+      depositPercentage?: number;
+    };
     smokingAllowed: boolean;
     advanceBooking: BilingualEnum & { days: number };
     maxBookingDuration: BilingualEnum & { nights: number };
@@ -819,6 +839,11 @@ export interface UpdateListingMetadataRequest {
       description?: string;
     };
     paymentTypes?: PaymentType[];
+    onlinePaymentConfig?: {
+      allowFullPayment: boolean;
+      allowDeposit: boolean;
+      depositPercentage?: number;  // 1-70%, required if allowDeposit is true
+    };
     smokingAllowed?: boolean;
     advanceBooking?: AdvanceBookingType;
     maxBookingDuration?: MaxBookingDurationType;

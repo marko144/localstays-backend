@@ -1,5 +1,6 @@
 import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult, Context, Callback } from 'aws-lambda';
 
+// v2: Added REQUESTED status to online payment endpoint
 // Import all individual operation handlers
 import { handler as listHosts } from './list-hosts';
 import { handler as searchHosts } from './search-hosts';

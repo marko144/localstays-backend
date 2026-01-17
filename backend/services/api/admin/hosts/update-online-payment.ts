@@ -22,14 +22,14 @@ const TABLE_NAME = process.env.TABLE_NAME!;
 
 // Valid status transitions
 const VALID_TRANSITIONS: Record<OnlinePaymentStatus, OnlinePaymentStatus[]> = {
-  'NOT_REQUESTED': [], // Cannot be changed by admin (only by host request)
+  'NOT_REQUESTED': ['REQUESTED'], // Admin can initiate request on behalf of host
   'REQUESTED': ['APPROVED', 'REJECTED'],
   'APPROVED': ['REJECTED'], // Allow revoking approval
-  'REJECTED': ['APPROVED'], // Allow reconsidering rejection
+  'REJECTED': ['APPROVED', 'REQUESTED'], // Allow reconsidering or re-requesting
 };
 
 interface UpdateOnlinePaymentRequest {
-  status: 'APPROVED' | 'REJECTED';
+  status: 'REQUESTED' | 'APPROVED' | 'REJECTED';
   reason?: string; // Required when rejecting
 }
 
@@ -111,13 +111,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const { status, reason } = requestBody;
 
     // 5. Validate new status
-    if (!status || !['APPROVED', 'REJECTED'].includes(status)) {
+    if (!status || !['REQUESTED', 'APPROVED', 'REJECTED'].includes(status)) {
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({
           success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'status must be APPROVED or REJECTED' },
+          error: { code: 'VALIDATION_ERROR', message: 'status must be REQUESTED, APPROVED, or REJECTED' },
         }),
       };
     }
@@ -189,7 +189,31 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     // 10. Update host record
     const now = new Date().toISOString();
 
-    if (status === 'APPROVED') {
+    if (status === 'REQUESTED') {
+      // Admin initiating request on behalf of host
+      await docClient.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: `HOST#${hostId}`, sk: 'META' },
+          UpdateExpression: `
+            SET onlinePaymentStatus = :status,
+                onlinePaymentRequestedAt = :requestedAt,
+                onlinePaymentDecidedAt = :decidedAt,
+                onlinePaymentDecidedBy = :decidedBy,
+                onlinePaymentRejectReason = :rejectReason,
+                updatedAt = :updatedAt
+          `,
+          ExpressionAttributeValues: {
+            ':status': 'REQUESTED',
+            ':requestedAt': now,
+            ':decidedAt': null, // Clear previous decision
+            ':decidedBy': null,
+            ':rejectReason': null,
+            ':updatedAt': now,
+          },
+        })
+      );
+    } else if (status === 'APPROVED') {
       await docClient.send(
         new UpdateCommand({
           TableName: TABLE_NAME,

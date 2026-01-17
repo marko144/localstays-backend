@@ -175,6 +175,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             ...(body.parking.description && { description: body.parking.description }),
           },
           paymentTypes: paymentTypeEnums,
+          ...(body.onlinePaymentConfig && { onlinePaymentConfig: body.onlinePaymentConfig }),
           smokingAllowed: body.smokingAllowed,
           advanceBooking: advanceBookingEnum,
           maxBookingDuration: maxBookingDurationEnum,
@@ -513,6 +514,35 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   }
   if (!body.paymentTypes || !Array.isArray(body.paymentTypes) || body.paymentTypes.length === 0) {
     return 'paymentTypes is required (must be an array with at least one payment type)';
+  }
+  
+  // Validate onlinePaymentConfig
+  const hasOnlinePayment = body.paymentTypes.includes('LOKALSTAYS_ONLINE');
+  if (body.onlinePaymentConfig) {
+    if (!hasOnlinePayment) {
+      return 'onlinePaymentConfig can only be provided when LOKALSTAYS_ONLINE is in paymentTypes';
+    }
+    
+    const { allowFullPayment, allowDeposit, depositPercentage } = body.onlinePaymentConfig;
+    
+    if (typeof allowFullPayment !== 'boolean' || typeof allowDeposit !== 'boolean') {
+      return 'onlinePaymentConfig.allowFullPayment and allowDeposit must be boolean values';
+    }
+    
+    if (!allowFullPayment && !allowDeposit) {
+      return 'At least one of allowFullPayment or allowDeposit must be true';
+    }
+    
+    if (allowDeposit) {
+      if (depositPercentage === undefined || depositPercentage === null) {
+        return 'depositPercentage is required when allowDeposit is true';
+      }
+      if (!Number.isInteger(depositPercentage) || depositPercentage < 1 || depositPercentage > 70) {
+        return 'depositPercentage must be an integer between 1 and 70';
+      }
+    }
+  } else if (hasOnlinePayment) {
+    return 'onlinePaymentConfig is required when LOKALSTAYS_ONLINE is in paymentTypes';
   }
   if (!body.advanceBooking) {
     return 'advanceBooking is required';

@@ -349,7 +349,7 @@ async function executeProfileSubmissionTransaction(
     ? tokenRecord.profileData.requestOnlinePayment 
     : false;
   
-  // Determine online payment status - only update if status is NOT_REQUESTED or this is a new request
+  // Determine online payment status based on host's choice
   let onlinePaymentFields = {};
   if (requestOnlinePayment && hostRecord.onlinePaymentStatus !== 'APPROVED') {
     // Host is requesting online payment handling
@@ -358,8 +358,9 @@ async function executeProfileSubmissionTransaction(
       onlinePaymentRequestedAt: submittedAt,
       // Don't clear decision fields - admin may have previously rejected
     };
-  } else if (!requestOnlinePayment && hostRecord.onlinePaymentStatus === 'NOT_REQUESTED') {
-    // Host doesn't want online payment - ensure fields are initialized
+  } else if (!requestOnlinePayment && hostRecord.onlinePaymentStatus !== 'APPROVED') {
+    // Host doesn't want online payment - set to NOT_REQUESTED
+    // (unless they already have APPROVED status, which we preserve)
     onlinePaymentFields = {
       onlinePaymentStatus: 'NOT_REQUESTED',
       onlinePaymentRequestedAt: null,
@@ -368,8 +369,7 @@ async function executeProfileSubmissionTransaction(
       onlinePaymentRejectReason: null,
     };
   }
-  // If host already has APPROVED status, don't change it
-  // If host has REJECTED status and doesn't request again, leave it
+  // If host already has APPROVED status, don't change it regardless of their choice
 
   // Apply profile data from submission
   const updatedHost = {

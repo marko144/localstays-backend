@@ -149,12 +149,8 @@ async function createHostRecord(ownerUserSub: string): Promise<string> {
           // GSI2: Query Hosts by status
           gsi2pk: 'STATUS#NOT_SUBMITTED',
           gsi2sk: `HOST#${hostId}`,
-          // Online payment handling - initialized as not requested
-          onlinePaymentStatus: 'NOT_REQUESTED',
-          onlinePaymentRequestedAt: null,
-          onlinePaymentDecidedAt: null,
-          onlinePaymentDecidedBy: null,
-          onlinePaymentRejectReason: null,
+          // Note: onlinePaymentStatus is NOT set here - it's only set when the host
+          // submits their profile in confirm-submission.ts based on their choice
         },
       })
     );

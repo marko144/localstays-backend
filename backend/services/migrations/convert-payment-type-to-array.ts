@@ -12,7 +12,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
-const client = new DynamoDBClient({});
+const client = new DynamoDBClient({ region: 'eu-north-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
 // Get environment from command line args
@@ -37,17 +37,36 @@ async function migratePaymentTypes() {
     // 1. Scan for all listing metadata records that have old paymentType (single)
     console.log('Step 1: Scanning for listing metadata records with old paymentType...');
     
-    const scanResult = await docClient.send(
-      new ScanCommand({
-        TableName: TABLE_NAME,
-        FilterExpression: 'begins_with(sk, :skPrefix) AND attribute_exists(paymentType) AND attribute_not_exists(paymentTypes)',
-        ExpressionAttributeValues: {
-          ':skPrefix': 'LISTING_META#',
-        },
-      })
-    );
-
-    const listings = scanResult.Items || [];
+    // Use paginated scan with in-code filtering (FilterExpression has issues with attribute_exists)
+    const listings: any[] = [];
+    let lastEvaluatedKey: any = undefined;
+    let totalScanned = 0;
+    
+    do {
+      const scanResult = await docClient.send(
+        new ScanCommand({
+          TableName: TABLE_NAME,
+          ExclusiveStartKey: lastEvaluatedKey,
+        })
+      );
+      
+      totalScanned += scanResult.ScannedCount || 0;
+      
+      // Filter in code - find LISTING_META items with paymentType but no paymentTypes
+      for (const item of scanResult.Items || []) {
+        if (item.sk && 
+            typeof item.sk === 'string' && 
+            item.sk.startsWith('LISTING_META#') && 
+            item.paymentType && 
+            !item.paymentTypes) {
+          listings.push(item);
+        }
+      }
+      
+      lastEvaluatedKey = scanResult.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+    
+    console.log(`Scanned ${totalScanned} total items`);
     console.log(`Found ${listings.length} listings with old paymentType\n`);
 
     if (listings.length === 0) {
