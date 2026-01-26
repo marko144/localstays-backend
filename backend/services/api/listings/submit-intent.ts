@@ -12,6 +12,9 @@ import {
   SubmitListingIntentResponse,
   BilingualEnum,
   AmenityCategory,
+  TranslatableTextField,
+  TranslatableTextFieldInput,
+  TranslationRequest,
 } from '../../types/listing.types';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -141,6 +144,23 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Rule: mapboxMetadata.place.mapbox_id takes priority
     const locationId = body.mapboxMetadata?.place?.mapbox_id || null;
 
+    // 9b. Process translatable text fields (host provides ONE language)
+    const descriptionField = processTranslatableTextField(body.description, now);
+    const checkInDescriptionField = body.checkIn.description 
+      ? processTranslatableTextField(body.checkIn.description, now) 
+      : null;
+    const parkingDescriptionField = body.parking.description 
+      ? processTranslatableTextField(body.parking.description, now) 
+      : null;
+    
+    // Build fieldsToTranslate for translation request
+    // Maps field → originalLanguage the host wrote in
+    const fieldsToTranslate: TranslationRequest['fieldsToTranslate'] = {
+      description: body.description.language,
+      ...(body.checkIn.description && { checkInDescription: body.checkIn.description.language }),
+      ...(body.parking.description && { parkingDescription: body.parking.description.language }),
+    };
+
     // 10. Create listing metadata record
     await docClient.send(
       new PutCommand({
@@ -155,7 +175,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           listingName: body.listingName,
           propertyType: propertyTypeEnum,
           status: 'DRAFT',
-          description: body.description,
+          description: descriptionField,  // Translatable description
           
           address: normalizedAddress,
           ...(body.mapboxMetadata && { mapboxMetadata: body.mapboxMetadata }),
@@ -166,13 +186,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           pets: body.pets,
           checkIn: {
             type: checkInTypeEnum,
-            ...(body.checkIn.description && { description: body.checkIn.description }),
+            ...(checkInDescriptionField && { description: checkInDescriptionField }),  // Translatable check-in instructions
             checkInFrom: body.checkIn.checkInFrom,
             checkOutBy: body.checkIn.checkOutBy,
           },
           parking: {
             type: parkingTypeEnum,
-            ...(body.parking.description && { description: body.parking.description }),
+            ...(parkingDescriptionField && { description: parkingDescriptionField }),  // Translatable parking details
           },
           paymentTypes: paymentTypeEnums,
           ...(body.onlinePaymentConfig && { onlinePaymentConfig: body.onlinePaymentConfig }),
@@ -182,7 +202,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
           minBookingNights: body.minBookingNights ?? 1, // Default to 1 if not provided
           cancellationPolicy: {
             type: cancellationPolicyEnum,
-            ...(body.cancellationPolicy.customText && { customText: body.cancellationPolicy.customText }),
           },
           
           s3Prefix,
@@ -433,6 +452,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log(`✅ Created submission tracking record: ${submissionToken}`);
 
+    // 13b. Create translation request for this listing
+    // All new listings need admin translations for the other required languages
+    await createTranslationRequest(
+      listingId,
+      hostId,
+      body.listingName,
+      fieldsToTranslate,
+      now
+    );
+
     // 14. Build response
     const intentResponse: SubmitListingIntentResponse = {
       listingId,
@@ -459,6 +488,105 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 }
 
 /**
+ * Convert TranslatableTextFieldInput to TranslatableTextField for storage.
+ * Host provides ONE language version, and we store it with originalLanguage.
+ */
+function processTranslatableTextField(
+  input: TranslatableTextFieldInput,
+  now: string
+): TranslatableTextField {
+  const field: TranslatableTextField = {
+    versions: {
+      [input.language]: {
+        text: input.text.trim(),
+        providedBy: 'HOST',
+        updatedAt: now,
+      },
+    },
+    originalLanguage: input.language,
+  };
+  
+  return field;
+}
+
+/**
+ * Validate TranslatableTextFieldInput
+ * Must have text and a valid language code.
+ */
+function validateTranslatableTextField(
+  input: TranslatableTextFieldInput | undefined,
+  fieldName: string,
+  minLength: number = 0,
+  required: boolean = true
+): string | null {
+  if (!input) {
+    if (required) {
+      return `${fieldName} is required`;
+    }
+    return null;
+  }
+  
+  // Validate language code
+  if (!input.language || !/^[a-z]{2}$/.test(input.language)) {
+    return `${fieldName}.language must be a valid 2-letter language code (e.g., 'en', 'sr')`;
+  }
+  
+  // Validate text
+  if (!input.text || input.text.trim().length === 0) {
+    if (required) {
+      return `${fieldName}.text is required`;
+    }
+    return null;
+  }
+  
+  // Validate minimum length if specified
+  if (minLength > 0 && input.text.trim().length < minLength) {
+    return `${fieldName}.text must be at least ${minLength} characters`;
+  }
+  
+  // Validate maximum length (2000 chars)
+  if (input.text.trim().length > 2000) {
+    return `${fieldName}.text must not exceed 2000 characters`;
+  }
+  
+  return null;
+}
+
+/**
+ * Create translation request for a listing.
+ * Stores which fields have content and their original language.
+ */
+async function createTranslationRequest(
+  listingId: string,
+  hostId: string,
+  listingName: string,
+  fieldsToTranslate: TranslationRequest['fieldsToTranslate'],
+  now: string
+): Promise<void> {
+  const translationRequest: TranslationRequest = {
+    pk: 'TRANSLATION_REQUEST#PENDING',
+    sk: `LISTING#${listingId}`,
+    listingId,
+    hostId,
+    listingName,
+    fieldsToTranslate,
+    status: 'PENDING',
+    requestedAt: now,
+    gsi3pk: `LISTING#${listingId}`,
+    gsi3sk: 'TRANSLATION_REQUEST',
+  };
+  
+  await docClient.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: translationRequest,
+    })
+  );
+  
+  console.log(`✅ Created translation request for listing ${listingId}:`, fieldsToTranslate);
+}
+
+/**
  * Validate submit intent request
  */
 function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string | null {
@@ -469,9 +597,13 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.propertyType) {
     return 'propertyType is required';
   }
-  if (!body.description || body.description.trim().length < 50) {
-    return 'description is required (min 50 characters)';
+  
+  // Validate translatable description (host provides ONE language)
+  const descriptionError = validateTranslatableTextField(body.description, 'description', 50, true);
+  if (descriptionError) {
+    return descriptionError;
   }
+  
   if (!body.address) {
     return 'address is required';
   }
@@ -509,8 +641,25 @@ function validateSubmitIntentRequest(body: SubmitListingIntentRequest): string |
   if (!body.checkIn || !body.checkIn.type || !body.checkIn.checkInFrom || !body.checkIn.checkOutBy) {
     return 'checkIn details (type, checkInFrom, checkOutBy) are required';
   }
+  
+  // Validate translatable checkIn description (optional)
+  if (body.checkIn.description) {
+    const checkInDescError = validateTranslatableTextField(body.checkIn.description, 'checkIn.description', 0, false);
+    if (checkInDescError) {
+      return checkInDescError;
+    }
+  }
+  
   if (!body.parking || !body.parking.type) {
     return 'parking.type is required';
+  }
+  
+  // Validate translatable parking description (optional)
+  if (body.parking.description) {
+    const parkingDescError = validateTranslatableTextField(body.parking.description, 'parking.description', 0, false);
+    if (parkingDescError) {
+      return parkingDescError;
+    }
   }
   if (!body.paymentTypes || !Array.isArray(body.paymentTypes) || body.paymentTypes.length === 0) {
     return 'paymentTypes is required (must be an array with at least one payment type)';

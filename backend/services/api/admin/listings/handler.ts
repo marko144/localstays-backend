@@ -15,29 +15,39 @@ import { handler as bulkApprove } from './bulk-approve';
 import { handler as bulkApproveByIds } from './bulk-approve-by-ids';
 import { handler as searchByLocation } from './search-by-location';
 import { handler as setCoordinates } from './set-coordinates';
+import { handler as setTranslations } from './set-translations';
+import { handler as listTranslationRequests } from './list-translation-requests';
+import { handler as completeTranslationRequest } from './complete-translation-request';
+import { handler as getLanguages } from '../config/get-languages';
+import { handler as updateLanguages } from '../config/update-languages';
 
 /**
- * Consolidated Admin Listings Handler (v1.8 - adds coordinates management)
+ * Consolidated Admin Listings Handler (v2.0 - multi-language translation support)
  * 
  * Routes all admin listing operations to their respective handlers based on
  * HTTP method and resource path.
  * 
  * Supported routes:
- * - GET    /api/v1/admin/listings                              → list all listings
- * - GET    /api/v1/admin/listings/pending-review               → list pending review listings
- * - POST   /api/v1/admin/listings/by-location                  → search listings by one or more locations
- * - GET    /api/v1/admin/hosts/{hostId}/listings               → list listings for a host
- * - GET    /api/v1/admin/listings/{listingId}                  → get listing details
- * - GET    /api/v1/admin/locations/search                      → search locations for manual association
- * - POST   /api/v1/admin/listings/bulk-approve                 → bulk approve ready listings (by readyToApprove flag)
- * - POST   /api/v1/admin/listings/bulk-approve-by-ids          → bulk approve listings by IDs
- * - POST   /api/v1/admin/listings/{listingId}/pre-approve      → mark listing ready (sets flag, keeps status)
- * - PUT    /api/v1/admin/listings/{listingId}/reviewing        → set listing to reviewing
- * - PUT    /api/v1/admin/listings/{listingId}/approve          → approve listing (IN_REVIEW/REVIEWING/LOCKED)
- * - PUT    /api/v1/admin/listings/{listingId}/reject           → reject listing (IN_REVIEW/REVIEWING/LOCKED)
- * - PUT    /api/v1/admin/listings/{listingId}/suspend          → suspend listing
- * - PUT    /api/v1/admin/listings/{listingId}/manual-locations → set manual locations for listing
- * - PUT    /api/v1/admin/listings/{listingId}/coordinates      → set/update coordinates for listing
+ * - GET    /api/v1/admin/listings                                   → list all listings
+ * - GET    /api/v1/admin/listings/pending-review                    → list pending review listings
+ * - GET    /api/v1/admin/translation-requests                       → list pending translation requests
+ * - PATCH  /api/v1/admin/translation-requests/{listingId}/complete  → mark translation request complete
+ * - GET    /api/v1/admin/config/languages                           → get language configuration
+ * - PUT    /api/v1/admin/config/languages                           → update language configuration
+ * - POST   /api/v1/admin/listings/by-location                       → search listings by one or more locations
+ * - GET    /api/v1/admin/hosts/{hostId}/listings                    → list listings for a host
+ * - GET    /api/v1/admin/listings/{listingId}                       → get listing details
+ * - GET    /api/v1/admin/locations/search                           → search locations for manual association
+ * - POST   /api/v1/admin/listings/bulk-approve                      → bulk approve ready listings (by readyToApprove flag)
+ * - POST   /api/v1/admin/listings/bulk-approve-by-ids               → bulk approve listings by IDs
+ * - POST   /api/v1/admin/listings/{listingId}/pre-approve           → mark listing ready (sets flag, keeps status)
+ * - PUT    /api/v1/admin/listings/{listingId}/reviewing             → set listing to reviewing
+ * - PUT    /api/v1/admin/listings/{listingId}/approve               → approve listing (IN_REVIEW/REVIEWING/LOCKED)
+ * - PUT    /api/v1/admin/listings/{listingId}/reject                → reject listing (IN_REVIEW/REVIEWING/LOCKED)
+ * - PUT    /api/v1/admin/listings/{listingId}/suspend               → suspend listing
+ * - PUT    /api/v1/admin/listings/{listingId}/manual-locations      → set manual locations for listing
+ * - PUT    /api/v1/admin/listings/{listingId}/coordinates           → set/update coordinates for listing
+ * - PUT    /api/v1/admin/listings/{listingId}/translations          → set translations for listing
  */
 export const handler: APIGatewayProxyHandler = async (
   event: APIGatewayProxyEvent,
@@ -132,6 +142,31 @@ export const handler: APIGatewayProxyHandler = async (
     // PUT /api/v1/admin/listings/{listingId}/coordinates
     if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/coordinates') {
       return (await setCoordinates(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PUT /api/v1/admin/listings/{listingId}/translations
+    if (method === 'PUT' && resource === '/api/v1/admin/listings/{listingId}/translations') {
+      return (await setTranslations(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // GET /api/v1/admin/translation-requests
+    if (method === 'GET' && resource === '/api/v1/admin/translation-requests') {
+      return (await listTranslationRequests(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PATCH /api/v1/admin/translation-requests/{listingId}/complete
+    if (method === 'PATCH' && resource === '/api/v1/admin/translation-requests/{listingId}/complete') {
+      return (await completeTranslationRequest(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // GET /api/v1/admin/config/languages
+    if (method === 'GET' && resource === '/api/v1/admin/config/languages') {
+      return (await getLanguages(event, context, callback)) as APIGatewayProxyResult;
+    }
+
+    // PUT /api/v1/admin/config/languages
+    if (method === 'PUT' && resource === '/api/v1/admin/config/languages') {
+      return (await updateLanguages(event, context, callback)) as APIGatewayProxyResult;
     }
 
     // Route not found

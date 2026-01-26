@@ -705,10 +705,14 @@ async function autoPublishListing(
     hasWorkspace: amenityKeys.includes('WORKSPACE'),
   };
 
-  const shortDescription =
-    listing.description.length > 100
-      ? listing.description.substring(0, 100).trim() + '...'
-      : listing.description;
+  // Generate short description (from translatable field)
+  const descriptionField = listing.description;
+  const enText = descriptionField.versions?.en?.text || '';
+  const srText = descriptionField.versions?.sr?.text || '';
+  const shortDescription = {
+    en: enText.length > 100 ? enText.substring(0, 100).trim() + '...' : enText,
+    sr: srText.length > 100 ? srText.substring(0, 100).trim() + '...' : srText,
+  };
 
   const basePublicListing = {
     listingId,

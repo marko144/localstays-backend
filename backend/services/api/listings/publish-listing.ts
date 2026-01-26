@@ -317,11 +317,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response.badRequest('No primary image with thumbnail found');
     }
 
-    // Step 10: Generate short description
-    const shortDescription =
-      listing.description.length > 100
-        ? listing.description.substring(0, 100).trim() + '...'
-        : listing.description;
+    // Step 10: Generate short description (from translatable field)
+    const descriptionField = listing.description;
+    const enText = descriptionField.versions?.en?.text || '';
+    const srText = descriptionField.versions?.sr?.text || '';
+    const shortDescription = {
+      en: enText.length > 100 ? enText.substring(0, 100).trim() + '...' : enText,
+      sr: srText.length > 100 ? srText.substring(0, 100).trim() + '...' : srText,
+    };
 
     // Step 11: Sort images by displayOrder and prepare media records
     const sortedImages = images.sort((a, b) => a.displayOrder - b.displayOrder);

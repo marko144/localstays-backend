@@ -128,3 +128,10 @@ async function migrateHostOnlinePaymentDefaults() {
 // Run migration
 migrateHostOnlinePaymentDefaults();
 
+
+
+
+
+
+
+

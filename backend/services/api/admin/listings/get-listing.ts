@@ -14,7 +14,7 @@ import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-d
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { requirePermission, logAdminAction } from '../../lib/auth-middleware';
-import { ListingMetadata, ListingImage, ListingAmenities, ListingVerificationDocument } from '../../../types/listing.types';
+import { ListingMetadata, ListingImage, ListingAmenities, ListingVerificationDocument, TranslationRequest } from '../../../types/listing.types';
 import { AdminListingDetails } from '../../../types/admin.types';
 import { buildCloudFrontUrl } from '../../lib/cloudfront-urls';
 
@@ -300,7 +300,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // 8. Build response
+    // 8. Fetch translation request (if any)
+    let pendingTranslationRequest: TranslationRequest['fieldsToTranslate'] | undefined;
+    const translationRequestResult = await docClient.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          pk: 'TRANSLATION_REQUEST#PENDING',
+          sk: `LISTING#${listingId}`,
+        },
+      })
+    );
+
+    if (translationRequestResult.Item) {
+      const request = translationRequestResult.Item as TranslationRequest;
+      pendingTranslationRequest = request.fieldsToTranslate;
+    }
+
+    // 9. Build response
     // Check if listing has location data for publishing (either mapbox metadata OR manual location IDs)
     const hasMapboxData = !!(listing.mapboxMetadata?.place?.mapbox_id);
     const hasManualLocationIds = !!(listing.manualLocationIds && listing.manualLocationIds.length > 0);
@@ -313,12 +330,13 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       verificationDocuments: documentDetails,
       hasMapboxLocationData: hasLocationData, // true if listing has location data (mapbox OR manual)
       ...(pendingImageChanges && { pendingImageChanges }),
+      ...(pendingTranslationRequest && { pendingTranslationRequest }),
     };
 
-    // 9. Log admin action
+    // 10. Log admin action
     logAdminAction(user, 'VIEW_LISTING', 'LISTING', listingId);
 
-    // 10. Return response
+    // 11. Return response
     return {
       statusCode: 200,
       headers: {

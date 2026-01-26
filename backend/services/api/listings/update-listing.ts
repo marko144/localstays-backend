@@ -36,6 +36,9 @@ import {
   ListingMetadata,
   BilingualEnum,
   AmenityCategory,
+  TranslatableTextField,
+  TranslatableTextFieldInput,
+  TranslationRequest,
 } from '../../types/listing.types';
 import { buildCloudFrontUrl } from '../lib/cloudfront-urls';
 
@@ -65,8 +68,9 @@ const VALID_CANCELLATION_TYPES: CancellationPolicyType[] = [
   '2_DAYS',
   '3_DAYS',
   '4_DAYS',
-  'ONE_WEEK',
-  'OTHER',
+  '7_DAYS',
+  '14_DAYS',
+  '30_DAYS',
 ];
 
 /**
@@ -198,12 +202,25 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('propertyType');
     }
 
-    // description
+    // description (translatable - host provides ONE language)
+    // Track fields for translation request
+    let fieldsToTranslate: TranslationRequest['fieldsToTranslate'] | null = null;
+    
     if (updates.description !== undefined) {
+      const descField = processTranslatableTextField(
+        updates.description, 
+        now, 
+        listing.description as TranslatableTextField
+      );
       updateExpressionParts.push('#description = :description');
       expressionAttributeNames['#description'] = 'description';
-      expressionAttributeValues[':description'] = updates.description;
+      expressionAttributeValues[':description'] = descField;
       updatedFields.push('description');
+      
+      // Mark that we need to update/create translation request
+      fieldsToTranslate = {
+        description: updates.description.language,
+      };
     }
 
     // address (only for REJECTED listings - already validated above)
@@ -276,7 +293,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updatedFields.push('pets');
     }
 
-    // checkIn
+    // checkIn (with translatable description)
     if (updates.checkIn !== undefined) {
       const checkInTypeEnum = await fetchEnumTranslation('CHECKIN_TYPE', updates.checkIn.type);
       if (!checkInTypeEnum) {
@@ -291,16 +308,27 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         checkOutBy: updates.checkIn.checkOutBy,
       };
       
-      // Only include description if it's provided
+      // Process translatable description if provided
       if (updates.checkIn.description !== undefined) {
-        checkInValue.description = updates.checkIn.description;
+        const existingCheckInDesc = (listing.checkIn as any)?.description as TranslatableTextField | undefined;
+        const checkInDescField = processTranslatableTextField(updates.checkIn.description, now, existingCheckInDesc);
+        checkInValue.description = checkInDescField;
+        
+        // Add to translation request
+        if (!fieldsToTranslate) {
+          fieldsToTranslate = { description: listing.description.originalLanguage };
+        }
+        fieldsToTranslate.checkInDescription = updates.checkIn.description.language;
+      } else if ((listing.checkIn as any)?.description) {
+        // Preserve existing description if not being updated
+        checkInValue.description = (listing.checkIn as any).description;
       }
       
       expressionAttributeValues[':checkIn'] = checkInValue;
       updatedFields.push('checkIn');
     }
 
-    // parking
+    // parking (with translatable description)
     if (updates.parking !== undefined) {
       const parkingTypeEnum = await fetchEnumTranslation('PARKING_TYPE', updates.parking.type);
       if (!parkingTypeEnum) {
@@ -313,9 +341,20 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         type: parkingTypeEnum,
       };
       
-      // Only include description if it's provided
+      // Process translatable description if provided
       if (updates.parking.description !== undefined) {
-        parkingValue.description = updates.parking.description;
+        const existingParkingDesc = (listing.parking as any)?.description as TranslatableTextField | undefined;
+        const parkingDescField = processTranslatableTextField(updates.parking.description, now, existingParkingDesc);
+        parkingValue.description = parkingDescField;
+        
+        // Add to translation request
+        if (!fieldsToTranslate) {
+          fieldsToTranslate = { description: listing.description.originalLanguage };
+        }
+        fieldsToTranslate.parkingDescription = updates.parking.description.language;
+      } else if ((listing.parking as any)?.description) {
+        // Preserve existing description if not being updated
+        parkingValue.description = (listing.parking as any).description;
       }
       
       expressionAttributeValues[':parking'] = parkingValue;
@@ -342,8 +381,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // onlinePaymentConfig
-    if (updates.onlinePaymentConfig !== undefined) {
+    // onlinePaymentConfig - skip if null (being removed, handled by paymentTypes logic above)
+    if (updates.onlinePaymentConfig !== undefined && updates.onlinePaymentConfig !== null) {
       // Validate that LOKALSTAYS_ONLINE is in paymentTypes (either current or being updated)
       const currentPaymentTypes = listing.paymentTypes?.map((pt: BilingualEnum) => pt.key) || [];
       const newPaymentTypes = updates.paymentTypes || currentPaymentTypes;
@@ -420,14 +459,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       updateExpressionParts.push('#cancellationPolicy = :cancellationPolicy');
       expressionAttributeNames['#cancellationPolicy'] = 'cancellationPolicy';
       
-      const cancellationPolicyValue: any = {
+      const cancellationPolicyValue = {
         type: cancellationTypeEnum,
       };
-      
-      // Only include customText if it's provided
-      if (updates.cancellationPolicy.customText !== undefined) {
-        cancellationPolicyValue.customText = updates.cancellationPolicy.customText;
-      }
       
       expressionAttributeValues[':cancellationPolicy'] = cancellationPolicyValue;
       updatedFields.push('cancellationPolicy');
@@ -509,6 +543,17 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
+    // 11b. Create/update translation request if any translatable fields were updated
+    if (fieldsToTranslate) {
+      await createOrUpdateTranslationRequest(
+        listingId,
+        hostId,
+        listing.listingName,
+        fieldsToTranslate,
+        now
+      );
+    }
+
     // 12. Return success response
     const responseData: UpdateListingMetadataResponse = {
       listingId,
@@ -546,13 +591,11 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
   }
 
-  // description
+  // description (translatable - host provides ONE language)
   if (updates.description !== undefined) {
-    if (typeof updates.description !== 'string' || updates.description.trim().length === 0) {
-      return 'Description must be a non-empty string';
-    }
-    if (updates.description.length > 2000) {
-      return 'Description must not exceed 2000 characters';
+    const descError = validateTranslatableTextField(updates.description, 'description', 50, true);
+    if (descError) {
+      return descError;
     }
   }
 
@@ -688,8 +731,12 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     if (!/^\d{2}:\d{2}$/.test(updates.checkIn.checkOutBy)) {
       return 'checkOutBy must be in HH:MM format';
     }
-    if (updates.checkIn.description && updates.checkIn.description.length > 500) {
-      return 'Check-in description must not exceed 500 characters';
+    // Validate translatable checkIn description (optional)
+    if (updates.checkIn.description) {
+      const checkInDescError = validateTranslatableTextField(updates.checkIn.description, 'checkIn.description', 0, false);
+      if (checkInDescError) {
+        return checkInDescError;
+      }
     }
   }
 
@@ -701,8 +748,12 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     if (!VALID_PARKING_TYPES.includes(updates.parking.type)) {
       return `Invalid parking type: ${updates.parking.type}`;
     }
-    if (updates.parking.description && updates.parking.description.length > 500) {
-      return 'Parking description must not exceed 500 characters';
+    // Validate translatable parking description (optional)
+    if (updates.parking.description) {
+      const parkingDescError = validateTranslatableTextField(updates.parking.description, 'parking.description', 0, false);
+      if (parkingDescError) {
+        return parkingDescError;
+      }
     }
   }
 
@@ -719,7 +770,7 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
   }
 
   // onlinePaymentConfig
-  if (updates.onlinePaymentConfig !== undefined) {
+  if (updates.onlinePaymentConfig !== undefined && updates.onlinePaymentConfig !== null) {
     const { allowFullPayment, allowDeposit, depositPercentage } = updates.onlinePaymentConfig;
     
     if (typeof allowFullPayment !== 'boolean' || typeof allowDeposit !== 'boolean') {
@@ -775,12 +826,6 @@ async function validateUpdates(updates: UpdateListingMetadataRequest['updates'])
     }
     if (!VALID_CANCELLATION_TYPES.includes(updates.cancellationPolicy.type)) {
       return `Invalid cancellation policy type: ${updates.cancellationPolicy.type}`;
-    }
-    if (updates.cancellationPolicy.type === 'OTHER' && !updates.cancellationPolicy.customText) {
-      return 'Custom text is required when cancellation policy type is OTHER';
-    }
-    if (updates.cancellationPolicy.customText && updates.cancellationPolicy.customText.length > 1000) {
-      return 'Cancellation policy custom text must not exceed 1000 characters';
     }
   }
 
@@ -1104,11 +1149,14 @@ async function updateListingWithTransaction(
     hasWorkspace: amenityKeyList.includes('WORKSPACE'),
   };
 
-  // Step 8: Generate short description
-  const shortDescription =
-    updatedListing.description.length > 100
-      ? updatedListing.description.substring(0, 100).trim() + '...'
-      : updatedListing.description;
+  // Step 8: Generate short description (from translatable field)
+  const descriptionField = updatedListing.description as TranslatableTextField;
+  const enText = descriptionField.versions['en']?.text || '';
+  const srText = descriptionField.versions['sr']?.text || '';
+  const shortDescription = {
+    en: enText.length > 100 ? enText.substring(0, 100).trim() + '...' : enText,
+    sr: srText.length > 100 ? srText.substring(0, 100).trim() + '...' : srText,
+  };
 
   // Step 9: Build base PublicListing data (shared by PLACE and LOCALITY)
   const basePublicListing = {
@@ -1241,4 +1289,109 @@ async function updateListingWithTransaction(
   console.log('✅ Transaction complete: Both tables updated atomically');
 }
 
+/**
+ * Convert TranslatableTextFieldInput to TranslatableTextField for storage.
+ * Host provides ONE language version.
+ * 
+ * IMPORTANT: When host updates their text, ALL other language versions are CLEARED.
+ * This ensures translations don't become stale/misleading when the source text changes.
+ * A translation request is created to signal that admin needs to provide new translations.
+ */
+function processTranslatableTextField(
+  input: TranslatableTextFieldInput,
+  now: string,
+  _existingField?: TranslatableTextField // eslint-disable-line @typescript-eslint/no-unused-vars
+): TranslatableTextField {
+  // Clear all existing versions and start fresh with only the host's new content.
+  // This prevents stale translations from remaining when host updates their text.
+  const versions: TranslatableTextField['versions'] = {
+    [input.language]: {
+      text: input.text.trim(),
+      providedBy: 'HOST',
+      updatedAt: now,
+    },
+  };
+  
+  return {
+    versions,
+    originalLanguage: input.language,
+  };
+}
+
+/**
+ * Validate TranslatableTextFieldInput
+ * Must have text and a valid language code.
+ */
+function validateTranslatableTextField(
+  input: TranslatableTextFieldInput | undefined,
+  fieldName: string,
+  minLength: number = 0,
+  required: boolean = true
+): string | null {
+  if (!input) {
+    if (required) {
+      return `${fieldName} is required`;
+    }
+    return null;
+  }
+  
+  // Validate language code
+  if (!input.language || !/^[a-z]{2}$/.test(input.language)) {
+    return `${fieldName}.language must be a valid 2-letter language code (e.g., 'en', 'sr')`;
+  }
+  
+  // Validate text
+  if (!input.text || input.text.trim().length === 0) {
+    if (required) {
+      return `${fieldName}.text is required`;
+    }
+    return null;
+  }
+  
+  // Validate minimum length if specified
+  if (minLength > 0 && input.text.trim().length < minLength) {
+    return `${fieldName}.text must be at least ${minLength} characters`;
+  }
+  
+  // Validate maximum length (2000 chars)
+  if (input.text.trim().length > 2000) {
+    return `${fieldName}.text must not exceed 2000 characters`;
+  }
+  
+  return null;
+}
+
+/**
+ * Create or update translation request for a listing.
+ * Called when host updates any translatable field.
+ */
+async function createOrUpdateTranslationRequest(
+  listingId: string,
+  hostId: string,
+  listingName: string,
+  fieldsToTranslate: TranslationRequest['fieldsToTranslate'],
+  now: string
+): Promise<void> {
+  const translationRequest: TranslationRequest = {
+    pk: 'TRANSLATION_REQUEST#PENDING',
+    sk: `LISTING#${listingId}`,
+    listingId,
+    hostId,
+    listingName,
+    fieldsToTranslate,
+    status: 'PENDING',
+    requestedAt: now,
+    gsi3pk: `LISTING#${listingId}`,
+    gsi3sk: 'TRANSLATION_REQUEST',
+  };
+  
+  await docClient.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: translationRequest,
+    })
+  );
+  
+  console.log(`✅ Created/updated translation request for listing ${listingId}:`, fieldsToTranslate);
+}
 

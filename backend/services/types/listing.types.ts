@@ -29,8 +29,9 @@ export type CancellationPolicyType =
   | '2_DAYS'
   | '3_DAYS'
   | '4_DAYS'
-  | 'ONE_WEEK'
-  | 'OTHER';
+  | '7_DAYS'
+  | '14_DAYS'
+  | '30_DAYS';
 export type VerificationDocType = 
   | 'PROOF_OF_RIGHT_TO_LIST' 
   | 'EXISTING_PROFILE_PROOF';
@@ -153,6 +154,205 @@ export interface BilingualEnum {
 }
 
 // ============================================================================
+// TRANSLATABLE TEXT FIELD (Multi-language support)
+// ============================================================================
+
+/**
+ * A single language version of a translatable text field.
+ * Tracks who provided the text (HOST or ADMIN) for audit purposes.
+ */
+export interface TranslatableTextVersion {
+  text: string;                          // The text content
+  providedBy: 'HOST' | 'ADMIN';          // Who provided this text
+  updatedAt: string;                     // When this version was last updated
+  updatedBy?: string;                    // Admin sub if providedBy is ADMIN
+}
+
+/**
+ * A text field that can exist in multiple languages.
+ * Uses a map structure for future extensibility (add languages without schema changes).
+ * 
+ * Example:
+ * {
+ *   versions: {
+ *     "sr": { text: "Lep stan...", providedBy: "HOST", updatedAt: "..." },
+ *     "en": { text: "Nice apartment...", providedBy: "ADMIN", updatedAt: "...", updatedBy: "admin123" }
+ *   },
+ *   originalLanguage: "sr"
+ * }
+ */
+export interface TranslatableTextField {
+  versions: {
+    [languageCode: string]: TranslatableTextVersion;
+  };
+  originalLanguage: string;              // Which language the host originally wrote in
+}
+
+/**
+ * Input format for translatable text fields when creating/updating a listing.
+ * Host provides ONE language version only.
+ */
+export interface TranslatableTextFieldInput {
+  text: string;                          // The text content
+  language: string;                      // Language code (e.g., 'en', 'sr')
+}
+
+/**
+ * Admin input for setting translations on a listing field.
+ */
+export interface AdminTranslationInput {
+  language: string;                      // Target language code (must differ from originalLanguage)
+  text: string;                          // The translation text
+}
+
+// ============================================================================
+// LANGUAGE CONFIGURATION (System-level)
+// ============================================================================
+
+/**
+ * A supported language in the system.
+ */
+export interface SupportedLanguage {
+  code: string;                          // ISO language code (e.g., 'en', 'sr', 'de')
+  name: string;                          // English name (e.g., 'Serbian')
+  nativeName: string;                    // Name in that language (e.g., 'Srpski')
+  isActive: boolean;                     // Whether this language is currently active
+  addedAt: string;                       // When this language was added
+  addedBy: string;                       // Who added it ('system' or admin email)
+}
+
+/**
+ * System language configuration (DynamoDB record).
+ * pk: CONFIG#SYSTEM, sk: LANGUAGES
+ */
+export interface LanguageConfig {
+  pk: string;                            // CONFIG#SYSTEM
+  sk: string;                            // LANGUAGES
+  
+  languages: SupportedLanguage[];        // All supported languages
+  requiredForListings: string[];         // Language codes required for listings (e.g., ['en', 'sr'])
+  
+  updatedAt: string;
+  updatedBy: string;                     // Admin email who last updated
+}
+
+/**
+ * API response for language configuration
+ */
+export interface LanguageConfigResponse {
+  languages: SupportedLanguage[];
+  requiredForListings: string[];
+  updatedAt: string;
+}
+
+// ============================================================================
+// TRANSLATION REQUEST (DynamoDB Record)
+// ============================================================================
+
+export type TranslationRequestStatus = 'PENDING' | 'COMPLETED';
+
+export type TranslationFieldKey = 'description' | 'checkInDescription' | 'parkingDescription';
+
+/**
+ * Tracks which fields on a listing need translation by LocalStays admin.
+ * Created when a host submits/updates a listing.
+ * One request per listing (not per field).
+ */
+export interface TranslationRequest {
+  // Keys
+  pk: string;                            // TRANSLATION_REQUEST#PENDING
+  sk: string;                            // LISTING#{listingId}
+  
+  // Identifiers
+  listingId: string;
+  hostId: string;
+  listingName: string;                   // For admin display
+  
+  // Which fields have content and their original language
+  // Maps field → originalLanguage the host wrote in
+  fieldsToTranslate: {
+    description: string;                 // Original language code (e.g., 'sr')
+    checkInDescription?: string;         // Optional field, language code if provided
+    parkingDescription?: string;         // Optional field, language code if provided
+  };
+  
+  // Status
+  status: TranslationRequestStatus;
+  
+  // Timestamps
+  requestedAt: string;
+  completedAt?: string;
+  completedBy?: string;                  // Admin email who completed
+  
+  // GSI for listing lookup
+  gsi3pk: string;                        // LISTING#{listingId}
+  gsi3sk: string;                        // TRANSLATION_REQUEST
+}
+
+/**
+ * Admin API request for setting translations on a listing
+ */
+export interface SetTranslationsRequest {
+  description?: AdminTranslationInput;
+  checkInDescription?: AdminTranslationInput;
+  parkingDescription?: AdminTranslationInput;
+}
+
+/**
+ * Admin API response for setting translations
+ */
+export interface SetTranslationsResponse {
+  listingId: string;
+  translationsUpdated: string[];         // e.g., ["description.en", "parkingDescription.en"]
+  updatedAt: string;
+}
+
+/**
+ * Translation request item for admin listing
+ */
+export interface TranslationRequestSummary {
+  listingId: string;
+  hostId: string;
+  listingName: string;
+  fieldsToTranslate: TranslationRequest['fieldsToTranslate'];
+  requestedAt: string;
+}
+
+/**
+ * Response for completing a translation request
+ */
+export interface CompleteTranslationRequestResponse {
+  listingId: string;
+  completedAt: string;
+  completedBy: string;
+}
+
+// ============================================================================
+// LEGACY BILINGUAL TYPES (kept for backward compatibility during migration)
+// ============================================================================
+
+/** @deprecated Use TranslatableTextVersion instead */
+export interface BilingualTextFieldVersion {
+  text: string;
+  source: 'HOST' | 'LOKALSTAYS';
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+/** @deprecated Use TranslatableTextField instead */
+export interface BilingualTextField {
+  en: BilingualTextFieldVersion;
+  sr: BilingualTextFieldVersion;
+}
+
+/** @deprecated Use TranslatableTextFieldInput instead */
+export interface BilingualTextFieldInput {
+  en?: string | null;
+  sr?: string | null;
+  requestTranslation?: boolean;
+}
+
+// ============================================================================
 // LISTING METADATA (DynamoDB Record)
 // ============================================================================
 
@@ -169,7 +369,7 @@ export interface ListingMetadata {
   listingName: string;
   propertyType: BilingualEnum & { isEntirePlace: boolean };
   status: ListingStatus;
-  description: string;
+  description: TranslatableTextField;    // Multi-language listing description
   
   // Address (Mapbox format)
   address: {
@@ -245,7 +445,7 @@ export interface ListingMetadata {
   // Check-in/out
   checkIn: {
     type: BilingualEnum;
-    description?: string;
+    description?: TranslatableTextField;    // Multi-language check-in instructions
     checkInFrom: string;      // HH:MM format
     checkOutBy: string;       // HH:MM format
   };
@@ -253,7 +453,7 @@ export interface ListingMetadata {
   // Parking
   parking: {
     type: BilingualEnum;
-    description?: string;
+    description?: TranslatableTextField;    // Multi-language parking details
   };
   
   // Payment Types (multiple selection)
@@ -476,7 +676,7 @@ export interface ListingVerificationDocument {
 export interface SubmitListingIntentRequest {
   listingName: string;
   propertyType: PropertyType;
-  description: string;
+  description: TranslatableTextFieldInput;  // Host provides text in one language
   address: {
     fullAddress: string;
     street: string;
@@ -528,13 +728,13 @@ export interface SubmitListingIntentRequest {
   };
   checkIn: {
     type: CheckInType;
-    description?: string;
+    description?: TranslatableTextFieldInput;  // Host provides text in one language
     checkInFrom: string;
     checkOutBy: string;
   };
   parking: {
     type: ParkingType;
-    description?: string;
+    description?: TranslatableTextFieldInput;  // Host provides text in one language
   };
   paymentTypes: PaymentType[];
   onlinePaymentConfig?: {
@@ -548,7 +748,6 @@ export interface SubmitListingIntentRequest {
   minBookingNights?: number;        // Minimum nights per booking (1-6), defaults to 1
   cancellationPolicy: {
     type: CancellationPolicyType;
-    customText?: string;           // Required if type === 'OTHER'
   };
   amenities: AmenityKey[];
   images: Array<{
@@ -628,7 +827,7 @@ export interface GetListingResponse {
     listingName: string;
     propertyType: BilingualEnum & { isEntirePlace: boolean };
     status: ListingStatus;
-    description: string;
+    description: TranslatableTextField;     // Multi-language listing description
     address: ListingMetadata['address'];
     mapboxMetadata?: ListingMetadata['mapboxMetadata'];
     capacity: ListingMetadata['capacity'];
@@ -637,13 +836,13 @@ export interface GetListingResponse {
     pets: ListingMetadata['pets'];
     checkIn: {
       type: BilingualEnum;
-      description?: string;
+      description?: TranslatableTextField;  // Multi-language check-in instructions
       checkInFrom: string;
       checkOutBy: string;
     };
     parking: {
       type: BilingualEnum;
-      description?: string;
+      description?: TranslatableTextField;  // Multi-language parking details
     };
     paymentTypes: BilingualEnum[];
     onlinePaymentConfig?: {
@@ -656,8 +855,7 @@ export interface GetListingResponse {
     maxBookingDuration: BilingualEnum & { nights: number };
     minBookingNights: number;
     cancellationPolicy: {
-      type: BilingualEnum;
-      customText?: string;
+      type: BilingualEnum & { days: number };
     };
     createdAt: string;
     updatedAt: string;
@@ -738,7 +936,7 @@ export interface ListListingsResponse {
  */
 export interface UpdateListingRequest {
   listingName?: string;
-  description?: string;
+  description?: TranslatableTextFieldInput;  // Host provides text in one language
   capacity?: {
     singleBeds: number;
     doubleBeds: number;
@@ -756,13 +954,13 @@ export interface UpdateListingRequest {
   };
   checkIn?: {
     type: CheckInType;
-    description?: string;
+    description?: TranslatableTextFieldInput;  // Host provides text in one language
     checkInFrom: string;
     checkOutBy: string;
   };
   parking?: {
     type: ParkingType;
-    description?: string;
+    description?: TranslatableTextFieldInput;  // Host provides text in one language
   };
   paymentTypes?: PaymentType[];
   amenities?: AmenityKey[];
@@ -777,7 +975,7 @@ export interface UpdateListingMetadataRequest {
   updates: {
     listingName?: string;
     propertyType?: PropertyType;
-    description?: string;
+    description?: TranslatableTextFieldInput;  // Host provides text in one language
     address?: {
       fullAddress: string;
       street: string;
@@ -830,13 +1028,13 @@ export interface UpdateListingMetadataRequest {
     };
     checkIn?: {
       type: CheckInType;
-      description?: string;
+      description?: TranslatableTextFieldInput;  // Host provides text in one language
       checkInFrom: string;
       checkOutBy: string;
     };
     parking?: {
       type: ParkingType;
-      description?: string;
+      description?: TranslatableTextFieldInput;  // Host provides text in one language
     };
     paymentTypes?: PaymentType[];
     onlinePaymentConfig?: {
@@ -850,7 +1048,6 @@ export interface UpdateListingMetadataRequest {
     minBookingNights?: number;      // Minimum nights per booking (1-6)
     cancellationPolicy?: {
       type: CancellationPolicyType;
-      customText?: string;
     };
     amenities?: AmenityKey[];
     rightToListDocumentNumber?: string;
@@ -878,7 +1075,7 @@ export interface ListingMetadataResponse {
   paymentTypes: Array<BilingualEnum & { sortOrder: number }>;
   advanceBookingOptions: Array<BilingualEnum & { days: number; sortOrder: number }>;
   maxBookingDurationOptions: Array<BilingualEnum & { nights: number; sortOrder: number }>;
-  cancellationPolicyTypes: Array<BilingualEnum & { sortOrder: number }>;
+  cancellationPolicyTypes: Array<BilingualEnum & { days: number; sortOrder: number }>;
   verificationDocumentTypes: Array<BilingualEnum & { 
     description: BilingualText;
     sortOrder: number;

@@ -100,7 +100,10 @@ interface SearchResult {
   listingId: string;
   hostId: string;
   name: string;
-  shortDescription: string;
+  shortDescription: {          // Bilingual short description
+    en: string;
+    sr: string;
+  };
   thumbnailUrl: string;
   placeName: string;
   regionName: string;

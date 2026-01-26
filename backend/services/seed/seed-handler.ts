@@ -516,15 +516,16 @@ async function seedListingEnums() {
     });
   });
 
-  // Cancellation Policy Types
+  // Cancellation Policy Types (with days metadata for easy deadline calculation)
   const cancellationPolicyTypes = [
-    { key: 'NO_CANCELLATION', en: 'No Cancellation', sr: 'Bez otkaza', sortOrder: 1 },
-    { key: '24_HOURS', en: '24 Hours', sr: '24 sata', sortOrder: 2 },
-    { key: '2_DAYS', en: '2 Days', sr: '2 dana', sortOrder: 3 },
-    { key: '3_DAYS', en: '3 Days', sr: '3 dana', sortOrder: 4 },
-    { key: '4_DAYS', en: '4 Days', sr: '4 dana', sortOrder: 5 },
-    { key: 'ONE_WEEK', en: 'One Week', sr: 'Jedna nedelja', sortOrder: 6 },
-    { key: 'OTHER', en: 'Other (Custom)', sr: 'Drugo (Prilagođeno)', sortOrder: 7 },
+    { key: 'NO_CANCELLATION', en: 'No Cancellation', sr: 'Bez otkaza', days: 0, sortOrder: 1 },
+    { key: '24_HOURS', en: '24 Hours', sr: '24 sata', days: 1, sortOrder: 2 },
+    { key: '2_DAYS', en: '2 Days', sr: '2 dana', days: 2, sortOrder: 3 },
+    { key: '3_DAYS', en: '3 Days', sr: '3 dana', days: 3, sortOrder: 4 },
+    { key: '4_DAYS', en: '4 Days', sr: '4 dana', days: 4, sortOrder: 5 },
+    { key: '7_DAYS', en: '7 Days', sr: '7 dana', days: 7, sortOrder: 6 },
+    { key: '14_DAYS', en: '14 Days', sr: '14 dana', days: 14, sortOrder: 7 },
+    { key: '30_DAYS', en: '30 Days', sr: '30 dana', days: 30, sortOrder: 8 },
   ];
 
   cancellationPolicyTypes.forEach((type) => {
@@ -534,6 +535,7 @@ async function seedListingEnums() {
       enumType: 'CANCELLATION_POLICY',
       enumValue: type.key,
       translations: { en: type.en, sr: type.sr },
+      metadata: { days: type.days },
       isActive: true,
       sortOrder: type.sortOrder,
       createdAt: now,

@@ -1,5 +1,6 @@
 import { seedRoles } from './seed-roles';
 import { seedEnums } from './seed-enums';
+import { seedLanguages } from './seed-languages';
 
 /**
  * Master Seed Script
@@ -7,6 +8,7 @@ import { seedEnums } from './seed-enums';
  * Seeds all configuration data into DynamoDB:
  * - Role configurations (HOST, ADMIN)
  * - Enum values (HOST_STATUS, USER_STATUS, HOST_TYPE)
+ * - Language configuration (supported languages for translations)
  * 
  * Run this once after initial deployment:
  * ```
@@ -25,6 +27,10 @@ async function seedAll() {
     
     // Seed enums
     await seedEnums();
+    console.log('═'.repeat(60));
+    
+    // Seed languages
+    await seedLanguages();
     console.log('═'.repeat(60));
     
     console.log('\n✨ Database seeding completed successfully!\n');

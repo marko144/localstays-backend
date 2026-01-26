@@ -142,6 +142,13 @@ export interface AdminListingDetails {
     status: string;
   }>;
   hasMapboxLocationData: boolean;  // true if address was entered via Mapbox autocomplete
+  
+  // Pending translation request (if any)
+  pendingTranslationRequest?: {
+    description?: 'en' | 'sr';          // Which language needs translation
+    checkInDescription?: 'en' | 'sr';
+    parkingDescription?: 'en' | 'sr';
+  };
 }
 
 /**

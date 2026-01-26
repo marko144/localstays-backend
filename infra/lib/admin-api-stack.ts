@@ -59,7 +59,7 @@ export interface AdminApiStackProps extends cdk.StackProps {
 export class AdminApiStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
   public readonly authorizer: apigateway.CognitoUserPoolsAuthorizer;
-  
+
   // Lambda functions
   public readonly adminHostsHandlerLambda: nodejs.NodejsFunction;
   public readonly adminListingsHandlerLambda: nodejs.NodejsFunction;
@@ -72,14 +72,14 @@ export class AdminApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AdminApiStackProps) {
     super(scope, id, props);
 
-    const { 
-      stage, 
-      userPoolId, 
-      userPoolArn, 
-      table, 
-      bucket, 
-      emailTemplatesTable, 
-      sendGridParamName, 
+    const {
+      stage,
+      userPoolId,
+      userPoolArn,
+      table,
+      bucket,
+      emailTemplatesTable,
+      sendGridParamName,
       frontendUrl,
       publicListingsTable,
       publicListingMediaTable,
@@ -100,11 +100,11 @@ export class AdminApiStack extends cdk.Stack {
     // Create CloudWatch Log Group for API Gateway logs
     const apiLogGroup = new logs.LogGroup(this, 'AdminApiGatewayLogs', {
       logGroupName: `/aws/apigateway/localstays-${stage}-admin-api`,
-      retention: stage === 'prod' 
-        ? logs.RetentionDays.ONE_YEAR 
+      retention: stage === 'prod'
+        ? logs.RetentionDays.ONE_YEAR
         : logs.RetentionDays.ONE_WEEK,
-      removalPolicy: stage === 'prod' 
-        ? cdk.RemovalPolicy.RETAIN 
+      removalPolicy: stage === 'prod'
+        ? cdk.RemovalPolicy.RETAIN
         : cdk.RemovalPolicy.DESTROY,
     });
 
@@ -112,7 +112,7 @@ export class AdminApiStack extends cdk.Stack {
     this.api = new apigateway.RestApi(this, 'AdminApi', {
       restApiName: `localstays-${stage}-admin-api`,
       description: `Localstays Admin API (${stage}) - Admin dashboard endpoints`,
-      
+
       deploy: true,
       deployOptions: {
         stageName: stage,
@@ -125,25 +125,25 @@ export class AdminApiStack extends cdk.Stack {
         throttlingRateLimit: stage === 'prod' ? 500 : 50,
         throttlingBurstLimit: stage === 'prod' ? 1000 : 100,
       },
-      
+
       defaultCorsPreflightOptions: {
-        allowOrigins: stage === 'prod' 
+        allowOrigins: stage === 'prod'
           ? ['https://portal.localstays.me']
           : [
-              'http://localhost:3000',
-              'http://192.168.4.54:3000',
-              'http://192.168.4.58:3000',
-              'https://staging.portal.localstays.me',
-            ],
+            'http://localhost:3000',
+            'http://192.168.4.54:3000',
+            'http://192.168.4.58:3000',
+            'https://staging.portal.localstays.me',
+          ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
         allowCredentials: true,
       },
-      
+
       endpointConfiguration: {
         types: [apigateway.EndpointType.REGIONAL],
       },
-      
+
       cloudWatchRole: true,
     });
 
@@ -229,13 +229,13 @@ export class AdminApiStack extends cdk.Stack {
         externalModules: ['@aws-sdk/*'],
       },
     };
-    
+
     // Log retention configuration (applied per Lambda)
-    const logRetentionDays = stage === 'prod' 
-      ? logs.RetentionDays.ONE_MONTH 
+    const logRetentionDays = stage === 'prod'
+      ? logs.RetentionDays.ONE_MONTH
       : logs.RetentionDays.ONE_WEEK;
-    const logRemovalPolicy = stage === 'prod' 
-      ? cdk.RemovalPolicy.RETAIN 
+    const logRemovalPolicy = stage === 'prod'
+      ? cdk.RemovalPolicy.RETAIN
       : cdk.RemovalPolicy.DESTROY;
 
     // ========================================
@@ -251,12 +251,12 @@ export class AdminApiStack extends cdk.Stack {
       description: 'Admin: Consolidated handler for all host operations',
       environment: commonEnvironment,
     });
-    
+
     // Grant permissions for all operations
     table.grantReadWriteData(this.adminHostsHandlerLambda);
     bucket.grantRead(this.adminHostsHandlerLambda);
     emailTemplatesTable.grantReadData(this.adminHostsHandlerLambda);
-    
+
     // Grant SSM parameter access for email operations (approve/reject)
     this.adminHostsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -277,21 +277,21 @@ export class AdminApiStack extends cdk.Stack {
       description: 'Admin: Consolidated handler for all listing operations',
       environment: commonEnvironment,
     });
-    
+
     // Grant permissions for all operations
     table.grantReadWriteData(this.adminListingsHandlerLambda);
     bucket.grantRead(this.adminListingsHandlerLambda);
     emailTemplatesTable.grantReadData(this.adminListingsHandlerLambda);
-    
+
     // Grant access to public listings tables (for suspend operation - deletes listings from public tables)
     publicListingsTable.grantReadWriteData(this.adminListingsHandlerLambda);
     publicListingMediaTable.grantReadWriteData(this.adminListingsHandlerLambda);
     locationsTable.grantReadWriteData(this.adminListingsHandlerLambda); // For decrementing listings count
-    
+
     // Grant access to subscription tables (for approve operation - auto-publish)
     props.subscriptionPlansTable.grantReadData(this.adminListingsHandlerLambda);
     props.advertisingSlotsTable.grantReadWriteData(this.adminListingsHandlerLambda);
-    
+
     // Grant SSM parameter access for email operations (approve/reject)
     this.adminListingsHandlerLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -354,7 +354,7 @@ export class AdminApiStack extends cdk.Stack {
         },
       },
     });
-    
+
     // Grant permissions for all request operations
     table.grantReadWriteData(this.adminRequestsHandlerLambda);
     bucket.grantReadWrite(this.adminRequestsHandlerLambda);
@@ -385,7 +385,7 @@ export class AdminApiStack extends cdk.Stack {
       description: 'Admin: Consolidated handler for subscription plan management',
       environment: commonEnvironment,
     });
-    
+
     // Grant permissions for subscription plan operations
     table.grantReadData(this.adminSubscriptionsHandlerLambda); // For reading admin user permissions
     props.subscriptionPlansTable.grantReadWriteData(this.adminSubscriptionsHandlerLambda);
@@ -406,7 +406,7 @@ export class AdminApiStack extends cdk.Stack {
         LEGAL_ACCEPTANCES_TABLE_NAME: props.legalAcceptancesTable.tableName,
       },
     });
-    
+
     // Grant permissions for legal document operations
     props.legalDocumentsTable.grantReadWriteData(this.adminLegalHandlerLambda);
     props.legalAcceptancesTable.grantReadData(this.adminLegalHandlerLambda);
@@ -450,7 +450,7 @@ export class AdminApiStack extends cdk.Stack {
       description: 'Admin: Handler for location management (list, create, update)',
       environment: commonEnvironment,
     });
-    
+
     // Grant permissions for location operations
     table.grantReadData(this.adminLocationsHandlerLambda); // For reading admin user permissions
     locationsTable.grantReadWriteData(this.adminLocationsHandlerLambda);
@@ -625,6 +625,50 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // GET /api/v1/admin/translation-requests
+    const adminTranslationRequestsResource = adminResource.addResource('translation-requests');
+    adminTranslationRequestsResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // PATCH /api/v1/admin/translation-requests/{listingId}/complete
+    const adminTranslationRequestIdResource = adminTranslationRequestsResource.addResource('{listingId}');
+    const adminCompleteTranslationResource = adminTranslationRequestIdResource.addResource('complete');
+    adminCompleteTranslationResource.addMethod(
+      'PATCH',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
+    // Admin Config Routes
+    // GET/PUT /api/v1/admin/config/languages
+    const adminConfigResource = adminResource.addResource('config');
+    const adminLanguagesResource = adminConfigResource.addResource('languages');
+    adminLanguagesResource.addMethod(
+      'GET',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+    adminLanguagesResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // POST /api/v1/admin/listings/by-location (search by one or more location IDs)
     const adminListingsByLocationResource = adminListingsResource.addResource('by-location');
     adminListingsByLocationResource.addMethod(
@@ -724,6 +768,17 @@ export class AdminApiStack extends cdk.Stack {
       }
     );
 
+    // PUT /api/v1/admin/listings/{listingId}/translations
+    const adminTranslationsResource = adminListingIdParam.addResource('translations');
+    adminTranslationsResource.addMethod(
+      'PUT',
+      new apigateway.LambdaIntegration(this.adminListingsHandlerLambda, { proxy: true }),
+      {
+        authorizer: this.authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
+    );
+
     // POST /api/v1/admin/listings/bulk-approve
     const adminBulkApproveResource = adminListingsResource.addResource('bulk-approve');
     adminBulkApproveResource.addMethod(
@@ -750,7 +805,7 @@ export class AdminApiStack extends cdk.Stack {
     // Admin Listing Requests Routes
     // ========================================
     const adminListingRequestsResource = adminListingIdParam.addResource('requests');
-    
+
     // GET /api/v1/admin/listings/{listingId}/requests
     adminListingRequestsResource.addMethod(
       'GET',
@@ -760,7 +815,7 @@ export class AdminApiStack extends cdk.Stack {
         authorizationType: apigateway.AuthorizationType.COGNITO,
       }
     );
-    
+
     // POST /api/v1/admin/listings/{listingId}/requests/property-video
     const adminPropertyVideoResource = adminListingRequestsResource.addResource('property-video');
     adminPropertyVideoResource.addMethod(
@@ -1016,7 +1071,7 @@ export class AdminApiStack extends cdk.Stack {
 
     const adminNotificationsResource = adminResource.addResource('notifications');
     const adminSendNotificationResource = adminNotificationsResource.addResource('send');
-    
+
     // POST /api/v1/admin/notifications/send
     adminSendNotificationResource.addMethod(
       'POST',

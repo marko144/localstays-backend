@@ -118,6 +118,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         key: item.enumValue,
         en: item.translations.en,
         sr: item.translations.sr,
+        days: item.metadata?.days ?? 0,
         sortOrder: item.sortOrder,
       })),
       

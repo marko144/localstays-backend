@@ -26,7 +26,10 @@ export interface PublicListingRecord {
 
   // Display information
   name: string;
-  shortDescription: string; // First 100 chars of description
+  shortDescription: {           // First 100 chars of description (bilingual)
+    en: string;
+    sr: string;
+  };
   placeName: string; // Always the place name (parent for localities)
   regionName: string; // From Locations table
   localityName?: string; // Locality name (only if listing has a locality)
@@ -115,7 +118,10 @@ export interface PublicListingResponse {
   hostId: string;
   locationId: string;
   name: string;
-  shortDescription: string;
+  shortDescription: {             // First 100 chars of description (bilingual)
+    en: string;
+    sr: string;
+  };
   placeName: string;
   regionName: string;
   capacity: {
